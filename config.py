@@ -27,5 +27,8 @@ BOT_CONFIG = {
     'wp_username': get_env_variable('WP_USERNAME'),
     'wp_app_password': get_env_variable('WP_APP_PASSWORD'),
     'match_channel_id': get_env_variable('MATCH_CHANNEL_ID'),
-    'bot_version': "1.7.3"
+    'GOOGLE_CUSTOMER_ID' : get_env_variable('GOOGLE_CUSTOMER_ID'),
+    'GOOGLE_AUTH_JSON' : get_env_variable('GOOGLE_AUTH_JSON'),
+    'GOOGLE_AUTH_WITH' : get_env_variable('GOOGLE_AUTH_WITH'),
+    'bot_version': "1.7.3.b1"
 }

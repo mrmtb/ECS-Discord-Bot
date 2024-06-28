@@ -29,12 +29,15 @@ flask_url = BOT_CONFIG["flask_url"]
 flask_token = BOT_CONFIG["flask_token"]
 discord_admin_role = BOT_CONFIG["discord_admin_role"]
 dev_id = BOT_CONFIG["dev_id"]
-server_id = int(BOT_CONFIG["server_id"])
+server_id = BOT_CONFIG["server_id"]
 serpapi_api = BOT_CONFIG["serpapi_api"]
 wp_username = BOT_CONFIG["wp_username"]
 wp_app_password = BOT_CONFIG["wp_app_password"]
 bot_version = BOT_CONFIG["bot_version"]
-match_channel_id = int(BOT_CONFIG["match_channel_id"])
+match_channel_id = BOT_CONFIG["match_channel_id"]
+google_customer_key = BOT_CONFIG["GOOGLE_CUSTOMER_ID"]
+google_service_account = BOT_CONFIG["GOOGLE_AUTH_JSON"]
+google_auth_with = BOT_CONFIG["GOOGLE_AUTH_WITH"]
 
 try:
     initialize_db()

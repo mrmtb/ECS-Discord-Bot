@@ -11,6 +11,8 @@ discord.py==2.3.2
 Flask==3.0.1
 freezegun==1.4.0
 frozenlist==1.4.1
+google_api_python_client==2.134.0
+google-auth==2.30.0
 idna==3.6
 iniconfig==2.0.0
 itsdangerous==2.1.2
