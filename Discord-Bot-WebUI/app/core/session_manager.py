@@ -42,7 +42,12 @@ def managed_session():
         session.commit()
     except Exception as e:
         logger.error(f"Session error: {e}")
-        session.rollback()
+        try:
+            session.rollback()
+        except Exception as rollback_error:
+            # If rollback fails (e.g., due to PGBouncer DISCARD ALL error),
+            # just log and continue - the session will be closed anyway
+            logger.warning(f"Rollback failed (non-critical): {rollback_error}")
         raise
     finally:
         if not use_global:
@@ -64,6 +69,11 @@ def cleanup_request(exception=None):
     
     :param exception: An optional exception that occurred during the request.
     """
+    # Skip cleanup if session creation failed (degraded mode)
+    if hasattr(g, '_session_creation_failed') and g._session_creation_failed:
+        logger.debug("Skipping session cleanup - request was in degraded mode (no session created)")
+        return
+        
     if hasattr(g, 'db_session'):
         # Generate a session ID for logging
         session_id = str(id(g.db_session))
@@ -105,18 +115,8 @@ def cleanup_request(exception=None):
                 pass
         finally:
             try:
-                # CRITICAL: Unregister the underlying connection before closing
-                try:
-                    conn = g.db_session.connection()
-                    if hasattr(conn, 'connection') and hasattr(conn.connection, 'dbapi_connection'):
-                        dbapi_conn = conn.connection.dbapi_connection
-                        conn_id = id(dbapi_conn)
-                        from app.utils.db_connection_monitor import unregister_connection
-                        unregister_connection(conn_id)
-                        logger.debug(f"Unregistered Flask request connection {conn_id}")
-                except Exception as e:
-                    logger.error(f"Failed to unregister Flask connection: {e}", exc_info=True)
-                
+                # Close the session without trying to access the connection
+                # The pool's checkin event handler will handle connection cleanup
                 logger.debug(f"Closing session {session_id} (status: {status})")
                 g.db_session.close()
                 monitor.register_session_close(session_id)

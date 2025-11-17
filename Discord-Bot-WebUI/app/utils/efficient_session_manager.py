@@ -72,15 +72,10 @@ def query_session():
             user = session.query(User).get(user_id)
             # Session automatically closed after this block
     """
-    session = current_app.SessionLocal()
-    try:
+    # Use the same managed_session to prevent connection pool exhaustion
+    from app.core.session_manager import managed_session
+    with managed_session() as session:
         yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
 @contextmanager  
 def bulk_operation_session():
@@ -94,18 +89,13 @@ def bulk_operation_session():
     
     Has longer timeout (30s) but ensures proper cleanup.
     """
-    session = current_app.SessionLocal()
-    try:
+    # Use managed_session with longer timeout to prevent connection leaks
+    from app.core.session_manager import managed_session
+    with managed_session() as session:
         # Set longer timeout for bulk operations (if not using PgBouncer)
         from app.utils.pgbouncer_utils import set_session_timeout
         set_session_timeout(session, statement_timeout_seconds=30)
         yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
 def get_efficient_session():
     """
@@ -131,18 +121,22 @@ class EfficientQuery:
         """
         Optimized user loading for authentication.
         Returns a lightweight user object with only essential data loaded.
+        Uses Flask request session when available to prevent session conflicts.
         """
-        with query_session() as session:
-            from app.models import User, Role, Player
-            from sqlalchemy.orm import selectinload
-            
+        from app.models import User, Role, Player
+        from sqlalchemy.orm import selectinload
+        from flask import g, has_request_context
+        
+        # Use Flask's request session if available to prevent session conflicts
+        if has_request_context() and hasattr(g, 'db_session'):
+            session = g.db_session
             user = session.query(User).options(
                 selectinload(User.roles),
                 selectinload(User.player)
             ).get(int(user_id))
             
             if user:
-                # Create a minimal data structure instead of detaching
+                # Create a minimal data structure to avoid DetachedInstanceError
                 return UserAuthData(
                     id=user.id,
                     username=user.username,
@@ -154,6 +148,27 @@ class EfficientQuery:
                     has_skipped_profile_creation=user.has_skipped_profile_creation
                 )
             return None
+        else:
+            # Fallback to managed_session for non-request contexts (like Celery)
+            with query_session() as session:
+                user = session.query(User).options(
+                    selectinload(User.roles),
+                    selectinload(User.player)
+                ).get(int(user_id))
+                
+                if user:
+                    # Create a minimal data structure instead of detaching
+                    return UserAuthData(
+                        id=user.id,
+                        username=user.username,
+                        is_active=user.is_active,
+                        roles=[role.name for role in user.roles],
+                        player_id=user.player.id if user.player else None,
+                        player_name=user.player.name if user.player else None,
+                        has_completed_onboarding=user.has_completed_onboarding,
+                        has_skipped_profile_creation=user.has_skipped_profile_creation
+                    )
+                return None
     
     @staticmethod
     def get_player_profile(player_id):

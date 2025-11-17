@@ -117,6 +117,9 @@
                                     <i class="ti ti-send me-1"></i> Send Pending Messages
                                 </button>
                             </form>
+                            <a href="{{ url_for('admin.validate_scheduled_messages') }}" class="btn btn-outline-info">
+                                <i class="ti ti-checklist me-1"></i> Validate System
+                            </a>
                             <form action="{{ url_for('admin.schedule_season') }}" method="post" class="d-inline">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-outline-secondary">
@@ -229,16 +232,16 @@
                                     <small class="text-muted">{{ message.match.time.strftime('%I:%M %p') }}</small>
                                 </div>
                                 {% else %}
-                                <div class="d-flex flex-column" data-sort="{{ message.scheduled_send_time.strftime('%Y-%m-%d') }}T{{ message.scheduled_send_time.strftime('%H:%M:%S') }}">
-                                    <span class="fw-semibold">{{ message.scheduled_send_time.strftime('%a, %b %d, %Y') }}</span>
-                                    <small class="text-muted">{{ message.scheduled_send_time.strftime('%I:%M %p') }}</small>
+                                <div class="d-flex flex-column" data-sort="{{ message.scheduled_send_time_pst.strftime('%Y-%m-%d') }}T{{ message.scheduled_send_time_pst.strftime('%H:%M:%S') }}">
+                                    <span class="fw-semibold">{{ message.scheduled_send_time_pst.strftime('%a, %b %d, %Y') }}</span>
+                                    <small class="text-muted">{{ message.scheduled_send_time_pst.strftime('%I:%M %p') }} PST</small>
                                 </div>
                                 {% endif %}
                             </td>
                             <td>
-                                <div class="d-flex flex-column" data-sort="{{ message.scheduled_send_time.strftime('%Y-%m-%dT%H:%M:%S') }}">
-                                    <span class="fw-semibold">{{ message.scheduled_send_time.strftime('%a, %b %d, %Y') }}</span>
-                                    <small class="text-muted">{{ message.scheduled_send_time.strftime('%I:%M %p') }}</small>
+                                <div class="d-flex flex-column" data-sort="{{ message.scheduled_send_time_pst.strftime('%Y-%m-%dT%H:%M:%S') }}">
+                                    <span class="fw-semibold">{{ message.scheduled_send_time_pst.strftime('%a, %b %d, %Y') }}</span>
+                                    <small class="text-muted">{{ message.scheduled_send_time_pst.strftime('%I:%M %p') }} PST</small>
                                 </div>
                             </td>
                             <td>

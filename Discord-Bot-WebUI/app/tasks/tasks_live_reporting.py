@@ -98,15 +98,14 @@ def process_match_update(self, session, match_id: str, thread_id: str, competiti
         logger.info(f"Processing match update with task ID: {self.request.id}, previous task ID: {task_id}")
         
         try:
-            # Use centralized ESPN service
-            from app.services.espn_service import get_espn_service
-            from app.api_utils import async_to_sync
+            # Use synchronous ESPN client for compatibility
+            from app.utils.sync_espn_client import get_sync_espn_client
             
             logger.info(f"Fetching ESPN data for match {match_id}, competition: {competition}")
             
-            # Fetch match data from ESPN using centralized service
-            espn_service = get_espn_service()
-            match_data = async_to_sync(espn_service.get_match_data(match_id, competition))
+            # Fetch match data from ESPN using synchronous service
+            espn_client = get_sync_espn_client()
+            match_data = espn_client.get_match_data(match_id, competition)
             
             if not match_data:
                 logger.error(f"Failed to fetch data for match {match_id} - ESPN API returned None")
@@ -118,17 +117,13 @@ def process_match_update(self, session, match_id: str, thread_id: str, competiti
             logger.error(f"Error fetching ESPN data for match {match_id}: {str(e)}", exc_info=True)
             return {'success': False, 'message': 'Failed to fetch match data'}
 
-        # Process live match updates using async_to_sync to avoid nested event loops
-        match_ended, current_event_keys = async_to_sync(
-            process_live_match_updates(
-                match_id=str(match_id),
-                thread_id=thread_id,
-                match_data=match_data,
-                session=session,
-                last_status=last_status,
-                last_score=last_score,
-                last_event_keys=last_event_keys
-            )
+        # Process live match updates using synchronous processing
+        from app.utils.sync_espn_client import process_live_match_updates_sync
+        match_ended, current_event_keys = process_live_match_updates_sync(
+            match_id=str(match_id),
+            thread_id=thread_id,
+            competition=competition,
+            last_event_keys=last_event_keys
         )
 
         if match_ended:
@@ -181,64 +176,27 @@ def process_match_update(self, session, match_id: str, thread_id: str, competiti
             match.last_update_time = datetime.utcnow()
             session.add(match)
 
-        # Schedule the next update with updated parameters.
-        # Store the task ID to prevent duplicate executions
-        try:
-            # Check if we've been running too long to prevent infinite chains
-            max_chain_length = 120  # 120 × 30 seconds = 1 hour maximum per match
-            task_chain_length = getattr(self.request, 'task_chain_length', 0) + 1
-            
-            if task_chain_length > max_chain_length:
-                logger.warning(
-                    f"Match {match_id} reached maximum chain length of {max_chain_length}. "
-                    f"Stopping automatic updates to prevent runaway tasks."
-                )
-                return {
-                    'success': False,
-                    'message': f'Maximum chain length ({max_chain_length}) reached',
-                    'status': 'stopped',
-                    'score': new_score,
-                    'match_status': new_status
-                }
-                
-            logger.info(f"Scheduling next update for match {match_id}, chain length: {task_chain_length}/{max_chain_length}")
-            
-            # Create the next task
-            next_task = self.apply_async(
-                args=[match_id, thread_id, competition],
-                kwargs={
-                    'last_status': new_status,
-                    'last_score': new_score,
-                    'last_event_keys': current_event_keys,
-                    'task_id': None,  # This will be ignored by duplicate detection logic on first run
-                    'task_chain_length': task_chain_length  # Track how many times this task has chained itself
-                },
-                countdown=30,
-                queue='live_reporting'
-            )
-            logger.info(f"Scheduled next task with ID: {next_task.id}")
-        except Exception as e:
-            logger.error(f"Error scheduling next task: {str(e)}", exc_info=True)
-            # Create a minimal task result object for error handling
-            from collections import namedtuple
-            MockTask = namedtuple('MockTask', ['id'])
-            next_task = MockTask(id="error-scheduling-task")
-        
-        # Store the new task ID in the database
+        # DEPRECATED: DO NOT SCHEDULE NEXT UPDATE TASK
+        # The realtime service handles all live reporting now
+        logger.warning(
+            f"[DEPRECATED] process_match_update called for match {match_id}. "
+            f"This task should not be used - realtime service should handle updates. "
+            f"Stopping self-scheduling chain to prevent task accumulation."
+        )
+
+        # Mark the match as needing realtime service attention
         if match:
-            match.live_reporting_task_id = next_task.id
-            logger.info(f"Scheduled next update with task ID: {next_task.id} for match {match_id}")
-            
-        # We no longer need to update task kwargs since we're using the dictionary directly
-        # and it was already updated above
+            match.live_reporting_task_id = "DEPRECATED_STOPPED"
+            logger.info(f"Stopped deprecated task chain for match {match_id}")
 
         return {
             'success': True,
-            'message': 'Update processed',
-            'status': 'running',
+            'message': 'Update processed (deprecated task - no further scheduling)',
+            'status': 'stopped',
             'score': new_score,
             'match_status': new_status,
-            'next_task_id': next_task.id  # ADDED CODE: Return the next task ID
+            'next_task_id': None,  # No more task chaining
+            'warning': 'This task is deprecated. Use realtime service instead.'
         }
 
     except SQLAlchemyError as e:
@@ -257,23 +215,29 @@ def process_match_update(self, session, match_id: str, thread_id: str, competiti
 )
 def start_live_reporting(self, session, match_id: str) -> Dict[str, Any]:
     """
-    [DEPRECATED - Use start_robust_live_reporting from tasks_robust_live_reporting.py]
-    
-    Start live match reporting for a specific match.
+    *** DEPRECATED V1 TASK - DO NOT USE! ***
 
-    This task:
-      - Retrieves the match by its identifier (using the get_match helper).
-      - Checks if reporting is already running.
-      - Updates match status to running and records start time.
-      - Triggers the initial match update task.
-      - Stores the task ID to prevent duplicate executions.
+    This V1 live reporting task is deprecated and should be replaced with the enterprise system.
 
-    Returns:
-        A dictionary indicating the reporting start result.
+    MIGRATION PATH:
+    - Remove calls to this task from your codebase
+    - Use MatchSchedulerService.schedule_season_matches() for season-wide scheduling
+    - Use RealtimeReportingService for live updates
+    - Use admin interface at /admin/live-reporting/ for management
 
-    Raises:
-        Retries the task on SQLAlchemy or general errors.
+    CURRENT LOCATION: {self.request.origin}
+    CURRENT TASK ID: {self.request.id}
+    CALLED AT: {datetime.utcnow().isoformat()}
+
+    ACTION REQUIRED: Update calling code to use enterprise live reporting system
     """
+    logger.error(
+        "*** DEPRECATED V1 TASK CALLED! *** "
+        f"start_live_reporting V1 task called from {self.request.origin} "
+        f"with task ID {self.request.id}. "
+        "MIGRATE TO: MatchSchedulerService + RealtimeReportingService. "
+        f"Match ID: {match_id}"
+    )
     try:
         logger.warning(f"[DEPRECATED] start_live_reporting called for match_id: {match_id} - should use start_robust_live_reporting")
         logger.info(f"Starting live reporting for match_id: {match_id}")
@@ -383,19 +347,27 @@ def start_live_reporting(self, session, match_id: str) -> Dict[str, Any]:
 )
 def schedule_live_reporting(self, session) -> Dict[str, Any]:
     """
-    Schedule live reporting for upcoming matches.
+    *** DEPRECATED V1 TASK - DO NOT USE! ***
 
-    This task:
-      - Queries for matches within the next 48 hours that haven't started live reporting.
-      - Schedules each match to start live reporting at the appropriate time.
-      - Marks matches as scheduled.
+    This V1 scheduling task is deprecated and should be replaced with the enterprise system.
 
-    Returns:
-        A summary dictionary with the number of matches scheduled.
+    MIGRATION PATH:
+    - Remove calls to this task from your codebase
+    - Use MatchSchedulerService.schedule_season_matches() for season-wide scheduling
+    - Use admin interface at /admin/live-reporting/ for management
 
-    Raises:
-        Retries the task on errors.
+    CURRENT LOCATION: {self.request.origin}
+    CURRENT TASK ID: {self.request.id}
+    CALLED AT: {datetime.utcnow().isoformat()}
+
+    ACTION REQUIRED: Update calling code to use enterprise match scheduling system
     """
+    logger.error(
+        "*** DEPRECATED V1 TASK CALLED! *** "
+        f"schedule_live_reporting V1 task called from {self.request.origin} "
+        f"with task ID {self.request.id}. "
+        "MIGRATE TO: MatchSchedulerService.schedule_season_matches()"
+    )
     try:
         from datetime import timezone
         now = datetime.now(timezone.utc)
@@ -411,7 +383,29 @@ def schedule_live_reporting(self, session) -> Dict[str, Any]:
             # Calculate the exact ETA for when live reporting should start
             reporting_time = match.date_time - timedelta(minutes=5)  # Start 5 minutes before match
             
-            # Skip if the reporting time is in the past
+            # Check if match is currently happening and should be reporting NOW
+            if reporting_time <= now and match.date_time + timedelta(hours=2) > now:
+                # Match is in progress or about to start - start reporting immediately!
+                if not match.discord_thread_id:
+                    logger.warning(f"Match {match.match_id} needs live reporting but has no thread ID")
+                    continue
+                    
+                logger.warning(f"Match {match.match_id} is in progress but live reporting hasn't started - starting now!")
+                try:
+                    from app.tasks.tasks_live_reporting_v2 import start_live_reporting_v2
+                    task = start_live_reporting_v2.apply_async(
+                        args=[str(match.match_id), str(match.discord_thread_id), match.competition or 'usa.1'],
+                        queue='live_reporting'
+                    )
+                    match.live_reporting_scheduled = True
+                    match.live_reporting_task_id = task.id
+                    scheduled_count += 1
+                    logger.info(f"Started immediate live reporting for in-progress match {match.match_id}")
+                except Exception as e:
+                    logger.error(f"Failed to start immediate live reporting for {match.match_id}: {e}")
+                continue
+            
+            # Skip if the reporting time is in the past and match is over
             if reporting_time <= now:
                 continue
                 
@@ -425,11 +419,22 @@ def schedule_live_reporting(self, session) -> Dict[str, Any]:
                 continue
             
             # Schedule with ETA and store task ID
-            task = start_live_reporting.apply_async(
-                args=[str(match.match_id)],
-                eta=reporting_time,
-                queue='live_reporting'
-            )
+            # Use V2 task if available, otherwise fallback to V1
+            try:
+                from app.tasks.tasks_live_reporting_v2 import start_live_reporting_v2
+                task = start_live_reporting_v2.apply_async(
+                    args=[str(match.match_id), str(match.discord_thread_id), match.competition or 'usa.1'],
+                    eta=reporting_time,
+                    queue='live_reporting'
+                )
+                logger.info(f"Scheduled V2 live reporting for match {match.match_id}")
+            except ImportError:
+                logger.warning("V2 live reporting not available, using V1")
+                task = start_live_reporting.apply_async(
+                    args=[str(match.match_id)],
+                    eta=reporting_time,
+                    queue='live_reporting'
+                )
             
             # Store task ID in Redis for tracking
             import json
@@ -823,29 +828,19 @@ def force_create_mls_thread_task(self, session, match_id: str, force: bool = Fal
                 'is_home_game': match.is_home_game
             }
             
-            # Try centralized Discord service first
-            logger.info(f"Creating Discord thread for match {match_id} using centralized service...")
-            from app.services.discord_service import get_discord_service
-            from app.api_utils import async_to_sync
+            # Use synchronous Discord client for compatibility
+            logger.info(f"Creating Discord thread for match {match_id} using synchronous service...")
+            from app.utils.sync_discord_client import get_sync_discord_client
             
-            discord_service = get_discord_service()
+            discord_client = get_sync_discord_client()
             thread_id = None
             
             try:
-                thread_id = async_to_sync(discord_service.create_match_thread(match_data))
+                thread_id = discord_client.create_match_thread(match_data)
+                if thread_id:
+                    logger.info(f"Successfully created thread {thread_id} for match {match_id}")
             except Exception as e:
-                logger.warning(f"Centralized Discord service failed for match {match_id}: {e}")
-                logger.info("Falling back to direct thread creation method...")
-            
-            # Fallback to direct thread creation if centralized service fails
-            if not thread_id:
-                try:
-                    from app.discord_utils import create_match_thread_async_only
-                    thread_id = async_to_sync(create_match_thread_async_only(match_data))
-                    if thread_id:
-                        logger.info(f"Successfully created thread via fallback method for match {match_id}")
-                except Exception as e:
-                    logger.error(f"Fallback thread creation also failed for match {match_id}: {e}")
+                logger.error(f"Synchronous thread creation failed for match {match_id}: {e}")
             
             if thread_id:
                 # Update match record

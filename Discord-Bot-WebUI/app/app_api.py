@@ -85,7 +85,7 @@ def jwt_or_discord_auth_required(f):
             # Use standard JWT authentication
             try:
                 verify_jwt_in_request()
-                g.current_user_id = get_jwt_identity()
+                g.current_user_id = int(get_jwt_identity())
                 return f(*args, **kwargs)
             except Exception as e:
                 logger.error(f"JWT authentication failed: {str(e)}")
@@ -306,7 +306,7 @@ def discord_callback():
                 return jsonify({"msg": "Failed to process Discord user"}), 500
                 
             # Create JWT access token for the user
-            access_token = create_access_token(identity=user.id)
+            access_token = create_access_token(identity=str(user.id))
             
             # Return the token to the mobile app
             return jsonify({
@@ -344,7 +344,7 @@ def login():
         if user.is_2fa_enabled:
             return jsonify({"msg": "2FA required", "user_id": user.id}), 200
 
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(identity=str(user.id))
         return jsonify(access_token=access_token), 200
 
 
@@ -365,7 +365,7 @@ def verify_2fa():
         if not user or not user.verify_totp(token):
             return jsonify({"msg": "Invalid 2FA token"}), 401
 
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(identity=str(user.id))
         return jsonify(access_token=access_token), 200
 
 
@@ -376,7 +376,7 @@ def get_user_profile():
     Retrieve the profile of the currently authenticated user,
     including associated player data and optional stats.
     """
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     logger.info(f"🔵 [MOBILE_API] get_user_profile called for user_id: {current_user_id}")
     logger.debug(f"🔵 [MOBILE_API] Request args: {dict(request.args)}")
     
@@ -474,7 +474,7 @@ def update_player_profile():
     Update the profile of the currently authenticated player.
     """
     with managed_session() as session_db:
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         player = session_db.query(Player).filter_by(user_id=current_user_id).first()
         if not player:
             return jsonify({"msg": "Player not found"}), 404
@@ -508,7 +508,7 @@ def get_player(player_id: int):
     based on user roles and ownership.
     """
     with managed_session() as session_db:
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         # Query user and player with eager loading to prevent N+1 queries
         from sqlalchemy.orm import joinedload, selectinload
         safe_current_user = session_db.query(User).options(
@@ -699,7 +699,7 @@ def get_team_matches(team_id: int):
     """
     Retrieve matches for a specific team.
     """
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     logger.info(f"🔵 [MOBILE_API] get_team_matches called for team_id: {team_id}, user_id: {current_user_id}")
     
     with managed_session() as session_db:
@@ -767,7 +767,7 @@ def get_team_matches(team_id: int):
 @jwt_required()
 def debug_availability():
     """Debug endpoint to check availability data."""
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     
     with managed_session() as session:
         # Check current user
@@ -800,7 +800,6 @@ def debug_availability():
 @jwt_role_required('Global Admin')
 def create_test_rsvp():
     """Create a test RSVP for match 5316 and player 908."""
-    from datetime import datetime
     
     with managed_session() as session:
         # Check if RSVP already exists
@@ -864,7 +863,7 @@ def get_match_events(match_id: int):
             return jsonify({"msg": "Match not found"}), 404
 
         # Check if user has permission to view match events
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         user = session_db.query(User).options(
             joinedload(User.roles)
         ).filter(User.id == current_user_id).first()
@@ -918,7 +917,7 @@ def get_match_availability(match_id: int):
     Retrieve availability data for a specific match. Optionally filter for a specific team.
     """
     with managed_session() as session_db:
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         # Query user and match with eager loading to prevent N+1 queries
         from sqlalchemy.orm import joinedload, selectinload
         safe_current_user = session_db.query(User).options(
@@ -1117,7 +1116,7 @@ def get_my_team():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
             logger.info(f"🔵 [MOBILE_API] get_my_team called for user_id: {current_user_id}")
             
             player = session_db.query(Player).filter_by(user_id=current_user_id).first()
@@ -1155,7 +1154,7 @@ def get_my_teams():
     Retrieve all teams the currently authenticated player is associated with.
     """
     with managed_session() as session_db:
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         player = session_db.query(Player).filter_by(user_id=current_user_id).first()
 
         if not player:
@@ -1211,7 +1210,7 @@ def get_all_matches():
     Retrieve a list of matches based on query parameters, including
     optional event and availability details.
     """
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     logger.info(f"🔵 [MOBILE_API] get_all_matches called for user_id: {current_user_id}")
     logger.debug(f"🔵 [MOBILE_API] Request args: {dict(request.args)}")
     
@@ -1231,8 +1230,17 @@ def get_all_matches():
         # Get query parameters with performance defaults
         upcoming = request.args.get('upcoming', 'false').lower() == 'true'
         completed = request.args.get('completed', 'false').lower() == 'true'
-        all_teams = request.args.get('all_teams', 'false').lower() == 'true'
         team_id = request.args.get('team_id', type=int)
+
+        # Smart default for all_teams: if not explicitly set and user has multiple teams, default to True
+        all_teams_param = request.args.get('all_teams')
+        if all_teams_param is None:
+            # Default to True if player has multiple teams (better mobile UX)
+            all_teams = player and len(player.teams) > 1
+            logger.debug(f"🔵 [MOBILE_API] Smart all_teams default: {all_teams} (player has {len(player.teams) if player else 0} teams)")
+        else:
+            all_teams = all_teams_param.lower() == 'true'
+            logger.debug(f"🔵 [MOBILE_API] Explicit all_teams parameter: {all_teams}")
         
         # Determine user access level for smart limits
         user_roles = [r.name for r in user.roles] if user.roles else []
@@ -1320,7 +1328,7 @@ def get_match_schedule():
     """
     Retrieve the schedule of upcoming matches, grouped by date.
     """
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     logger.info(f"🔵 [MOBILE_API] get_match_schedule called for user_id: {current_user_id}")
     logger.debug(f"🔵 [MOBILE_API] Request args: {dict(request.args)}")
     
@@ -1459,7 +1467,7 @@ def get_single_match_details(match_id: int):
         if not match:
             return jsonify({"msg": "Match not found"}), 404
 
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         player = session_db.query(Player).filter_by(user_id=current_user_id).first()
 
         match_data = build_match_response(
@@ -1487,7 +1495,7 @@ def update_availability():
     """
     try:
         # Get the current user for the redirect
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         
         # Extract data from the v1 request format
         data = request.json
@@ -1548,7 +1556,7 @@ def update_availability():
     # FALLBACK: Original legacy implementation (only if enterprise redirect fails)
     logger.warning("⚠️ Using legacy RSVP implementation - enterprise redirect failed")
     with managed_session() as session_db:
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         player = session_db.query(Player).filter_by(user_id=current_user_id).first()
         if not player:
             return jsonify({"msg": "Player not found"}), 404
@@ -1722,7 +1730,7 @@ def upload_player_profile_picture_disabled(player_id: int):
     
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
             
             # Get the player
             player = session_db.query(Player).filter(Player.id == player_id).first()
@@ -1890,7 +1898,7 @@ def get_match_live_updates(match_id: int):
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
         
         # Get the match
         match = session_db.query(Match).get(match_id)
@@ -1963,7 +1971,7 @@ def register_device():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
         data = request.json
         
         device_token = data.get('device_token')
@@ -2015,7 +2023,7 @@ def notification_preferences():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
         user = session_db.query(User).get(current_user_id)
         
         if not user:
@@ -2061,7 +2069,7 @@ def bulk_availability_update():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
         player = session_db.query(Player).filter_by(user_id=current_user_id).first()
         
         if not player:
@@ -2351,7 +2359,7 @@ def get_membership_pass_info():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
             
             # Get user and player
             user = session_db.query(User).get(current_user_id)
@@ -2410,7 +2418,6 @@ def get_membership_pass_info():
                     logo_url = f"{request.host_url.rstrip('/')}{player.primary_team.kit_url}"
             
             # Return in exact Flutter app format (camelCase)
-            from datetime import datetime
             now = datetime.utcnow()
             
             response_data = {
@@ -2448,7 +2455,7 @@ def generate_membership_pass():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
             data = request.get_json() or {}
             
             # Get user and player
@@ -2488,7 +2495,6 @@ def generate_membership_pass():
             # Generate NEW barcode value (fresh generation)
             import hashlib
             import uuid
-            from datetime import datetime
             
             barcode_data = f"ECS-{player.id}-{team_name}-{season_name}-{uuid.uuid4().hex[:8]}-{datetime.utcnow().timestamp()}"
             barcode_hash = hashlib.md5(barcode_data.encode()).hexdigest()[:12].upper()
@@ -2556,7 +2562,7 @@ def download_membership_pass():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
             
             # Get user and player
             user = session_db.query(User).get(current_user_id)
@@ -2605,7 +2611,7 @@ def get_wallet_pass_info():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
             
             user = session_db.query(User).get(current_user_id)
             if not user:
@@ -2642,7 +2648,7 @@ def download_wallet_pass_file():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
             
             user = session_db.query(User).get(current_user_id)
             if not user:
@@ -2725,7 +2731,7 @@ def refresh_membership_pass():
     """
     try:
         with managed_session() as session_db:
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
             
             # Get user and player
             user = session_db.query(User).get(current_user_id)
@@ -2779,7 +2785,6 @@ def refresh_membership_pass():
                     logo_url = f"{request.host_url.rstrip('/')}{player.primary_team.kit_url}"
             
             # Return updated pass data
-            from datetime import datetime
             now = datetime.utcnow()
             
             response_data = {

@@ -12,7 +12,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from app.utils.safe_redis import get_safe_redis
+from app.services.redis_connection_service import get_redis_service
 from app.core.session_manager import managed_session
 from app.models import MLSMatch
 from app.core.helpers import get_match
@@ -28,36 +28,21 @@ class TaskStatusCacheService:
     BATCH_SIZE = 50  # Process matches in batches
     
     def __init__(self):
-        self.redis = None
+        self._redis_service = get_redis_service()
     
     def get_redis_client(self):
-        """Get Redis client with fallback to direct connection."""
-        if self.redis is None:
-            try:
-                import redis
-                self.redis = redis.Redis(
-                    host='redis', 
-                    port=6379, 
-                    db=0, 
-                    decode_responses=True, 
-                    socket_timeout=5
-                )
-                self.redis.ping()
-                logger.debug("Direct Redis connection established for cache service")
-            except Exception as e:
-                logger.error(f"Failed to establish direct Redis connection: {e}")
-                # Fallback to safe_redis
-                self.redis = get_safe_redis()
-        return self.redis
+        """Get Redis service with enterprise-grade connection pooling."""
+        return self._redis_service
     
     def get_cache_key(self, match_id: int) -> str:
         """Generate cache key for match task status."""
         return f"{self.CACHE_PREFIX}:{match_id}"
     
-    def get_active_matches(self) -> List[MLSMatch]:
+    def get_active_matches(self) -> List[Dict[str, Any]]:
         """
-        Get matches that need task status caching.
+        Get match data that needs task status caching.
         Includes matches from 2 days ago to 7 days in the future.
+        Returns match data as dictionaries to avoid session attachment issues.
         """
         try:
             with managed_session() as session:
@@ -70,21 +55,33 @@ class TaskStatusCacheService:
                     MLSMatch.date_time <= end_time
                 ).order_by(MLSMatch.date_time).all()
                 
-                logger.info(f"Found {len(matches)} active matches for cache update")
-                return matches
+                # Extract data to avoid session attachment issues
+                match_data = []
+                for match in matches:
+                    match_data.append({
+                        'id': match.id,
+                        'date_time': match.date_time,
+                        'opponent': getattr(match, "opponent", "TBD"),
+                        'is_home_game': getattr(match, "is_home_game", False),
+                        'discord_thread_id': match.discord_thread_id
+                    })
+                
+                logger.info(f"Found {len(match_data)} active matches for cache update")
+                return match_data
                 
         except Exception as e:
             logger.error(f"Error getting active matches: {e}", exc_info=True)
             return []
     
-    def calculate_task_status(self, match: MLSMatch) -> Dict[str, Any]:
+    def calculate_task_status(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Calculate task status for a single match using enhanced logic.
         This is the same logic as the real-time version but optimized for batch processing.
         """
         try:
-            redis_client = self.get_redis_client()
+            redis_service = self.get_redis_client()
             tasks = {}
+            match_id = match_data['id']
             
             # Helper function for decoding Redis data
             def safe_decode(data):
@@ -92,10 +89,16 @@ class TaskStatusCacheService:
                     return None
                 return data if isinstance(data, str) else data.decode('utf-8')
             
-            # Check thread creation task
-            thread_key = f"match_scheduler:{match.id}:thread"
-            thread_data = redis_client.get(thread_key)
-            thread_ttl = redis_client.ttl(thread_key) if thread_data else None
+            with redis_service.get_connection() as redis_client:
+                # Check thread creation task
+                thread_key = f"match_scheduler:{match_id}:thread"
+                thread_data = redis_client.get(thread_key)
+                thread_ttl = redis_client.ttl(thread_key) if thread_data else None
+                
+                # Check live reporting task
+                reporting_key = f"match_scheduler:{match_id}:reporting"
+                reporting_data = redis_client.get(reporting_key)
+                reporting_ttl = redis_client.ttl(reporting_key) if reporting_data else None
             
             if thread_data:
                 try:
@@ -117,29 +120,36 @@ class TaskStatusCacheService:
                         'type': 'Thread Creation'
                     }
                 except Exception as e:
-                    logger.warning(f"Error parsing thread task for match {match.id}: {e}")
+                    logger.warning(f"Error parsing thread task for match {match_id}: {e}")
                     tasks['thread'] = {
                         'error': f'Failed to parse thread task: {str(e)}',
                         'raw_data': safe_decode(thread_data)
                     }
             else:
                 # Fallback logic for thread creation
-                if match.discord_thread_id:
+                if match_data['discord_thread_id']:
                     # Thread exists, so task completed successfully
                     tasks['thread'] = {
                         'task_id': 'unknown',
                         'eta': 'completed',
                         'status': 'SUCCESS',
-                        'result': f'Thread created: {match.discord_thread_id}',
+                        'result': f'Thread created: {match_data["discord_thread_id"]}',
                         'type': 'Thread Creation',
                         'fallback': True,
-                        'message': f'{"Sounders vs " + match.opponent if match.is_home_game else match.opponent + " vs Sounders"} thread created'
+                        'message': f'{"Sounders vs " + match_data.get("opponent", "TBD") if match_data.get("is_home_game") else match_data.get("opponent", "TBD") + " vs Sounders"} thread created'
                     }
-                elif match.date_time:
+                elif match_data.get("date_time"):
                     # Check if thread creation should have happened by now
                     import pytz
                     utc_tz = pytz.UTC
-                    match_time = match.date_time.replace(tzinfo=utc_tz)
+                    
+                    # Handle both datetime objects and ISO strings
+                    date_time = match_data['date_time']
+                    if isinstance(date_time, str):
+                        from dateutil.parser import parse
+                        match_time = parse(date_time).replace(tzinfo=utc_tz)
+                    else:
+                        match_time = date_time.replace(tzinfo=utc_tz)
                     thread_time = match_time - timedelta(hours=48)  # 48 hours before
                     now = datetime.now(utc_tz)
                     
@@ -152,7 +162,7 @@ class TaskStatusCacheService:
                             'result': 'Thread creation task should have run but no thread found',
                             'type': 'Thread Creation',
                             'fallback': True,
-                            'message': f'{"Sounders vs " + match.opponent if match.is_home_game else match.opponent + " vs Sounders"} - thread creation overdue'
+                            'message': f'{"Sounders vs " + match_data.get("opponent", "TBD") if match_data.get("is_home_game", False) else match_data.get("opponent", "TBD") + " vs Sounders"} - thread creation overdue'
                         }
                     else:
                         # Thread not due yet
@@ -163,13 +173,9 @@ class TaskStatusCacheService:
                             'result': f'Scheduled for {thread_time.strftime("%Y-%m-%d %H:%M UTC")}',
                             'type': 'Thread Creation',
                             'fallback': True,
-                            'message': f'{"Sounders vs " + match.opponent if match.is_home_game else match.opponent + " vs Sounders"} - thread scheduled'
+                            'message': f'{"Sounders vs " + match_data.get("opponent", "TBD") if match_data.get("is_home_game", False) else match_data.get("opponent", "TBD") + " vs Sounders"} - thread scheduled'
                         }
             
-            # Check live reporting task
-            reporting_key = f"match_scheduler:{match.id}:reporting"
-            reporting_data = redis_client.get(reporting_key)
-            reporting_ttl = redis_client.ttl(reporting_key) if reporting_data else None
             
             if reporting_data:
                 try:
@@ -191,17 +197,24 @@ class TaskStatusCacheService:
                         'type': 'Live Reporting'
                     }
                 except Exception as e:
-                    logger.warning(f"Error parsing reporting task for match {match.id}: {e}")
+                    logger.warning(f"Error parsing reporting task for match {match_data['id']}: {e}")
                     tasks['reporting'] = {
                         'error': f'Failed to parse reporting task: {str(e)}',
                         'raw_data': safe_decode(reporting_data)
                     }
             else:
                 # Fallback logic for live reporting
-                if match.date_time:
+                if match_data.get("date_time"):
                     import pytz
                     utc_tz = pytz.UTC
-                    match_time = match.date_time.replace(tzinfo=utc_tz)
+                    
+                    # Handle both datetime objects and ISO strings
+                    date_time = match_data['date_time']
+                    if isinstance(date_time, str):
+                        from dateutil.parser import parse
+                        match_time = parse(date_time).replace(tzinfo=utc_tz)
+                    else:
+                        match_time = date_time.replace(tzinfo=utc_tz)
                     reporting_time = match_time - timedelta(minutes=5)  # 5 minutes before
                     now = datetime.now(utc_tz)
                     
@@ -214,7 +227,7 @@ class TaskStatusCacheService:
                             'result': 'Match has ended',
                             'type': 'Live Reporting',
                             'fallback': True,
-                            'message': f'{"Sounders vs " + match.opponent if match.is_home_game else match.opponent + " vs Sounders"} - match completed'
+                            'message': f'{"Sounders vs " + match_data.get("opponent", "TBD") if match_data.get("is_home_game", False) else match_data.get("opponent", "TBD") + " vs Sounders"} - match completed'
                         }
                     elif now > reporting_time:
                         # Reporting should have started
@@ -225,7 +238,7 @@ class TaskStatusCacheService:
                             'result': 'Live reporting should be active',
                             'type': 'Live Reporting',
                             'fallback': True,
-                            'message': f'{"Sounders vs " + match.opponent if match.is_home_game else match.opponent + " vs Sounders"} - live reporting active'
+                            'message': f'{"Sounders vs " + match_data.get("opponent", "TBD") if match_data.get("is_home_game", False) else match_data.get("opponent", "TBD") + " vs Sounders"} - live reporting active'
                         }
                     else:
                         # Reporting not due yet
@@ -236,47 +249,88 @@ class TaskStatusCacheService:
                             'result': f'Scheduled for {reporting_time.strftime("%Y-%m-%d %H:%M UTC")}',
                             'type': 'Live Reporting',
                             'fallback': True,
-                            'message': f'{"Sounders vs " + match.opponent if match.is_home_game else match.opponent + " vs Sounders"} - reporting scheduled'
+                            'message': f'{"Sounders vs " + match_data.get("opponent", "TBD") if match_data.get("is_home_game", False) else match_data.get("opponent", "TBD") + " vs Sounders"} - reporting scheduled'
                         }
             
             return {
                 'success': True,
-                'match_id': match.id,
+                'match_id': match_data['id'],
                 'tasks': tasks,
                 'timestamp': datetime.utcnow().isoformat(),
                 'cached': True
             }
             
         except Exception as e:
-            logger.error(f"Error calculating task status for match {match.id}: {e}", exc_info=True)
+            logger.error(f"Error calculating task status for match {match_data['id']}: {e}", exc_info=True)
             return {
                 'success': False,
                 'error': str(e),
-                'match_id': match.id,
+                'match_id': match_data['id'],
                 'tasks': {},
                 'cached': True
             }
     
-    def update_match_cache(self, match: MLSMatch) -> bool:
-        """Update cache for a single match."""
+    def update_match_cache(self, match_data) -> bool:
+        """Update cache for a single match using match data dictionary or SQLAlchemy object."""
         try:
-            redis_client = self.get_redis_client()
-            cache_key = self.get_cache_key(match.id)
-            
-            status_data = self.calculate_task_status(match)
-            
-            # Store in cache with TTL
-            redis_client.setex(
-                cache_key, 
-                self.CACHE_TTL, 
-                json.dumps(status_data)
-            )
-            
-            logger.debug(f"Updated cache for match {match.id}")
+            redis_service = self.get_redis_client()
+
+            # Handle both dictionary and SQLAlchemy object
+            if hasattr(match_data, 'id'):
+                # SQLAlchemy object
+                match_id = match_data.id
+                # Convert to dict for calculate_task_status
+                # Handle both MLSMatch (date_time) and regular Match (date/time)
+                if hasattr(match_data, 'date_time'):
+                    # MLSMatch object
+                    match_dict = {
+                        'id': match_data.id,
+                        'date': match_data.date_time.date() if match_data.date_time else None,
+                        'time': match_data.date_time.time() if match_data.date_time else None,
+                        'home_team_id': None,  # MLSMatch doesn't have team IDs
+                        'away_team_id': None,
+                        'home_team_message_id': None,
+                        'away_team_message_id': None,
+                        # Add other relevant fields as needed
+                    }
+                else:
+                    # Regular Match object
+                    match_dict = {
+                        'id': match_data.id,
+                        'date': match_data.date,
+                        'time': match_data.time,
+                        'home_team_id': match_data.home_team_id,
+                        'away_team_id': match_data.away_team_id,
+                        'home_team_message_id': match_data.home_team_message_id,
+                        'away_team_message_id': match_data.away_team_message_id,
+                        # Add other relevant fields as needed
+                    }
+            else:
+                # Dictionary
+                match_id = match_data['id']
+                match_dict = match_data
+
+            cache_key = self.get_cache_key(match_id)
+            status_data = self.calculate_task_status(match_dict)
+
+            # Store in cache with TTL using connection pooling
+            with redis_service.get_connection() as redis_client:
+                redis_client.setex(
+                    cache_key,
+                    self.CACHE_TTL,
+                    json.dumps(status_data)
+                )
+
+            logger.debug(f"Updated cache for match {match_id}")
             return True
-            
+
         except Exception as e:
-            logger.error(f"Failed to update cache for match {match.id}: {e}", exc_info=True)
+            # Handle both object types for error logging
+            if hasattr(match_data, 'id'):
+                match_id = getattr(match_data, 'id', 'unknown')
+            else:
+                match_id = match_data.get('id', 'unknown') if isinstance(match_data, dict) else 'unknown'
+            logger.error(f"Failed to update cache for match {match_id}: {e}", exc_info=True)
             return False
     
     def update_all_caches(self) -> Dict[str, Any]:
@@ -291,15 +345,16 @@ class TaskStatusCacheService:
         try:
             active_matches = self.get_active_matches()
             
-            for match in active_matches:
+            for match_data in active_matches:
                 try:
-                    if self.update_match_cache(match):
+                    if self.update_match_cache(match_data):
                         updated_count += 1
                     else:
                         error_count += 1
                         
                 except Exception as e:
-                    logger.error(f"Error updating cache for match {match.id}: {e}")
+                    match_id = match_data.get('id', 'unknown')
+                    logger.error(f"Error updating cache for match {match_id}: {e}")
                     error_count += 1
             
             duration = (datetime.utcnow() - start_time).total_seconds()
@@ -329,12 +384,13 @@ class TaskStatusCacheService:
     def get_cached_status(self, match_id: int) -> Optional[Dict[str, Any]]:
         """Get cached task status for a match."""
         try:
-            redis_client = self.get_redis_client()
+            redis_service = self.get_redis_client()
             cache_key = self.get_cache_key(match_id)
             
-            cached_data = redis_client.get(cache_key)
-            if cached_data:
-                return json.loads(cached_data)
+            with redis_service.get_connection() as redis_client:
+                cached_data = redis_client.get(cache_key)
+                if cached_data:
+                    return json.loads(cached_data)
             
             return None
             
@@ -345,10 +401,12 @@ class TaskStatusCacheService:
     def invalidate_cache(self, match_id: int) -> bool:
         """Invalidate cache for a specific match."""
         try:
-            redis_client = self.get_redis_client()
+            redis_service = self.get_redis_client()
             cache_key = self.get_cache_key(match_id)
             
-            redis_client.delete(cache_key)
+            with redis_service.get_connection() as redis_client:
+                redis_client.delete(cache_key)
+            
             logger.info(f"Invalidated cache for match {match_id}")
             return True
             

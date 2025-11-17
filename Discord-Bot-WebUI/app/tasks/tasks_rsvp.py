@@ -21,11 +21,7 @@ from app.models import Match, Availability, Player, ScheduledMessage
 from app.models_ecs import EcsFcMatch, EcsFcAvailability
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
-from app.tasks.tasks_rsvp_helpers import (
-    _send_availability_message_async,
-    _update_discord_rsvp_async,
-    _notify_discord_async
-)
+# Old async helpers replaced with sync Discord client
 
 logger = logging.getLogger(__name__)
 
@@ -227,19 +223,44 @@ def send_availability_message(self, session, scheduled_message_id: int) -> Dict[
                 'error_type': 'not_found'
             }
         
+        # Get channel IDs dynamically from team records (single source of truth)
+        home_channel_id = None
+        away_channel_id = None
+        
+        if message.match:
+            if message.match.home_team and message.match.home_team.discord_channel_id:
+                home_channel_id = message.match.home_team.discord_channel_id
+            if message.match.away_team and message.match.away_team.discord_channel_id:
+                away_channel_id = message.match.away_team.discord_channel_id
+        
+        # Validate required fields
+        if not home_channel_id or not away_channel_id:
+            error_msg = f"Missing team Discord channels: home_channel_id={home_channel_id}, away_channel_id={away_channel_id}"
+            logger.error(error_msg)
+            message.status = 'FAILED'
+            message.send_error = error_msg[:255]
+            message.last_send_attempt = datetime.utcnow()
+            session.add(message)
+            return {
+                'success': False,
+                'message': error_msg,
+                'error_type': 'validation_error'
+            }
+        
         # Construct the message_data dictionary
         message_data = {
-            'scheduled_message_id': scheduled_message_id,
             'match_id': message.match_id,
-            'home_channel_id': message.home_channel_id,
-            'away_channel_id': message.away_channel_id
+            'home_channel_id': home_channel_id,
+            'away_channel_id': away_channel_id
         }
         
         # If match exists, add match details
         if message.match:
             message_data.update({
+                'home_team_id': message.match.home_team.id if message.match.home_team else None,
+                'away_team_id': message.match.away_team.id if message.match.away_team else None,
                 'match_date': message.match.date.strftime('%Y-%m-%d') if message.match.date else '',
-                'match_time': message.match.time.strftime('%H:%M') if message.match.time else '',
+                'match_time': message.match.time.strftime('%H:%M:%S') if message.match.time else '',
                 'home_team_name': message.match.home_team.name if message.match.home_team else 'Home Team',
                 'away_team_name': message.match.away_team.name if message.match.away_team else 'Away Team'
             })
@@ -247,15 +268,18 @@ def send_availability_message(self, session, scheduled_message_id: int) -> Dict[
             # Use metadata if available for ECS FC or other message types
             metadata = message.message_metadata or {}
             message_data.update({
+                'home_team_id': metadata.get('home_team_id'),
+                'away_team_id': metadata.get('away_team_id'),
                 'match_date': metadata.get('match_date', ''),
                 'match_time': metadata.get('match_time', ''),
                 'home_team_name': metadata.get('home_team_name', 'Home Team'),
                 'away_team_name': metadata.get('away_team_name', 'Away Team')
             })
         
-        # Use async_to_sync utility instead of creating a new event loop
-        from app.api_utils import async_to_sync
-        result = async_to_sync(_send_availability_message_async(message_data))
+        # Use synchronous Discord client to send availability message
+        from app.utils.sync_discord_client import get_sync_discord_client
+        discord_client = get_sync_discord_client()
+        result = discord_client.send_rsvp_availability_message(message_data)
         
         # Update the ScheduledMessage record based on the result
         message.last_send_attempt = datetime.utcnow()
@@ -265,7 +289,9 @@ def send_availability_message(self, session, scheduled_message_id: int) -> Dict[
             message.send_error = None
         else:
             message.status = 'FAILED'
-            message.send_error = result.get('message')
+            # Truncate error message to fit in database field (255 chars max)
+            error_message = result.get('message', '')
+            message.send_error = error_message[:255] if len(error_message) > 255 else error_message
         session.add(message)
         return result
     except SQLAlchemyError as e:
@@ -577,7 +603,7 @@ def update_discord_rsvp_task(self, session, match_id: int, discord_id: str, new_
                 logger.warning(f"Error checking current reaction state: {str(e)}")
         
         # If we get here, we need to update the reaction
-        from app.api_utils import async_to_sync
+        from app.utils.sync_discord_client import get_sync_discord_client
         data = {
             'match_id': match_id,
             'discord_id': discord_id,
@@ -586,7 +612,8 @@ def update_discord_rsvp_task(self, session, match_id: int, discord_id: str, new_
         }
         
         logger.info(f"Sending Discord RSVP update for match {match_id}, user {discord_id}, response {new_response}")
-        result = async_to_sync(_update_discord_rsvp_async(data))
+        discord_client = get_sync_discord_client()
+        result = discord_client.update_rsvp_response(data)
         
         # Update availability record with sync status
         availability = session.query(Availability).filter_by(match_id=match_id, discord_id=discord_id).first()
@@ -705,8 +732,9 @@ def notify_discord_of_rsvp_change_task(self, session, match_id: int) -> Dict[str
             }
 
         # Proceed with notification since we've passed the idempotency checks
-        from app.api_utils import async_to_sync
-        result = async_to_sync(_notify_discord_async(match_id))
+        from app.utils.sync_discord_client import get_sync_discord_client
+        discord_client = get_sync_discord_client()
+        result = discord_client.notify_rsvp_changes(match_id)
         
         # Update match with notification result
         match = session.query(Match).get(match_id)
@@ -825,7 +853,7 @@ def schedule_weekly_match_availability(self, session) -> Dict[str, Any]:
     This task runs every Monday to:
       - Find all Sunday matches for the upcoming week
       - Schedule RSVP messages for each match without existing scheduled messages
-      - Set send time to 9 AM on Monday for maximum visibility
+      - Set send time to 2 AM PST (10 AM UTC) on Monday for maximum visibility
       - Create ScheduledMessage records in the database
       - Schedules messages with varying countdown times to prevent rate limiting
       
@@ -836,19 +864,23 @@ def schedule_weekly_match_availability(self, session) -> Dict[str, Any]:
         Retries the task on errors with exponential backoff.
     """
     try:
-        # Get today (should be Monday when scheduled) and next Sunday
+        # Find all Sunday matches that need RSVP messages scheduled
+        # Look ahead for all Sunday matches in the next 14 days to handle bye weeks
         today = datetime.utcnow().date()
-        days_until_sunday = (6 - today.weekday()) % 7  # 6 is Sunday's weekday number
-        next_sunday = today + timedelta(days=days_until_sunday)
+        two_weeks_ahead = today + timedelta(days=14)
         
-        logger.info(f"Scheduling for Sunday matches on {next_sunday}")
+        logger.info(f"Looking for Sunday matches between {today} and {two_weeks_ahead}")
         
-        # Find all matches scheduled for next Sunday
+        # Find all Sunday matches in the next 2 weeks that don't have scheduled messages
         sunday_matches = session.query(Match).options(
             joinedload(Match.scheduled_messages)
         ).filter(
-            Match.date == next_sunday
+            Match.date.between(today, two_weeks_ahead),
+            Match.date >= today  # Only future matches
         ).all()
+        
+        # Filter to only Sunday matches (weekday 6)
+        sunday_matches = [match for match in sunday_matches if match.date.weekday() == 6]
         
         logger.info(f"Found {len(sunday_matches)} matches scheduled for next Sunday")
         
@@ -908,13 +940,24 @@ def schedule_weekly_match_availability(self, session) -> Dict[str, Any]:
         
         for i, match_data in enumerate(matches_data):
             if not match_data['has_message']:
-                # Calculate staggered send time
-                # Base time is 9:00 AM, then stagger by batch
+                # Calculate send time: 6 days before match at 2:00 AM PST (10:00 AM UTC)
+                match_date = match_data['date']
+                
+                # For Sunday matches, RSVP goes out 6 days before (Monday)
+                # Example: Sunday 9/7 match → RSVP on Monday 9/1 at 2am PST
+                rsvp_send_date = match_date - timedelta(days=6)
+                
+                # Only schedule if the RSVP date is in the future
+                if rsvp_send_date <= today:
+                    logger.info(f"Skipping match {match_data['id']} on {match_date} - RSVP date {rsvp_send_date} is in the past")
+                    continue
+                
+                # Calculate staggered send time for rate limiting
                 batch_number = i // batch_size
                 batch_minutes_offset = batch_number * stagger_minutes
                 
-                # Set initial timestamp as 9:00 AM
-                base_send_time = datetime.combine(today, datetime.min.time()) + timedelta(hours=9)
+                # Set to 2:00 AM PST (10:00 AM UTC)
+                base_send_time = datetime.combine(rsvp_send_date, datetime.min.time()) + timedelta(hours=10)
                 
                 # Add the batch offset for staggered sending
                 send_time = base_send_time + timedelta(minutes=batch_minutes_offset)
@@ -943,10 +986,10 @@ def schedule_weekly_match_availability(self, session) -> Dict[str, Any]:
         
         result = {
             "success": True,
-            "message": f"Scheduled {scheduled_count} availability messages for Sunday matches",
+            "message": f"Scheduled {scheduled_count} availability messages for upcoming Sunday matches",
             "scheduled_count": scheduled_count,
             "total_matches": len(matches_data),
-            "sunday_date": next_sunday.isoformat(),
+            "date_range": f"{today} to {two_weeks_ahead}",
             "batches": (scheduled_count + batch_size - 1) // batch_size
         }
         logger.info(f"{result['message']} in {result['batches']} batches")
@@ -960,7 +1003,14 @@ def schedule_weekly_match_availability(self, session) -> Dict[str, Any]:
         raise self.retry(exc=e, countdown=30)
 
 
-@celery_task(name='app.tasks.tasks_rsvp.monitor_rsvp_health', max_retries=3, queue='discord')
+@celery_task(
+    name='app.tasks.tasks_rsvp.monitor_rsvp_health',
+    max_retries=3,
+    queue='discord',
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True
+)
 def monitor_rsvp_health(self, session) -> Dict[str, Any]:
     """
     Monitor the overall health of the RSVP system.
@@ -1065,8 +1115,21 @@ def monitor_rsvp_health(self, session) -> Dict[str, Any]:
         return result
 
     except SQLAlchemyError as e:
-        logger.error(f"Database error in health monitoring: {str(e)}", exc_info=True)
-        raise self.retry(exc=e, countdown=60)
+        error_msg = str(e).lower()
+        # Check if this is a connection error that should be retried
+        if any(err in error_msg for err in [
+            'server closed the connection',
+            'discard all cannot run',
+            'server login has been failing',
+            'resourceclosederror'
+        ]):
+            logger.warning(f"Database connection error in health monitoring, retrying: {str(e)[:200]}")
+            # Use exponential backoff for connection errors
+            countdown = min(60 * (2 ** self.request.retries), 300)
+            raise self.retry(exc=e, countdown=countdown)
+        else:
+            logger.error(f"Database error in health monitoring: {str(e)}", exc_info=True)
+            raise self.retry(exc=e, countdown=60)
     except Exception as e:
         logger.error(f"Error in health monitoring: {str(e)}", exc_info=True)
         raise self.retry(exc=e, countdown=30)
@@ -1215,9 +1278,10 @@ def force_discord_rsvp_sync(self, session) -> Dict[str, Any]:
         # Commit phase 1 data extraction to release locks
         session.commit()
         
-        # Phase 2: Call Discord API without holding database session
-        from app.api_utils import async_to_sync
-        api_result = async_to_sync(_execute_discord_sync_async(extract_result))
+        # Phase 2: Call Discord API without holding database session (synchronous)
+        from app.utils.sync_discord_client import get_sync_discord_client
+        discord_client = get_sync_discord_client()
+        api_result = discord_client.force_rsvp_sync()
         
         # Phase 3: Update records in batches with frequent commits
         update_result = _update_failed_records_after_sync(session, extract_result, api_result)
@@ -1335,9 +1399,10 @@ def direct_discord_update_task(self, session, match_id: str, discord_id: str, ne
             'old_response': old_response
         }
         
-        # Execute async Discord API call without holding database session
-        from app.api_utils import async_to_sync
-        result = async_to_sync(_execute_direct_discord_update_async(data))
+        # Execute Discord API call without holding database session (synchronous)
+        from app.utils.sync_discord_client import get_sync_discord_client
+        discord_client = get_sync_discord_client()
+        result = discord_client.update_discord_reactions(data)
         
         # Retry on timeout or connection errors (but not on API errors)
         if not result.get('success'):

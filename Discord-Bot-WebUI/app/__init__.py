@@ -24,7 +24,7 @@ except ImportError:
     pass
 
 from datetime import timedelta
-from flask import Flask, request, session, redirect, url_for, render_template, g
+from flask import Flask, request, session, redirect, url_for, render_template, g, abort, jsonify
 from flask_assets import Environment
 from flask_login import LoginManager, current_user
 from flask_mail import Mail
@@ -34,6 +34,7 @@ from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_migrate import Migrate
 from werkzeug.routing import BuildError
+from werkzeug.routing.exceptions import WebsocketMismatch
 from sqlalchemy.orm import joinedload, selectinload, sessionmaker
 from sqlalchemy import text
 
@@ -298,12 +299,16 @@ def create_app(config_object='web_config.Config'):
             return None
 
     # Initialize SocketIO with Redis as the message queue
+    # Configure SocketIO to avoid conflicts with HTTP routes
     socketio.init_app(
         app,
         message_queue=app.config.get('REDIS_URL', 'redis://redis:6379/0'),
         manage_session=False,
         async_mode='eventlet',
-        cors_allowed_origins=app.config.get('CORS_ORIGINS', '*')
+        cors_allowed_origins=app.config.get('CORS_ORIGINS', '*'),
+        path='/socket.io/',  # Explicitly set SocketIO path to avoid conflicts
+        allow_upgrades=True,  # Allow HTTP to WebSocket upgrades
+        transports=['websocket', 'polling']  # Support both transport methods
     )
 
     # CRITICAL: Import handlers AFTER socketio.init_app() so they register on the correct instance
@@ -332,6 +337,69 @@ def create_app(config_object='web_config.Config'):
     # Apply ProxyFix to handle reverse proxy headers.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
     
+    # Add security middleware (non-breaking implementation)
+    from app.security_middleware import SecurityMiddleware
+    security_middleware = SecurityMiddleware(app)
+    
+    # Add rate limiting (with Redis backend)
+    try:
+        from flask_limiter import Limiter
+        from flask_limiter.util import get_remote_address
+        
+        # Custom key function that respects proxy headers and exempts local traffic
+        def get_client_ip():
+            # Get real client IP from proxy headers
+            if request.headers.get('X-Forwarded-For'):
+                client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+            elif request.headers.get('X-Real-IP'):
+                client_ip = request.headers.get('X-Real-IP')
+            elif request.headers.get('CF-Connecting-IP'):
+                client_ip = request.headers.get('CF-Connecting-IP')
+            else:
+                client_ip = request.remote_addr or 'unknown'
+            
+            # Exempt local and Docker network traffic from rate limiting
+            local_networks = [
+                '127.0.0.1',          # Localhost
+                '172.18.0.1',         # Docker host
+                'host.docker.internal' # Docker host alias
+            ]
+            
+            # Exempt Docker internal networks (172.x.x.x)
+            if (client_ip.startswith('172.') or 
+                client_ip.startswith('192.168.') or 
+                client_ip.startswith('10.') or
+                client_ip in local_networks):
+                return 'local_exempted'  # All local traffic uses same key, effectively unlimited
+            
+            return client_ip
+        
+        # Use Redis URL for limiter storage
+        redis_url = app.config.get('REDIS_URL', 'redis://redis:6379/0')
+        
+        limiter = Limiter(
+            app=app,
+            key_func=get_client_ip,
+            storage_uri=redis_url,
+            default_limits=["5000 per day", "2000 per hour", "200 per minute"],
+            headers_enabled=True,
+            strategy="fixed-window"
+        )
+        
+        # Note: Endpoint exemptions will be handled via decorators in route files
+        # instead of here to avoid string reference issues
+        
+        # Auth endpoints will use default rate limits
+        # (removed problematic auth endpoint rate limiting that was causing the warning)
+        
+        # Store limiter reference for potential use in routes
+        app.limiter = limiter
+        logger.info("Rate limiting initialized with Redis backend")
+        
+    except Exception as e:
+        logger.warning(f"Rate limiting initialization failed: {e}")
+        # Continue without rate limiting - non-breaking
+    
     # Create a session persistence middleware
     class SessionPersistenceMiddleware:
         def __init__(self, app, flask_app):
@@ -354,6 +422,26 @@ def create_app(config_object='web_config.Config'):
     # Apply session persistence middleware
     app.wsgi_app = SessionPersistenceMiddleware(app.wsgi_app, app)
     # SessionPersistenceMiddleware applied
+    
+    # Add basic security headers (non-breaking)
+    @app.after_request
+    def add_security_headers(response):
+        """Add basic security headers to all responses."""
+        # Only add headers to non-static content
+        if not request.path.startswith('/static/'):
+            response.headers.update({
+                'X-Content-Type-Options': 'nosniff',
+                'X-Frame-Options': 'SAMEORIGIN',  # Less restrictive than DENY
+                'X-XSS-Protection': '1; mode=block',
+                'Referrer-Policy': 'strict-origin-when-cross-origin',
+                'Server': 'ECS Portal'  # Hide server details
+            })
+            
+            # Add HSTS for HTTPS connections
+            if request.is_secure:
+                response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        
+        return response
 
     # Apply DebugMiddleware in debug mode.
     if app.debug:
@@ -368,9 +456,14 @@ def create_app(config_object='web_config.Config'):
 
     # Configure session management to use Redis (skip in testing).
     if not app.config.get('TESTING'):
+        # Create a Redis client specifically for sessions that shares the connection pool
+        # This ensures proper connection pool usage with Flask-Session
+        from redis import Redis
+        session_redis_client = Redis(connection_pool=redis_manager._pool, decode_responses=False)
+        
         app.config.update({
             'SESSION_TYPE': 'redis',
-            'SESSION_REDIS': app.session_redis,
+            'SESSION_REDIS': session_redis_client,
             'PERMANENT_SESSION_LIFETIME': timedelta(days=7),
             'SESSION_KEY_PREFIX': 'session:',
             'SESSION_USE_SIGNER': True
@@ -383,8 +476,53 @@ def create_app(config_object='web_config.Config'):
 
     # Initialize JWT for API authentication.
     from flask_jwt_extended import JWTManager
-    JWTManager(app)
-    
+    jwt = JWTManager(app)
+
+    # Configure JWT error handlers to return proper JSON responses instead of 422
+    @jwt.expired_token_loader
+    def expired_token_callback(jwt_header, jwt_payload):
+        """Handle expired JWT tokens."""
+        logger.warning(f"JWT token expired for user: {jwt_payload.get('sub', 'unknown')}")
+        return jsonify({
+            'error': 'Token has expired',
+            'code': 'TOKEN_EXPIRED'
+        }), 401
+
+    @jwt.invalid_token_loader
+    def invalid_token_callback(error):
+        """Handle invalid JWT tokens."""
+        logger.warning(f"Invalid JWT token: {error}")
+        return jsonify({
+            'error': 'Invalid token',
+            'code': 'INVALID_TOKEN'
+        }), 401
+
+    @jwt.unauthorized_loader
+    def missing_token_callback(error):
+        """Handle missing JWT tokens."""
+        logger.warning(f"Missing JWT token: {error}")
+        return jsonify({
+            'error': 'Authorization required',
+            'code': 'MISSING_TOKEN'
+        }), 401
+
+    @jwt.revoked_token_loader
+    def revoked_token_callback(jwt_header, jwt_payload):
+        """Handle revoked JWT tokens."""
+        logger.warning(f"Revoked JWT token for user: {jwt_payload.get('sub', 'unknown')}")
+        return jsonify({
+            'error': 'Token has been revoked',
+            'code': 'TOKEN_REVOKED'
+        }), 401
+
+    @jwt.needs_fresh_token_loader
+    def token_not_fresh_callback(jwt_header, jwt_payload):
+        """Handle tokens that need to be refreshed."""
+        return jsonify({
+            'error': 'Fresh token required',
+            'code': 'FRESH_TOKEN_REQUIRED'
+        }), 401
+
     # Initialize notification service
     from app.services.notification_service import notification_service
     import os
@@ -398,6 +536,23 @@ def create_app(config_object='web_config.Config'):
             logger.warning(f"Firebase service account file found but initialization failed: {e}")
     else:
         logger.warning("Firebase service account file not found at expected path")
+    
+    # Initialize PII encryption auto-update
+    try:
+        from app.utils.pii_update_wrapper import init_pii_encryption
+        init_pii_encryption()
+        logger.info("PII encryption auto-update initialized")
+    except Exception as e:
+        logger.warning(f"PII encryption initialization failed: {e}")
+
+    @app.errorhandler(WebsocketMismatch)
+    def handle_websocket_mismatch(error):
+        """Handle WebSocket mismatch errors - now properly configured with Traefik"""
+        app.logger.warning(f"WebSocket mismatch for {request.path} - this should be rare now")
+        
+        # With proper Traefik configuration, let Flask-SocketIO handle this normally
+        # Returning None tells Flask-SocketIO to pass the request through
+        return None
 
     @app.errorhandler(Exception)
     def handle_unexpected_error(error):
@@ -459,44 +614,80 @@ def create_app(config_object='web_config.Config'):
         
         # Create a new database session for each request (excluding static assets).
         if not request.path.startswith('/static/'):
-            g.db_session = app.SessionLocal()
+            # Try to create session with retry logic for pool exhaustion
+            session_created = False
+            max_retries = 3
+            retry_delay = 0.1  # 100ms
             
-            # CRITICAL: Register the underlying connection for tracking
-            try:
-                # Get the actual database connection
-                conn = g.db_session.connection()
-                if hasattr(conn, 'connection') and hasattr(conn.connection, 'dbapi_connection'):
-                    dbapi_conn = conn.connection.dbapi_connection
-                    conn_id = id(dbapi_conn)
-                    from app.utils.db_connection_monitor import register_connection
-                    register_connection(conn_id, "flask_request")
-                    # Connection registered silently
-            except Exception as e:
-                logger.error(f"Failed to register Flask connection: {e}", exc_info=True)
+            for attempt in range(max_retries):
+                try:
+                    g.db_session = app.SessionLocal()
+                    session_created = True
+                    break
+                except Exception as e:
+                    if "pool" in str(e).lower() or "timeout" in str(e).lower():
+                        logger.warning(f"Session creation attempt {attempt + 1}/{max_retries} failed: {e}")
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                        else:
+                            logger.error(f"Failed to create session after {max_retries} attempts: {e}")
+                            # Set a flag to indicate degraded mode
+                            g._session_creation_failed = True
+                            # Return 503 Service Unavailable when database is unavailable
+                            return render_template('errors/503.html', 
+                                                 error="Database connection pool exhausted. Please try again in a moment."), 503
+                    else:
+                        # Non-pool related error, don't retry
+                        logger.error(f"Session creation failed with non-pool error: {e}", exc_info=True)
+                        g._session_creation_failed = True
+                        # Return 503 for database errors
+                        return render_template('errors/503.html',
+                                             error="Database temporarily unavailable. Please try again."), 503
             
-            # Register session with monitor
-            session_id = str(id(g.db_session))
-            from app.utils.session_monitor import get_session_monitor
-            from app.utils.user_helpers import safe_current_user
+            # Only proceed with connection tracking if session was created
+            if session_created and hasattr(g, 'db_session'):
+                # NOTE: We don't eagerly checkout a connection here anymore
+                # Connections will be tracked when actually used via pool events
+                # This prevents pool exhaustion from eager checkouts
+                logger.debug(f"Session created for request {request.path}")
             
-            user_id = None
-            if safe_current_user and safe_current_user.is_authenticated:
-                user_id = safe_current_user.id
+            # Register session with monitor only if session was created successfully
+            if session_created and hasattr(g, 'db_session'):
+                session_id = str(id(g.db_session))
+                from app.utils.session_monitor import get_session_monitor
+                from app.utils.user_helpers import safe_current_user
                 
-            get_session_monitor().register_session_start(session_id, request.path, user_id)
-            g.session_id = session_id
-            
-            # Set appropriate timeouts for this session based on request type
-            # This will automatically skip timeout settings when using PgBouncer
-            if request.path.startswith('/admin/'):
-                # Admin routes may need longer timeouts for complex operations
-                set_session_timeout(g.db_session, statement_timeout_seconds=15, idle_timeout_seconds=10)
-            elif request.path.startswith('/api/'):
-                # API routes should be fast
-                set_session_timeout(g.db_session, statement_timeout_seconds=5, idle_timeout_seconds=3)
+                user_id = None
+                try:
+                    if safe_current_user and safe_current_user.is_authenticated:
+                        user_id = safe_current_user.id
+                except Exception as e:
+                    # Don't fail the entire request if user lookup fails
+                    logger.warning(f"Could not get user ID for session monitoring: {e}")
+                    
+                get_session_monitor().register_session_start(session_id, request.path, user_id)
+                g.session_id = session_id
+                
+                # Set appropriate timeouts for this session based on request type
+                # This will automatically skip timeout settings when using PgBouncer
+                try:
+                    if request.path.startswith('/admin/'):
+                        # Admin routes may need longer timeouts for complex operations
+                        set_session_timeout(g.db_session, statement_timeout_seconds=15, idle_timeout_seconds=10)
+                    elif request.path.startswith('/api/'):
+                        # API routes should be fast
+                        set_session_timeout(g.db_session, statement_timeout_seconds=5, idle_timeout_seconds=3)
+                    else:
+                        # Regular routes get standard timeouts
+                        set_session_timeout(g.db_session, statement_timeout_seconds=8, idle_timeout_seconds=5)
+                except Exception as e:
+                    logger.warning(f"Could not set session timeouts: {e}")
             else:
-                # Regular routes get standard timeouts
-                set_session_timeout(g.db_session, statement_timeout_seconds=8, idle_timeout_seconds=5)
+                # No session created - set degraded mode flag
+                logger.warning(f"Request {request.path} proceeding without database session due to pool exhaustion")
+                g.session_id = "no-session"
             
             # Pre-load and cache user roles early in the request to avoid session binding issues during template rendering
             from app.utils.user_helpers import safe_current_user
@@ -520,28 +711,48 @@ def create_app(config_object='web_config.Config'):
     @app.context_processor
     def inject_current_pub_league_season():
         """Inject the current Pub League season into every template's context."""
-        # Always create a separate short-lived session for context processors
-        # to avoid keeping the main request transaction open during template rendering
-        session = app.SessionLocal()
+        from flask import g, has_request_context
+        
+        # Check if we're in degraded mode or have no Flask request session
+        if (has_request_context() and 
+            hasattr(g, '_session_creation_failed') and g._session_creation_failed):
+            # Degraded mode - return default
+            return dict(current_pub_league_season=None)
+        
+        # Try to use Flask's request session first to avoid creating competing sessions
+        if has_request_context() and hasattr(g, 'db_session') and g.db_session:
+            try:
+                season = g.db_session.query(Season).filter_by(
+                    league_type='Pub League',
+                    is_current=True
+                ).first()
+                # Don't expunge since we're using the request session
+                return dict(current_pub_league_season=season)
+            except Exception as e:
+                # If pool exhaustion or other DB errors, don't fall through - return None to prevent more sessions
+                if "pool" in str(e).lower() or "timeout" in str(e).lower():
+                    logger.warning(f"Pool exhaustion in context processor, returning default: {e}")
+                    return dict(current_pub_league_season=None)
+                logger.warning(f"Error fetching pub league season from request session: {e}")
+                # Fall through to managed session approach only for non-pool errors
+        
+        # Fallback: Use managed_session for non-request contexts or when request session fails
         try:
-            season = session.query(Season).filter_by(
-                league_type='Pub League',
-                is_current=True
-            ).first()
-            if season:
-                # Trigger loading of all needed attributes before expunging
-                _ = season.id, season.name, season.league_type, season.is_current
-                # Expunge the object so it's no longer bound to this session
-                session.expunge(season)
-            # Commit and close quickly
-            session.commit()
+            from app.core.session_manager import managed_session
+            with managed_session() as session:
+                season = session.query(Season).filter_by(
+                    league_type='Pub League',
+                    is_current=True
+                ).first()
+                if season:
+                    # Trigger loading of all needed attributes before session closes
+                    _ = season.id, season.name, season.league_type, season.is_current
+                    session.expunge(season)
+            return dict(current_pub_league_season=season)
         except Exception as e:
             logger.error(f"Error fetching pub league season: {e}", exc_info=True)
-            season = None
-            session.rollback()
-        finally:
-            session.close()
-        return dict(current_pub_league_season=season)
+            # Return None instead of failing the entire template context
+            return dict(current_pub_league_season=None)
 
     # Register template filter and global functions for display formatting
     @app.template_filter('format_position')
@@ -606,15 +817,10 @@ def create_app(config_object='web_config.Config'):
         
     @app.teardown_appcontext
     def teardown_appcontext(exception):
-        # Clean up any Redis connection pools on app context teardown
-        try:
-            from app.utils.redis_manager import get_redis_manager
-            redis_manager = get_redis_manager()
-            redis_manager.cleanup()
-        except Exception as e:
-            # Just log errors but don't propagate them during teardown
-            app.logger.error(f"Error in teardown_appcontext: {e}")
-            pass
+        # DO NOT cleanup Redis connections here - this runs after every request!
+        # The connection pool should persist across requests.
+        # Only cleanup database sessions here if needed.
+        pass
         
     # Register a function to gracefully shutdown when a worker terminates
     def worker_shutdown_cleanup():
@@ -744,7 +950,10 @@ def init_blueprints(app):
     from app.admin_panel import admin_panel_bp
     from app.routes.notifications import notifications_bp
     from app.api_smart_sync import smart_sync_bp
+    from app.routes.health import health_bp
+    from app.routes.admin_live_reporting import admin_live_bp
 
+    app.register_blueprint(health_bp, url_prefix='/api')
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(publeague_bp, url_prefix='/publeague')
     app.register_blueprint(draft_enhanced_bp, url_prefix='/draft')
@@ -764,6 +973,11 @@ def init_blueprints(app):
     app.register_blueprint(match_api, url_prefix='/api')
     app.register_blueprint(user_management_bp)
     app.register_blueprint(mobile_api, url_prefix='/api/v1')
+
+    # Register mobile substitute API
+    from app.routes.mobile_substitute_api import mobile_substitute_api
+    app.register_blueprint(mobile_substitute_api, url_prefix='/api/v1')
+    csrf.exempt(mobile_substitute_api)  # Exempt mobile substitute API from CSRF
     app.register_blueprint(user_bp, url_prefix='/api')
     app.register_blueprint(predictions_api, url_prefix='/api')
     app.register_blueprint(monitoring_bp)
@@ -786,12 +1000,14 @@ def init_blueprints(app):
     app.register_blueprint(admin_panel_bp)  # Centralized admin panel
     app.register_blueprint(notifications_bp)  # Blueprint has url_prefix='/api/v1/notifications'
     app.register_blueprint(smart_sync_bp)  # Smart RSVP sync API endpoints
+    app.register_blueprint(admin_live_bp)  # Live reporting admin interface
     csrf.exempt(smart_sync_bp)  # Exempt smart sync endpoints from CSRF
     
     # Import and register playoff management blueprint
-    from app.playoff_routes import playoff_bp
+    from app.playoff_routes import playoff_bp, api_playoffs_bp
     app.register_blueprint(playoff_bp)
-    
+    app.register_blueprint(api_playoffs_bp)
+
     # Register cache admin routes
     from app.cache_admin_routes import cache_admin_bp
     from app.api_enterprise_rsvp import enterprise_rsvp_bp
@@ -807,17 +1023,7 @@ def init_blueprints(app):
     from app.api_team_notifications import team_notifications_bp
     app.register_blueprint(team_notifications_bp)
     
-    # Register test routes (only in development)
-    if app.config.get('DEBUG', False):
-        from app.test_team_notifications_route import test_bp
-        app.register_blueprint(test_bp)
-        
-        # Register live reporting test routes
-        from app.test_live_reporting import test_live_reporting_bp
-        app.register_blueprint(test_live_reporting_bp)
-        
-        # V2 live reporting is now integrated into the main test_live_reporting.py
-        # Removed duplicate test_live_reporting_v2.py blueprint
+    # Test routes removed - use production systems for testing
     
     # Initialize enterprise RSVP system on app startup (simplified for Flask compatibility)
     try:
@@ -838,6 +1044,40 @@ def init_blueprints(app):
     # Register AI Prompt Management (Enterprise Feature)
     from app.routes.ai_prompts import ai_prompts_bp
     app.register_blueprint(ai_prompts_bp)
+    
+    # Register AI Enhancement Routes for Live Reporting
+    from app.routes.ai_enhancement_routes import ai_enhancement_bp
+    app.register_blueprint(ai_enhancement_bp)
+    csrf.exempt(ai_enhancement_bp)  # Exempt AI API endpoints from CSRF (used by Discord bot)
+    
+    # Register Security Status Routes
+    try:
+        app.logger.info("🔧 Attempting to import Security Status Blueprint...")
+        from app.routes.security_status import security_status_bp
+        app.logger.info("🔧 Security Status Blueprint imported, registering routes...")
+        app.register_blueprint(security_status_bp, url_prefix='')
+        app.logger.info("✅ Security Status Blueprint registered successfully")
+        
+        # Log the routes that were added
+        security_routes = []
+        for rule in app.url_map.iter_rules():
+            if rule.endpoint and rule.endpoint.startswith('security_status.'):
+                security_routes.append(f"{rule.rule} -> {rule.endpoint}")
+        if security_routes:
+            app.logger.info(f"🔧 Security routes registered: {security_routes}")
+        else:
+            app.logger.warning("⚠️ No security routes found after registration")
+            
+    except ImportError as ie:
+        app.logger.error(f"❌ Import error for Security Status Blueprint: {ie}")
+        app.logger.error(f"❌ This is likely a circular import or missing dependency issue in production")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register Security Status Blueprint: {e}")
+        app.logger.error(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        app.logger.error(f"❌ Traceback: {traceback.format_exc()}")
+        # Don't let this prevent the app from starting
+        pass
 
 def init_context_processors(app):
     """

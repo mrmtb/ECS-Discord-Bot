@@ -290,10 +290,10 @@ def _get_connect_args():
 
 ENGINE_OPTIONS = {
     'pool_pre_ping': True,
-    'pool_size': int(os.getenv('SQLALCHEMY_POOL_SIZE', 8)),  # Increased from 5 for better concurrency
-    'max_overflow': int(os.getenv('SQLALCHEMY_MAX_OVERFLOW', 15)),  # Increased from 10 for burst capacity
+    'pool_size': int(os.getenv('SQLALCHEMY_POOL_SIZE', 3)),  # Small pool since PgBouncer handles multiplexing
+    'max_overflow': int(os.getenv('SQLALCHEMY_MAX_OVERFLOW', 2)),  # Allow some overflow for burst traffic
     'pool_recycle': int(os.getenv('SQLALCHEMY_POOL_RECYCLE', 1800)),
-    'pool_timeout': int(os.getenv('SQLALCHEMY_POOL_TIMEOUT', 10)),  # Reduced from 20 for faster failure detection
+    'pool_timeout': int(os.getenv('SQLALCHEMY_POOL_TIMEOUT', 30)),  # Match env default
     'poolclass': RateLimitedPool,
     'pool_use_lifo': True,  # LIFO for better cache locality
     'pool_reset_on_return': 'rollback',  # Important for PgBouncer - always rollback on return
@@ -323,7 +323,8 @@ def create_engine_with_retry(*args, **kwargs):
             engine = create_engine(*args, **kwargs)
             # Test the engine by making a simple query.
             with engine.connect() as conn:
-                conn.execute("SELECT 1")
+                from sqlalchemy import text
+                conn.execute(text("SELECT 1"))
             return engine
         except Exception as e:
             if attempt == max_retries - 1:

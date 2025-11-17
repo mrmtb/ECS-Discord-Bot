@@ -94,6 +94,14 @@ from .admin_config import (
     AdminConfig, AdminAuditLog
 )
 
+from .security import (
+    IPBan, SecurityEvent
+)
+
+from .ai_prompt_config import (
+    AIPromptConfig, AIPromptTemplate
+)
+
 # Make all models available at package level for backward compatibility
 __all__ = [
     # Database instance
@@ -157,5 +165,11 @@ __all__ = [
     'ISpyUserJail', 'ISpyUserStats',
     
     # Admin configuration models
-    'AdminConfig', 'AdminAuditLog'
+    'AdminConfig', 'AdminAuditLog',
+    
+    # Security models
+    'IPBan', 'SecurityEvent',
+
+    # AI Prompt Configuration models
+    'AIPromptConfig', 'AIPromptTemplate'
 ]

@@ -30,6 +30,24 @@ class Config:
     MOBILE_APP_ALLOWED_NETWORKS = os.getenv('MOBILE_APP_ALLOWED_NETWORKS', '192.168.1.0/24,192.168.0.0/24')
     WEBUI_BASE_URL = os.getenv('WEBUI_BASE_URL', 'https://ecs-soccer.org')
     
+    # Security Configuration
+    SECURITY_LOG_RETENTION_DAYS = int(os.getenv('SECURITY_LOG_RETENTION_DAYS', 90))  # Keep security logs for 90 days
+    SECURITY_BAN_DEFAULT_DURATION = int(os.getenv('SECURITY_BAN_DEFAULT_DURATION', 24))  # Default ban duration in hours
+    SECURITY_MAX_REQUESTS_PER_IP = int(os.getenv('SECURITY_MAX_REQUESTS_PER_IP', 200))  # Max requests per hour per IP
+    SECURITY_BLACKLIST_THRESHOLD = int(os.getenv('SECURITY_BLACKLIST_THRESHOLD', 50))  # Requests that trigger alerts
+    
+    # Auto-ban Configuration
+    SECURITY_AUTO_BAN_ENABLED = os.getenv('SECURITY_AUTO_BAN_ENABLED', 'true').lower() == 'true'
+    SECURITY_AUTO_BAN_ATTACK_THRESHOLD = int(os.getenv('SECURITY_AUTO_BAN_ATTACK_THRESHOLD', 3))  # Auto-ban after 3 attack attempts
+    SECURITY_AUTO_BAN_RATE_THRESHOLD = int(os.getenv('SECURITY_AUTO_BAN_RATE_THRESHOLD', 500))  # Auto-ban after 500 requests/hour
+    SECURITY_AUTO_BAN_DURATION_HOURS = int(os.getenv('SECURITY_AUTO_BAN_DURATION_HOURS', 1))  # Initial auto-ban for 1 hour
+    SECURITY_AUTO_BAN_ESCALATION_ENABLED = os.getenv('SECURITY_AUTO_BAN_ESCALATION_ENABLED', 'true').lower() == 'true'
+    SECURITY_AUTO_BAN_MAX_DURATION_HOURS = int(os.getenv('SECURITY_AUTO_BAN_MAX_DURATION_HOURS', 168))  # Max 7 days
+    
+    # Smart cleanup configuration
+    SECURITY_CLEANUP_ENABLED = os.getenv('SECURITY_CLEANUP_ENABLED', 'true').lower() == 'true'
+    SECURITY_CLEANUP_UNBAN_GOOD_IPS = os.getenv('SECURITY_CLEANUP_UNBAN_GOOD_IPS', 'true').lower() == 'true'  # Unban IPs with no recent violations
+    
     # Database Configuration
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -42,16 +60,18 @@ class Config:
     DB_CONNECTION_TIMEOUT = 30
     DB_MONITOR_ENABLED = True
     
-    # SQLAlchemy Engine Options
+    # SQLAlchemy Engine Options (with security enhancements)
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,
         'pool_use_lifo': True,
         'connect_args': {
             'connect_timeout': int(os.getenv('SQLALCHEMY_ENGINE_OPTIONS_CONNECT_TIMEOUT', 5)),
-            'application_name': 'flask_app',
+            'application_name': 'ecs_portal',  # More descriptive name
             'options': (
                 f"-c statement_timeout={os.getenv('SQLALCHEMY_ENGINE_OPTIONS_STATEMENT_TIMEOUT', 30000)} "
-                f"-c idle_in_transaction_session_timeout={os.getenv('SQLALCHEMY_ENGINE_OPTIONS_IDLE_IN_TRANSACTION_SESSION_TIMEOUT', 30000)}"
+                f"-c idle_in_transaction_session_timeout={os.getenv('SQLALCHEMY_ENGINE_OPTIONS_IDLE_IN_TRANSACTION_SESSION_TIMEOUT', 30000)} "
+                f"-c log_statement=none "  # Disable query logging for security
+                f"-c log_min_duration_statement=5000"  # Log only slow queries (5s+)
             )
         }
     }
@@ -79,10 +99,12 @@ class Config:
     SESSION_TYPE = 'redis'
     SESSION_PERMANENT = True
     PERMANENT_SESSION_LIFETIME = timedelta(days=30)  # Extended from 8 to 30 days
-    SESSION_USE_SIGNER = False  # Changed to False to fix persistence issues
+    SESSION_USE_SIGNER = True  # Enable session signing for security
     SESSION_KEY_PREFIX = 'flask_session:'
     # Additional session security and persistence settings
-    SESSION_COOKIE_SECURE = False  # Allow session cookies over HTTP for local dev
+    # Use environment variable to determine if we're in production
+    IS_PRODUCTION = os.getenv('FLASK_ENV', 'development').lower() == 'production'
+    SESSION_COOKIE_SECURE = IS_PRODUCTION  # Secure cookies in production, HTTP in dev
     SESSION_COOKIE_SAMESITE = 'Lax'  # Less strict SameSite policy that works better with redirects
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_NAME = 'session'  # Use standard name for compatibility
@@ -90,7 +112,7 @@ class Config:
     
     # Configure Flask-WTF (CSRF Protection)
     WTF_CSRF_ENABLED = True
-    WTF_CSRF_TIME_LIMIT = 3600  # 1 hour (in seconds)
+    WTF_CSRF_TIME_LIMIT = 28800  # 8 hours (in seconds) - matches long user sessions
     WTF_CSRF_SSL_STRICT = False  # Allow CSRF over HTTP for local development
     WTF_CSRF_CHECK_DEFAULT = True  # Enable CSRF checking by default
     
@@ -112,6 +134,37 @@ class Config:
     
     # External API Configuration for third-party integrations (ChatGPT, etc.)
     EXTERNAL_API_KEYS = os.getenv('EXTERNAL_API_KEYS', '').split(',') if os.getenv('EXTERNAL_API_KEYS') else []
+    
+    # Security Configuration
+    SECURITY_PASSWORD_SALT = os.getenv('SECURITY_PASSWORD_SALT', SECRET_KEY)
+    MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max upload (needed for high-res profile images before cropping)
+    
+    # Rate limiting configuration
+    RATELIMIT_STORAGE_URL = REDIS_URL
+    RATELIMIT_HEADERS_ENABLED = True
+    
+    # Content Security Policy (secure)
+    CSP = {
+        'default-src': "'self'",
+        # Remove unsafe-eval, keep unsafe-inline for now but add nonce support in future
+        'script-src': "'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com",
+        'style-src': "'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+        'img-src': "'self' data: https: blob:",
+        'font-src': "'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+        'connect-src': "'self' wss: https:",
+        'frame-ancestors': "'none'",  # Prevent clickjacking
+        'base-uri': "'self'",  # Restrict base tag URLs
+        'form-action': "'self'",  # Restrict form submissions
+        'object-src': "'none'",  # Block plugins like Flash
+        'upgrade-insecure-requests': True  # Upgrade HTTP to HTTPS
+    }
+    
+    # Trusted proxy configuration for DigitalOcean/Traefik
+    TRUSTED_PROXIES = [
+        '172.16.0.0/12',    # Docker internal networks
+        '192.168.0.0/16',   # Private networks
+        '10.0.0.0/8',       # Private networks
+    ]
 
     @staticmethod
     def get_current_time():

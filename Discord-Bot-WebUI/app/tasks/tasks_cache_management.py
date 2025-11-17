@@ -12,6 +12,7 @@ from datetime import datetime
 from celery import current_task
 from app.core import celery
 from app.services.task_status_cache import task_status_cache
+from app.services.redis_connection_service import get_redis_service
 
 logger = logging.getLogger(__name__)
 
@@ -118,13 +119,30 @@ def invalidate_match_cache(self, match_id: int):
         if success:
             logger.info(f"Successfully invalidated cache for match {match_id}")
             
-            # Immediately refresh the cache for this match using provided session
-            from app.models import MLSMatch
-            
-            match = session.query(MLSMatch).filter_by(id=match_id).first()
-            if match:
-                task_status_cache.update_match_cache(match)
-                logger.info(f"Refreshed cache for match {match_id}")
+            # Immediately refresh the cache for this match using managed session
+            try:
+                from app.models.external import MLSMatch
+                from app.core.session_manager import managed_session
+                
+                with managed_session() as session:
+                    match = session.query(MLSMatch).filter_by(id=match_id).first()
+                    if match:
+                        # Extract match data while session is active
+                        match_data = {
+                            'id': match.id,
+                            'discord_thread_id': getattr(match, 'discord_thread_id', None),
+                            'date_time': getattr(match, 'date_time', None),
+                            'opponent': getattr(match, 'opponent', None),
+                            'is_home_game': getattr(match, 'is_home_game', None)
+                        }
+                        session.flush()
+                        # Pass data to cache update to avoid lazy loading
+                        task_status_cache.update_match_cache(match)
+                        logger.info(f"Refreshed cache for match {match_id}")
+                    else:
+                        logger.warning(f"Match {match_id} not found for cache refresh")
+            except Exception as cache_error:
+                logger.error(f"Error refreshing cache for match {match_id}: {cache_error}")
         
         return {
             'success': success,
@@ -153,19 +171,28 @@ def warm_cache_for_match(self, match_id: int):
     try:
         logger.info(f"Warming cache for match {match_id}")
         
-        from app.models import MLSMatch
+        from app.models.external import MLSMatch
+        from app.core.session_manager import managed_session
         
-        match = session.query(MLSMatch).filter_by(id=match_id).first()
-        if not match:
-            logger.warning(f"Match {match_id} not found for cache warming")
-            return {
-                'success': False,
-                'error': f'Match {match_id} not found',
-                'match_id': match_id,
-                'timestamp': datetime.utcnow().isoformat()
-            }
-        
-        success = task_status_cache.update_match_cache(match)
+        with managed_session() as session:
+            match = session.query(MLSMatch).filter_by(id=match_id).first()
+            if not match:
+                logger.warning(f"Match {match_id} not found for cache warming")
+                return {
+                    'success': False,
+                    'error': f'Match {match_id} not found',
+                    'match_id': match_id,
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            
+            # Force evaluation of lazy-loaded attributes while session is active
+            _ = match.discord_thread_id  # Touch to load
+            _ = match.date_time
+            _ = match.opponent
+            _ = match.is_home_game
+            session.flush()
+            
+            success = task_status_cache.update_match_cache(match)
         
         if success:
             logger.info(f"Successfully warmed cache for match {match_id}")
@@ -198,34 +225,43 @@ def cache_health_check(self):
     try:
         logger.info("Running cache health check")
         
-        redis_client = task_status_cache.get_redis_client()
+        redis_service = get_redis_service()
         
-        # Basic Redis health check
-        redis_client.ping()
-        
-        # Check cache statistics
-        cache_keys = redis_client.keys(f"{task_status_cache.CACHE_PREFIX}:*")
-        cache_count = len(cache_keys)
-        
-        # Sample a few cache entries to check validity
-        sample_size = min(5, cache_count)
-        valid_entries = 0
-        
-        if sample_size > 0:
-            import random
-            sample_keys = random.sample(cache_keys, sample_size)
+        with redis_service.get_connection() as redis_client:
+            # Basic Redis health check
+            redis_client.ping()
             
-            for key in sample_keys:
-                try:
-                    data = redis_client.get(key)
-                    if data:
-                        import json
-                        json.loads(data)  # Validate JSON
-                        valid_entries += 1
-                except Exception:
-                    pass
+            # Check cache statistics
+            cache_keys = redis_client.keys(f"{task_status_cache.CACHE_PREFIX}:*")
+            cache_count = len(cache_keys)
+            
+            # Sample a few cache entries to check validity
+            sample_size = min(5, cache_count)
+            valid_entries = 0
+            
+            if sample_size > 0:
+                import random
+                sample_keys = random.sample(cache_keys, sample_size)
+                
+                for key in sample_keys:
+                    try:
+                        data = redis_client.get(key)
+                        if data:
+                            import json
+                            json.loads(data)  # Validate JSON
+                            valid_entries += 1
+                    except Exception:
+                        pass
         
         health_score = (valid_entries / sample_size * 100) if sample_size > 0 else 100
+        
+        # Get Redis service metrics if available
+        service_metrics = None
+        try:
+            service_metrics = redis_service.get_metrics()
+        except Exception as e:
+            logger.warning(f"Could not get Redis service metrics: {e}")
+            service_metrics = {'error': 'metrics unavailable'}
         
         result = {
             'success': True,
@@ -234,6 +270,7 @@ def cache_health_check(self):
             'valid_entries': valid_entries,
             'health_score': health_score,
             'redis_connected': True,
+            'redis_metrics': service_metrics,
             'timestamp': datetime.utcnow().isoformat()
         }
         

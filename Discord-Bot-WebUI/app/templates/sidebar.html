@@ -55,6 +55,16 @@
         </li>
         {% endif %}
 
+        <!-- Coach Dashboard - Coaches and Admins -->
+        {% if 'Pub League Coach' in user_roles or 'ECS FC Coach' in user_roles or 'Pub League Admin' in user_roles or 'Global Admin' in user_roles %}
+        <li class="menu-item {{ 'active' if request.endpoint == 'teams.coach_dashboard' }}">
+            <a class="menu-link" href="{{ url_for('teams.coach_dashboard') }}">
+                <i data-feather="clipboard" class="menu-icon"></i>
+                <div>Coach Dashboard</div>
+            </a>
+        </li>
+        {% endif %}
+
         <!-- Help Topics - Available for everyone logged in -->
         {% if safe_current_user.is_authenticated %}
         <li class="menu-item {{ 'active' if request.endpoint == 'help.index' }}">
@@ -124,6 +134,16 @@
                 <li class="menu-item {{ 'active' if request.endpoint == 'auto_schedule.view_seasonal_schedule' }}">
                     <a class="menu-link" href="{{ url_for('auto_schedule.view_seasonal_schedule', season_id=current_pub_league_season.id) }}">
                         <div><i class="ti ti-calendar-event"></i> View Season Schedule</div>
+                    </a>
+                </li>
+                <li class="menu-item {{ 'active' if 'playoff' in request.path and 'generator' in request.path }}">
+                    <a class="menu-link" href="{{ url_for('playoff.playoff_generator_redirect') }}">
+                        <div><i class="ti ti-tournament"></i> Playoff Generator</div>
+                    </a>
+                </li>
+                <li class="menu-item {{ 'active' if 'playoff' in request.path and 'bracket' in request.path }}">
+                    <a class="menu-link" href="{{ url_for('playoff.view_bracket_redirect') }}">
+                        <div><i class="ti ti-trophy"></i> Playoff Bracket</div>
                     </a>
                 </li>
                 {% endif %}
@@ -211,7 +231,7 @@
 
         <!-- Discord Tools - Global Admin / Pub League Admin Only -->
         {% if 'Pub League Admin' in user_roles or 'Global Admin' in user_roles %}
-        <li class="menu-item {{ 'open' if ('admin' in request.path and ('scheduled_messages' in request.path or 'message' in request.path)) or request.endpoint in ['admin.manage_polls', 'admin.create_poll', 'admin.poll_results', 'admin.discord_management'] }}">
+        <li class="menu-item {{ 'open' if ('admin' in request.path and ('scheduled_messages' in request.path or 'message' in request.path or 'validate' in request.path)) or request.endpoint in ['admin.manage_polls', 'admin.create_poll', 'admin.poll_results', 'admin.discord_management', 'admin.validate_scheduled_messages'] }}">
             <a class="menu-link menu-toggle" href="javascript:void(0);">
                 <i data-feather="link" class="menu-icon"></i>
                 <div>Discord Tools</div>
@@ -235,6 +255,11 @@
                 <li class="menu-item {{ 'active' if request.endpoint == 'admin.view_scheduled_messages' }}">
                     <a class="menu-link" href="{{ url_for('admin.view_scheduled_messages') }}">
                         <div>Scheduled Messages</div>
+                    </a>
+                </li>
+                <li class="menu-item {{ 'active' if request.endpoint == 'admin.validate_scheduled_messages' }}">
+                    <a class="menu-link" href="{{ url_for('admin.validate_scheduled_messages') }}">
+                        <div>System Validation</div>
                     </a>
                 </li>
             </ul>
@@ -375,6 +400,14 @@
                 <div>Admin Panel 🚧 WIP</div>
             </a>
         </li>
+        
+        <!-- Security Dashboard -->
+        <li class="menu-item {{ 'active' if request.endpoint == 'security_status.security_dashboard' }}">
+            <a class="menu-link" href="{{ url_for('security_status.security_dashboard') }}">
+                <i class="ti ti-shield-check menu-icon"></i>
+                <div>Security Dashboard</div>
+            </a>
+        </li>
         {% endif %}
 
         <!-- Discord Admin Section Header -->
@@ -480,11 +513,11 @@
             </a>
         </li>
         
-        <!-- Test Live Reporting - Only Global Admins -->
-        <li class="menu-item {{ 'active' if request.endpoint == 'test_live_reporting.test_live_reporting' }}">
-            <a class="menu-link" href="{{ url_for('test_live_reporting.test_live_reporting') }}">
+        <!-- Bot Admin (Live Reporting) - Only Global Admins -->
+        <li class="menu-item {{ 'active' if request.endpoint == 'bot_admin.bot_management' }}">
+            <a class="menu-link" href="{{ url_for('bot_admin.bot_management') }}">
                 <i class="ti ti-live-photo menu-icon"></i>
-                <div>🚀 Test Live Reporting</div>
+                <div>🚀 Bot Admin</div>
             </a>
         </li>
         {% endif %}

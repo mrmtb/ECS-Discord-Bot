@@ -58,6 +58,12 @@
         <link rel="stylesheet" href="{{ ASSET_URL }}" />
     {% endassets %}
     
+    <!-- Mobile UI Fix System -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile-scale-system.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/component-mobile-fixes.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-mobile.css') }}" />
+    
     <!-- Page-specific CSS (conditional loading) -->
     {% block page_css %}
     {% endblock %}
@@ -87,6 +93,9 @@
 
     <!-- DataTables CSS -->
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.24/css/jquery.dataTables.css">
+    
+    <!-- Template styles MUST load after DataTables to override sorting arrows -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/template-styles.css') }}" />
 
     <!-- EasyMDE CSS (markdown editor) -->
     <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
@@ -135,23 +144,7 @@
     {% block custom_css %}
     {% endblock %}
     
-    <!-- ADMIN PANEL DARK MODE FIX -->
-    <style>
-    /* Fix dark mode text visibility for admin panel list items */
-    [data-style="dark"] .list-group-item-action {
-        color: #ffffff !important;
-        background-color: transparent !important;
-    }
-
-    [data-style="dark"] .list-group-item-action:hover {
-        color: #ffffff !important;
-        background-color: rgba(255, 255, 255, 0.1) !important;
-    }
-
-    [data-style="dark"] .list-group-item-action i {
-        color: #ffffff !important;
-    }
-    </style>
+    <!-- Dark mode styles moved to template-styles.css -->
 </head>
 
 <body>
@@ -239,6 +232,10 @@
     <script src="{{ url_for('static', filename='custom_js/custom-ripple-disabler.js') }}"></script>
     <!-- SweetAlert2 for nice notifications -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- Discord Membership Check - Global -->
+    <script src="{{ url_for('static', filename='custom_js/discord-membership-check.js') }}"></script>
+    
     <script src="{{ url_for('static', filename='vendor/libs/perfect-scrollbar/perfect-scrollbar.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/libs/hammer/hammer.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/js/menu.js') }}"></script>

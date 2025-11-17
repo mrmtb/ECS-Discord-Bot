@@ -262,13 +262,13 @@ def match_management():
 def get_match_tasks(match_id):
     """Get detailed task information for a specific match."""
     try:
-        # Use the shared enhanced task status function
+        # Use the shared enhanced task status function with cache-first approach
         from app.utils.task_status_helper import get_enhanced_match_task_status
         
-        result = get_enhanced_match_task_status(match_id)
+        result = get_enhanced_match_task_status(match_id, use_cache=True)
         response = jsonify(result)
-        # Cache for 30 seconds to prevent inconsistent refreshes
-        response.headers['Cache-Control'] = 'max-age=30, public'
+        # Cache for 60 seconds to reduce load
+        response.headers['Cache-Control'] = 'max-age=60, public'
         return response
         
     except Exception as e:
@@ -277,6 +277,52 @@ def get_match_tasks(match_id):
             'success': False,
             'error': str(e),
             'match_id': match_id
+        }), 500
+
+
+@admin_bp.route('/admin/match_management/system-health', endpoint='system_health', methods=['GET'])
+@login_required
+@role_required(['Global Admin', 'Discord Admin'])
+def get_system_health():
+    """Get comprehensive system health metrics for monitoring."""
+    try:
+        from app.utils.task_status_helper import get_task_status_metrics
+        
+        metrics = get_task_status_metrics()
+        
+        # Add database connection pool info
+        try:
+            from app.core import db
+            engine = db.engine
+            pool = engine.pool
+            
+            metrics['database_pool'] = {
+                'pool_size': pool.size(),
+                'checked_in': pool.checkedin(),
+                'checked_out': pool.checkedout(),
+                'overflow': pool.overflow(),
+                'invalidated': pool.invalid(),
+                'healthy': pool.checkedout() < pool.size() + pool.overflow()
+            }
+        except Exception as e:
+            metrics['database_pool'] = {'error': str(e), 'healthy': False}
+        
+        # Overall system health
+        metrics['system_healthy'] = (
+            metrics['healthy'] and 
+            metrics['database_pool'].get('healthy', False)
+        )
+        
+        response = jsonify(metrics)
+        response.headers['Cache-Control'] = 'no-cache'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error getting system health: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'system_healthy': False
         }), 500
 
 
@@ -336,7 +382,9 @@ def redis_test():
     try:
         import redis
         # Test direct connection
-        r = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+        from app.utils.redis_manager import UnifiedRedisManager
+        redis_manager = UnifiedRedisManager()
+        r = redis_manager.get_decoded_client()
         ping_result = r.ping()
         
         # Test safe Redis
@@ -372,7 +420,6 @@ def get_match_statuses():
     
     try:
         # Only get matches from last 7 days and next 30 days to avoid checking old matches
-        from datetime import datetime, timedelta
         import pytz
         
         # Use timezone-aware datetime to match database format
@@ -429,8 +476,8 @@ def schedule_match_task(match_id):
         # Schedule the match thread task
         task_result = schedule_mls_thread_task.delay(match_id)
         
-        home_team = 'FC Cincinnati' if match.is_home_game else match.opponent
-        away_team = match.opponent if match.is_home_game else 'FC Cincinnati'
+        home_team = 'Seattle Sounders FC' if match.is_home_game else match.opponent
+        away_team = match.opponent if match.is_home_game else 'Seattle Sounders FC'
         return jsonify({
             'success': True,
             'message': f'Match thread scheduled for {home_team} vs {away_team}',
@@ -456,8 +503,8 @@ def create_match_thread(match_id):
         # Force create the thread immediately
         task_result = force_create_mls_thread_task.delay(match_id)
         
-        home_team = 'FC Cincinnati' if match.is_home_game else match.opponent
-        away_team = match.opponent if match.is_home_game else 'FC Cincinnati'
+        home_team = 'Seattle Sounders FC' if match.is_home_game else match.opponent
+        away_team = match.opponent if match.is_home_game else 'Seattle Sounders FC'
         return jsonify({
             'success': True,
             'message': f'Thread creation initiated for {home_team} vs {away_team}',
@@ -480,47 +527,63 @@ def start_match_reporting(match_id):
         return jsonify({'success': False, 'error': 'Match not found'}), 404
     
     try:
-        try:
-            from app.tasks.tasks_live_reporting_v2 import start_live_reporting_v2
-            v2_available = True
-        except ImportError:
-            from app.tasks.tasks_robust_live_reporting import start_robust_live_reporting
-            v2_available = False
-        
         # Check if already running
         if match.live_reporting_status == 'running':
             return jsonify({'success': False, 'error': 'Live reporting already running'}), 400
-        
-        # Start live reporting immediately (V2 if available, otherwise robust)
-        if v2_available:
-            logger.info(f"🚀 [ADMIN] Starting V2 live reporting for match {match.match_id} in thread {match.discord_thread_id}")
-            task_result = start_live_reporting_v2.delay(
-                str(match.match_id),
-                str(match.discord_thread_id),
-                match.competition or 'usa.1'
-            )
-            reporting_type = "V2"
-        else:
-            logger.warning(f"⚠️  [ADMIN] V2 not available, falling back to Robust system for match {match.match_id} in thread {match.discord_thread_id}")
-            task_result = start_robust_live_reporting.delay(
-                str(match.match_id),
-                str(match.discord_thread_id),
-                match.competition or 'usa.1'
-            )
-            reporting_type = "Robust"
+
+        # Use the enterprise match scheduler service
+        from app.services.match_scheduler_service import start_live_reporting_task
+        from app.models import LiveReportingSession
+
+        logger.info(f"🚀 [ADMIN] Starting enterprise live reporting for match {match.match_id} in thread {match.discord_thread_id}")
+
+        # Check if live session already exists
+        existing_session = session.query(LiveReportingSession).filter_by(
+            match_id=str(match.match_id),
+            is_active=True
+        ).first()
+
+        if existing_session:
+            logger.info(f"Live session already exists for match {match.match_id}")
+            return jsonify({
+                'success': True,
+                'match_id': match.match_id,
+                'session_id': existing_session.id,
+                'message': 'Session already active'
+            })
+
+        # Create live reporting session
+        live_session = LiveReportingSession(
+            match_id=str(match.match_id),
+            thread_id=str(match.discord_thread_id),
+            competition=match.competition or 'usa.1',
+            is_active=True,
+            started_at=datetime.utcnow(),
+            last_update=datetime.utcnow()
+        )
+
+        session.add(live_session)
+        session.commit()
+
+        # The realtime service will pick this up automatically
+        logger.info(f"Created live reporting session {live_session.id} for match {match.match_id}")
+
+        reporting_type = "Enterprise Realtime Service"
         
         # Update match status
-        match.live_reporting_status = 'scheduled'
-        match.live_reporting_task_id = task_result.id
+        match.live_reporting_status = 'running'
+        match.live_reporting_task_id = f"session_{live_session.id}"
+        match.live_reporting_started = True
         match.live_reporting_scheduled = True
         session.commit()
-        
-        home_team = 'FC Cincinnati' if match.is_home_game else match.opponent
-        away_team = match.opponent if match.is_home_game else 'FC Cincinnati'
+
+        home_team = 'Seattle Sounders FC' if match.is_home_game else match.opponent
+        away_team = match.opponent if match.is_home_game else 'Seattle Sounders FC'
         return jsonify({
             'success': True,
             'message': f'Live reporting started for {home_team} vs {away_team}',
-            'task_id': task_result.id
+            'session_id': live_session.id,
+            'reporting_type': reporting_type
         })
     except Exception as e:
         logger.error(f"Error starting live reporting: {str(e)}")
@@ -583,8 +646,8 @@ def stop_match_reporting(match_id):
         match.live_reporting_scheduled = False
         session.commit()
         
-        home_team = 'FC Cincinnati' if match.is_home_game else match.opponent
-        away_team = match.opponent if match.is_home_game else 'FC Cincinnati'
+        home_team = 'Seattle Sounders FC' if match.is_home_game else match.opponent
+        away_team = match.opponent if match.is_home_game else 'Seattle Sounders FC'
         
         message = f'Live reporting stopped for {home_team} vs {away_team}'
         if revoked_tasks:
@@ -906,8 +969,8 @@ def remove_specific_match(match_id):
         from app.core import celery
         import json
         
-        home_team = 'FC Cincinnati' if match.is_home_game else match.opponent
-        away_team = match.opponent if match.is_home_game else 'FC Cincinnati'
+        home_team = 'Seattle Sounders FC' if match.is_home_game else match.opponent
+        away_team = match.opponent if match.is_home_game else 'Seattle Sounders FC'
         match_info = f"{home_team} vs {away_team}"
         
         revoked_tasks = []
@@ -1058,8 +1121,8 @@ def force_schedule_match(match_id):
         scheduler = MatchScheduler()
         result = scheduler.schedule_match_tasks(match_id, force=True)
         
-        home_team = 'FC Cincinnati' if match.is_home_game else match.opponent
-        away_team = match.opponent if match.is_home_game else 'FC Cincinnati'
+        home_team = 'Seattle Sounders FC' if match.is_home_game else match.opponent
+        away_team = match.opponent if match.is_home_game else 'Seattle Sounders FC'
         
         if result.get('success'):
             return jsonify({
@@ -1210,8 +1273,8 @@ def schedule_mls_match_thread(match_id):
     
     try:
         task_result = schedule_mls_thread_task.delay(match_id)
-        home_team = 'FC Cincinnati' if match.is_home_game else match.opponent
-        away_team = match.opponent if match.is_home_game else 'FC Cincinnati'
+        home_team = 'Seattle Sounders FC' if match.is_home_game else match.opponent
+        away_team = match.opponent if match.is_home_game else 'Seattle Sounders FC'
         show_success(f'Match thread scheduled for {home_team} vs {away_team}. Task ID: {task_result.id}')
     except Exception as e:
         logger.error(f"Error scheduling match thread: {str(e)}")
@@ -1293,7 +1356,6 @@ def get_cache_status():
         # Get active matches count for comparison
         from app.models import MLSMatch
         from app.core.session_manager import managed_session
-        from datetime import datetime, timedelta
         
         with managed_session() as session:
             now = datetime.utcnow()

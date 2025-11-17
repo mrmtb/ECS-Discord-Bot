@@ -138,7 +138,9 @@ def process_discord_user(session, user_data: Dict) -> User:
     discord_id = user_data.get('id')
 
     # Try to find an existing user by email
-    user = session.query(User).filter(func.lower(User.email) == email).first()
+    from app.utils.pii_encryption import create_hash
+    email_hash = create_hash(email)
+    user = session.query(User).filter(User.email_hash == email_hash).first()
     if not user:
         user = User(
             email=email,
@@ -449,14 +451,14 @@ def build_matches_query(team_id: Optional[int], player: Optional[Player],
         joinedload(Match.away_team)
     )
     
-    if team_id:
-        # Filter by specific team ID provided
+    if team_id and not all_teams:
+        # Filter by specific team ID provided (only when all_teams is False)
         query = query.filter(
             or_(Match.home_team_id == team_id, Match.away_team_id == team_id)
         )
     elif player:
         if all_teams and player.teams:
-            # Get all teams the player is on
+            # Get all teams the player is on (prioritize this over specific team_id when all_teams=True)
             player_team_ids = [team.id for team in player.teams]
             if player_team_ids:
                 # Filter matches for any of the player's teams
@@ -466,6 +468,11 @@ def build_matches_query(team_id: Optional[int], player: Optional[Player],
                         Match.away_team_id.in_(player_team_ids)
                     )
                 )
+        elif team_id:
+            # Use the specific team_id if provided and all_teams is False
+            query = query.filter(
+                or_(Match.home_team_id == team_id, Match.away_team_id == team_id)
+            )
         elif player.primary_team_id:
             # Filter by primary team only
             query = query.filter(

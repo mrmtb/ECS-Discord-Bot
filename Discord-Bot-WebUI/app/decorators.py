@@ -299,7 +299,7 @@ def jwt_role_required(roles):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             verify_jwt_in_request()
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
 
             session = getattr(g, 'db_session', None)
             if session is None:
@@ -342,7 +342,7 @@ def jwt_permission_required(permission_name):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             verify_jwt_in_request()
-            current_user_id = get_jwt_identity()
+            current_user_id = int(get_jwt_identity())
 
             session = getattr(g, 'db_session', None)
             if session is None:
@@ -374,7 +374,7 @@ def jwt_admin_or_owner_required(func):
     @wraps(func)
     def decorated_function(*args, **kwargs):
         verify_jwt_in_request()
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
 
         session = getattr(g, 'db_session', None)
         if session is None:
@@ -436,7 +436,15 @@ def celery_task(func=None, **task_kwargs):
         function: The decorated Celery task.
     """
     def celery_task_decorator(f):
-        task_name = task_kwargs.pop('name', None) or f'app.tasks.{f.__module__}.{f.__name__}'
+        if 'name' in task_kwargs:
+            task_name = task_kwargs.pop('name')
+        else:
+            # Fix task name generation - avoid duplicating 'app.tasks' prefix
+            module_name = f.__module__
+            if module_name.startswith('app.tasks.'):
+                task_name = f'{module_name}.{f.__name__}'
+            else:
+                task_name = f'app.tasks.{module_name}.{f.__name__}'
         task_kwargs.pop('bind', None)  # Remove bind if present
 
         @celery.task(name=task_name, bind=True, **task_kwargs)
@@ -626,7 +634,19 @@ def celery_task(func=None, **task_kwargs):
                 except Exception as e:
                     # Record error in session tracking (rollback happens automatically in managed_session)
                     register_session_end(session_id, 'error-rollback')
-                    
+
+                    # Check for PGBouncer/connection errors that should trigger retry
+                    error_str = str(e).lower()
+                    if any(err in error_str for err in [
+                        'server closed the connection',
+                        'discard all cannot run',
+                        'server login has been failing',
+                        'connection refused'
+                    ]):
+                        logger.warning(f"Task {task_name} encountered connection error, will retry: {str(e)[:200]}")
+                        # Let Celery handle the retry with exponential backoff
+                        raise
+
                     logger.error(f"Task {task_name} failed: {str(e)}", exc_info=True)
                     raise
                 finally:
@@ -674,7 +694,15 @@ def async_task(**task_kwargs):
         function: The decorated async Celery task.
     """
     def async_task_decorator(f):
-        task_name = task_kwargs.pop('name', None) or f'app.tasks.{f.__module__}.{f.__name__}'
+        if 'name' in task_kwargs:
+            task_name = task_kwargs.pop('name')
+        else:
+            # Fix task name generation - avoid duplicating 'app.tasks' prefix
+            module_name = f.__module__
+            if module_name.startswith('app.tasks.'):
+                task_name = f'{module_name}.{f.__name__}'
+            else:
+                task_name = f'app.tasks.{module_name}.{f.__name__}'
         # Add bind=True for better task control
         task_kwargs['bind'] = True
         max_retries = task_kwargs.pop('max_retries', 3)
