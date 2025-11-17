@@ -30,6 +30,7 @@ Discord-Bot-WebUI/migrations/
 Discord-Bot-WebUI/app/static/img/uploads/
 Discord-Bot-WebUI/app/static/dist/*
 docker-compose.override.yml
+credentials.json
 
 # Celery beat schedule
 celerybeat-schedule.bak

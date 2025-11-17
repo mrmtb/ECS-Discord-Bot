@@ -41,6 +41,7 @@ from database import (
 import logging
 import tempfile
 import os
+import requests
 
 debug = False
 
@@ -682,7 +683,73 @@ class WooCommerceCommands(commands.Cog):
         reset = reset_woo_orders_db() 
         message = f"Orders database reset. Please run updateorders now."
         await interaction.followup.send(message, ephemeral=True)
-        
+
+    @app_commands.command(
+            name="close_sales", 
+            description="Close sales for a product by setting its inventory to zero."
+    )
+    @app_commands.guilds(discord.Object(id=server_id))
+    @app_commands.describe(product_name="Name of the product to close sales for")
+    async def close_sales(self, interaction: discord.Interaction, product_name: str):
+        """
+        Set the available inventory for the identified product to zero in WooCommerce.
+        """
+        await interaction.response.defer(ephemeral=True)
+        # Find the product by name
+        product = await get_product_by_name(product_name)
+        if not product:
+            await interaction.followup.send(f"Product '{product_name}' not found.", ephemeral=True)
+            return
+        product_id = product.get('id')
+        wc_api_url = wc_url.replace("/orders/", f"/products/{product_id}")
+        data = {"stock_quantity": 0}
+        headers = {"Content-Type": "application/json"}
+        try:
+            response = requests.put(wc_api_url, json=data, headers=headers)
+            if response.status_code == 200:
+                await interaction.followup.send(f"Sales closed for '{product_name}'. Inventory set to zero.", ephemeral=True)
+            else:
+                await interaction.followup.send(f"Failed to close sales: {response.status_code} {response.text}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"Error closing sales: {str(e)}", ephemeral=True)
+    
+    @app_commands.command(
+            name="close_item", 
+            description="Hide a product and set its inventory to zero."
+    )
+    @app_commands.guilds(discord.Object(id=server_id))
+    @app_commands.describe(product_name="Name of the product to close and hide")
+    async def close_item(self, interaction: discord.Interaction, product_name: str):
+        """
+        Set the product's inventory to zero and change its visibility to hidden in WooCommerce.
+        """
+        await interaction.response.defer(ephemeral=True)
+        # Find the product by name
+        product = await get_product_by_name(product_name)
+        if not product:
+            await interaction.followup.send(f"Product '{product_name}' not found.", ephemeral=True)
+            return
+        product_id = product.get('id')
+        wc_api_url = wc_url.replace("/orders/", f"/products/{product_id}")
+        data = {"stock_quantity": 0, "catalog_visibility": "hidden"}
+        headers = {"Content-Type": "application/json"}
+        import requests
+        try:
+            response = requests.put(wc_api_url, json=data, headers=headers)
+            if response.status_code == 200:
+                await interaction.followup.send(f"Item '{product_name}' is now hidden and inventory set to zero.", ephemeral=True)
+            else:
+                await interaction.followup.send(f"Failed to close item: {response.status_code} {response.text}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"Error closing item: {str(e)}", ephemeral=True)
+    
+    @app_commands.command(name="whoami", description="Display your Discord user data.")
+    @app_commands.guilds(discord.Object(id=server_id))
+    async def whoami(self, interaction: discord.Interaction):
+        from common import display_interaction_user_data
+        user_data = display_interaction_user_data(interaction)
+        await interaction.response.send_message(f"```\n{user_data}\n```", ephemeral=True)
+
 async def setup(bot):
     await bot.add_cog(WooCommerceCommands(bot))
 

@@ -1,6 +1,7 @@
 # Common.py
 
 import discord
+from discord.ext import commands
 import json
 from datetime import datetime, timedelta, timezone
 from config import BOT_CONFIG
@@ -35,7 +36,7 @@ serpapi_api = BOT_CONFIG["serpapi_api"]
 wp_username = BOT_CONFIG["wp_username"]
 wp_app_password = BOT_CONFIG["wp_app_password"]
 bot_version = BOT_CONFIG["bot_version"]
-match_channel_id = int(BOT_CONFIG["match_channel_id"])
+match_channel_id = BOT_CONFIG["match_channel_id"]
 
 try:
     initialize_predictions_db()
@@ -45,6 +46,9 @@ try:
 except Exception as e:
     print(f"Error during initialization: {e}")
 
+intents = discord.Intents.default()
+intents.members = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 def load_current_role():
     role_data = load_json_data(
@@ -83,18 +87,60 @@ team_airports = load_team_airports()
 
 
 async def is_admin_or_owner(interaction: discord.Interaction):
-    return str(interaction.user.id) == dev_id or any(
-        role.name == discord_admin_role for role in interaction.user.roles
-    )
+    member = getattr(interaction, "user", None)
+    if not member or not hasattr(member, "roles") or not isinstance(member.roles, list):
+        return str(getattr(member, "id", "")) == dev_id
+    roles = [role for role in member.roles if role is not None]
+    return str(member.id) == dev_id or any(getattr(role, "name", None) == discord_admin_role for role in roles)
 
 
 async def has_admin_role(interaction: discord.Interaction):
-    return any(role.name == discord_admin_role for role in interaction.user.roles)
+    member = getattr(interaction, "user", None)
+    if not member or not hasattr(member, "roles") or not isinstance(member.roles, list):
+        return False
+    roles = [role for role in member.roles if role is not None]
+    return any(getattr(role, "name", None) == discord_admin_role for role in roles)
 
 
 async def has_required_wg_role(interaction: discord.Interaction):
     required_roles = ["WG: Travel", "WG: Home Tickets", discord_admin_role]
-    return any(role.name in required_roles for role in interaction.user.roles)
+    member = getattr(interaction, "user", None)
+    # Ensure member is a discord.Member and has roles
+    if not member or not hasattr(member, "roles") or not isinstance(member.roles, list):
+        return False
+    roles = [role for role in member.roles if role is not None]
+    return any(getattr(role, "name", None) in required_roles for role in roles)
+
+
+def display_interaction_user_data(interaction):
+    """
+    Returns a formatted string with user data from the interaction object.
+    Handles missing or malformed attributes gracefully.
+    """
+    user = getattr(interaction, "user", None)
+    if not user:
+        return "No user found in interaction."
+
+    user_id = getattr(user, "id", "Unknown")
+    username = getattr(user, "name", getattr(user, "display_name", "Unknown"))
+    discriminator = getattr(user, "discriminator", "N/A")
+    mention = getattr(user, "mention", f"<@{user_id}>")
+
+    # Roles (if available)
+    roles = []
+    if hasattr(user, "roles") and isinstance(user.roles, list):
+        for role in user.roles:
+            if role and hasattr(role, "name"):
+                roles.append(role.name)
+    roles_str = ", ".join(roles) if roles else "None"
+
+    return (
+        f"User ID: {user_id}\n"
+        f"Username: {username}\n"
+        f"Discriminator: {discriminator}\n"
+        f"Mention: {mention}\n"
+        f"Roles: {roles_str}"
+    )
 
 
 def format_stat_name(stat_name):
@@ -134,33 +180,30 @@ async def get_weather_forecast(date_time_utc, latitude, longitude):
 
     weather_data = await fetch_openweather_data(latitude, longitude, date_time_utc)
 
-    if weather_data:
-
-        match_datetime = datetime.fromisoformat(date_time_utc).replace(tzinfo=timezone.utc)
-
-        closest_forecast = None
-        min_time_diff = float('inf')
-
-        for forecast in weather_data.get("list", []):
-            forecast_datetime = datetime.fromtimestamp(forecast["dt"], tz=timezone.utc)
-            time_diff = abs((forecast_datetime - match_datetime).total_seconds())
-
-            if time_diff < min_time_diff:
-                min_time_diff = time_diff
-                closest_forecast = forecast
-
-        if closest_forecast:
-
-            weather = closest_forecast["weather"][0]["description"]
-            temp = closest_forecast["main"]["temp"]
-            degree_sign = u"\N{DEGREE SIGN}"
-            weather_info = f" {weather}, Temperature: {temp}{degree_sign}F".encode('utf-8').decode('utf-8')
-
-            return weather_info
-
-        return "Weather forecast not available for the selected date."
-    else:
+    if not weather_data or not isinstance(weather_data, dict):
         return "Unable to fetch weather information."
+
+    match_datetime = datetime.fromisoformat(date_time_utc).replace(tzinfo=timezone.utc)
+
+    closest_forecast = None
+    min_time_diff = float('inf')
+
+    for forecast in weather_data.get("list", []):
+        forecast_datetime = datetime.fromtimestamp(forecast["dt"], tz=timezone.utc)
+        time_diff = abs((forecast_datetime - match_datetime).total_seconds())
+
+        if time_diff < min_time_diff:
+            min_time_diff = time_diff
+            closest_forecast = forecast
+
+    if closest_forecast:
+        weather = closest_forecast["weather"][0]["description"]
+        temp = closest_forecast["main"]["temp"]
+        degree_sign = u"\N{DEGREE SIGN}"
+        weather_info = f" {weather}, Temperature: {temp}{degree_sign}F".encode('utf-8').decode('utf-8')
+        return weather_info
+
+    return "Weather forecast not available for the selected date."
 
 
 async def create_event_if_necessary(
