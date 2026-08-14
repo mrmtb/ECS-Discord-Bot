@@ -212,14 +212,30 @@ def send_availability_message_task(self, session, scheduled_message_id: int) -> 
         discord_client = get_sync_discord_client()
         result = discord_client.send_availability_message(message_data)
 
-        # Update the scheduled message status to SENT
+        # Only claim SENT if the bot actually accepted it. This used to stamp
+        # 'SENT' unconditionally and return success:True while discarding
+        # `result` -- so with the URL broken (see sync_discord_client), the admin
+        # "Send now" button reported success and posted nothing, and the row
+        # looked SENT forever so nothing ever retried it.
+        sent_ok = bool(result and result.get('success'))
+
         message = session.query(ScheduledMessage).get(scheduled_message_id)
         if message:
-            message.status = 'SENT'
+            message.status = 'SENT' if sent_ok else 'FAILED'
+            if not sent_ok:
+                message.send_error = str(result.get('message') or result.get('error')
+                                         or 'Bot rejected the availability message')[:255]
+
+        if not sent_ok:
+            logger.error(
+                f"Availability message for scheduled_message {scheduled_message_id} "
+                f"was NOT posted: {result}"
+            )
 
         return {
-            "success": True,
-            "message": "Availability message sent successfully",
+            "success": sent_ok,
+            "message": ("Availability message sent successfully" if sent_ok
+                        else "Bot did not accept the availability message"),
             "data": result
         }
 

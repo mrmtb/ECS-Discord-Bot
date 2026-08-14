@@ -25,6 +25,28 @@ from app.utils.discord_request_handler import make_discord_request
 logger = logging.getLogger(__name__)
 
 
+def _bot_said_success(response) -> Tuple[bool, str]:
+    """Read the bot's own success flag out of a 200 response.
+
+    The bot's role endpoints (bot_rest_api.py /api/discord/roles/{assign,remove})
+    return HTTP 200 for every logical failure with {"success": false, "error": ...}.
+    A status-code-only check therefore reports success when nothing happened.
+    Treat an unparseable or flagless body as a failure rather than assuming.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        return False, "bot returned a non-JSON 200"
+
+    if not isinstance(body, dict):
+        return False, f"unexpected response body: {body!r}"
+
+    if body.get('success') is True:
+        return True, body.get('message', 'ok')
+
+    return False, str(body.get('error') or body.get('message') or 'bot reported success=false')
+
+
 class DiscordRoleSyncService:
     """
     Service for bidirectional synchronization between Flask roles and Discord roles.
@@ -134,8 +156,21 @@ class DiscordRoleSyncService:
             response = requests.post(url, json=payload, timeout=self.REQUEST_TIMEOUT)
 
             if response.status_code == 200:
-                logger.info(f"Assigned Discord role {discord_role_id} to user {discord_user_id}")
-                return True, "Role assigned successfully"
+                # 200 does NOT mean the role was applied. bot_rest_api.py's
+                # /api/discord/roles/assign has no non-200 path at all: bot not
+                # ready, guild/member/role not found, and discord.Forbidden
+                # (missing Manage Roles, or the role sitting above the bot in the
+                # hierarchy) ALL return 200 with {"success": false}. Trusting the
+                # status code reported "Role assigned successfully" for every one
+                # of those, which is why role drift never surfaced.
+                ok, detail = _bot_said_success(response)
+                if ok:
+                    logger.info(f"Assigned Discord role {discord_role_id} to user {discord_user_id}")
+                    return True, "Role assigned successfully"
+                logger.error(
+                    f"Bot did not assign role {discord_role_id} to user {discord_user_id}: {detail}"
+                )
+                return False, f"Failed to assign role: {detail}"
 
             logger.error(f"Failed to assign role: {response.text}")
             return False, f"Failed to assign role: {response.text}"
@@ -168,8 +203,15 @@ class DiscordRoleSyncService:
             response = requests.post(url, json=payload, timeout=self.REQUEST_TIMEOUT)
 
             if response.status_code == 200:
-                logger.info(f"Removed Discord role {discord_role_id} from user {discord_user_id}")
-                return True, "Role removed successfully"
+                # Same 200-on-failure contract as assign; see the note there.
+                ok, detail = _bot_said_success(response)
+                if ok:
+                    logger.info(f"Removed Discord role {discord_role_id} from user {discord_user_id}")
+                    return True, "Role removed successfully"
+                logger.error(
+                    f"Bot did not remove role {discord_role_id} from user {discord_user_id}: {detail}"
+                )
+                return False, f"Failed to remove role: {detail}"
 
             logger.error(f"Failed to remove role: {response.text}")
             return False, f"Failed to remove role: {response.text}"
@@ -319,11 +361,23 @@ class DiscordRoleSyncService:
                 # Rate limiting - small delay between API calls
                 time.sleep(0.5)
 
-            # Update last synced timestamp
-            role.last_synced_at = datetime.utcnow()
+            # A run with failures is not a success, and did not fully sync.
+            #
+            # This used to stamp last_synced_at unconditionally and leave
+            # success=True even when every single user failed -- so the admin UI
+            # showed a fresh "last synced" timestamp and a green result for a role
+            # that had not actually been applied to anybody. Only claim the role
+            # is synced when nothing failed; otherwise leave the previous
+            # timestamp so the staleness is visible.
+            if results['failed']:
+                results['success'] = False
+            else:
+                role.last_synced_at = datetime.utcnow()
+
             db.session.commit()
 
-            logger.info(
+            log = logger.warning if results['failed'] else logger.info
+            log(
                 f"Synced role '{role.name}': {results['synced']}/{results['total_users']} users, "
                 f"{results['skipped']} skipped, {results['failed']} failed"
             )

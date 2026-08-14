@@ -322,10 +322,34 @@ async def update_availability_embed(match_id: str, bot: commands.Bot = Depends(g
             ))
         
         if tasks:
-            # Run updates in parallel
-            await asyncio.gather(*tasks, return_exceptions=True)
-            logger.info(f"Updated availability embeds for match {match_id}")
-            return {"status": "success", "message": "Embeds updated successfully"}
+            # Run updates in parallel, then actually READ the results.
+            #
+            # return_exceptions=True plus a discarded return value meant both
+            # embeds could fail -- channel deleted, message gone, no permission,
+            # a raised exception -- and this still logged "Updated availability
+            # embeds" and returned status:success. update_embed_for_message
+            # returns False (it does not raise) for every one of those, so the
+            # failures were invisible to the caller AND to the logs.
+            outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+            updated = sum(1 for r in outcomes if r is True)
+            problems = [repr(r) for r in outcomes if r is not True]
+
+            if updated == len(outcomes):
+                logger.info(f"Updated {updated}/{len(outcomes)} availability embeds for match {match_id}")
+                return {"status": "success", "message": "Embeds updated successfully",
+                        "updated": updated, "total": len(outcomes)}
+
+            logger.error(
+                f"Only {updated}/{len(outcomes)} availability embeds updated for match "
+                f"{match_id}: {problems}"
+            )
+            return {
+                "status": "partial" if updated else "error",
+                "message": f"Updated {updated}/{len(outcomes)} embeds",
+                "updated": updated,
+                "total": len(outcomes),
+                "errors": problems,
+            }
         else:
             logger.warning(f"No embed updates performed for match {match_id}")
             return {"status": "warning", "message": "No embed updates performed"}

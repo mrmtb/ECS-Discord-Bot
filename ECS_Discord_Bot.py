@@ -1497,8 +1497,28 @@ async def update_discord_embed(match_id):
             
             async with session.post(api_url, timeout=aiohttp.ClientTimeout(total=3)) as response:
                 if response.status == 200:
-                    logger.info(f"Discord embed updated for match {match_id}")
-                    return True
+                    # 200 alone is not success: /api/update_availability_embed
+                    # returns 200 with status "warning" (no message ids found),
+                    # "partial" (one embed of two updated) or "error" (internal
+                    # failure). Returning True on the status code alone reported
+                    # a successful redraw when nothing had been edited.
+                    try:
+                        body = await response.json()
+                    except Exception:
+                        body = None
+
+                    body_status = (body or {}).get('status') if isinstance(body, dict) else None
+                    if body_status in (None, 'success'):
+                        # None => an older bot build with no status field; keep
+                        # the previous behaviour rather than failing closed.
+                        logger.info(f"Discord embed updated for match {match_id}")
+                        return True
+
+                    logger.error(
+                        f"Discord embed NOT updated for match {match_id} via {api_url}: "
+                        f"{body_status} - {(body or {}).get('message')}"
+                    )
+                    return False
                 else:
                         logger.warning(f"Failed to update Discord embed using {api_url}. Status: {response.status}")
         except aiohttp.ClientError as e:

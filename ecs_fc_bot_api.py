@@ -104,8 +104,16 @@ async def get_team_channel_id(team_id: int) -> Optional[str]:
         logger.error(f"Error getting team channel ID for team {team_id}: {str(e)}")
         return None
 
-async def fetch_ecs_fc_rsvp_data(match_id: int) -> Dict[str, List[Dict[str, Any]]]:
-    """Fetch current RSVP data with player names for an ECS FC match."""
+async def fetch_ecs_fc_rsvp_data(match_id: int) -> Optional[Dict[str, List[Dict[str, Any]]]]:
+    """Fetch current RSVP data with player names for an ECS FC match.
+
+    Returns None if the data could not be fetched. It MUST NOT return an empty
+    RSVP set on failure: the only caller feeds this straight into message.edit(),
+    so "the webui hiccuped" and "nobody has responded" rendered identically and a
+    transient error silently WIPED every real RSVP off the embed coaches read.
+    An empty-but-successful response is still returned as empty -- that is a real
+    answer; a failure is not.
+    """
     try:
         api_url = f"http://webui:5000/api/ecs-fc/matches/{match_id}/rsvp-details"
 
@@ -113,13 +121,20 @@ async def fetch_ecs_fc_rsvp_data(match_id: int) -> Dict[str, List[Dict[str, Any]
             async with session.get(api_url) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return data.get('data', {}).get('rsvp_details', {"yes": [], "no": [], "maybe": []})
+                    rsvp_details = (data or {}).get('data', {}).get('rsvp_details')
+                    if rsvp_details is None:
+                        logger.error(
+                            f"RSVP payload for match {match_id} has no rsvp_details key; "
+                            f"refusing to treat that as 'no responses'"
+                        )
+                        return None
+                    return rsvp_details
                 else:
                     logger.warning(f"Failed to fetch RSVP data for match {match_id}: {response.status}")
-                    return {"yes": [], "no": [], "maybe": []}
+                    return None
     except Exception as e:
         logger.error(f"Error fetching RSVP data for match {match_id}: {str(e)}")
-        return {"yes": [], "no": [], "maybe": []}
+        return None
 
 def create_ecs_fc_embed(request: RSVPMessageRequest, rsvp_details: Dict[str, List[Dict[str, Any]]]) -> discord.Embed:
     """Create a Discord embed for ECS FC RSVP messages with player names."""
@@ -309,8 +324,18 @@ async def update_rsvp_embed(match_id: int, bot: commands.Bot = Depends(get_bot))
             logger.error(f"Discord message not found for ID: {message_id}")
             raise HTTPException(status_code=404, detail=f"Discord message not found")
         
-        # Get current RSVP data with player names
+        # Get current RSVP data with player names. Bail out rather than redraw:
+        # editing the embed with unknown RSVP data would erase the real tallies.
         rsvp_details = await fetch_ecs_fc_rsvp_data(match_id)
+        if rsvp_details is None:
+            logger.error(
+                f"Could not fetch RSVP data for match {match_id}; leaving the existing "
+                f"embed intact rather than overwriting it with an empty roster"
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Could not fetch RSVP data; embed left unchanged"
+            )
 
         # Get match details for the embed
         match_details = await get_ecs_fc_match_details(match_id)

@@ -725,13 +725,20 @@ def update_discord_rsvp_task(self, session, match_id: int, discord_id: str, new_
         if old_response == new_response and old_response is not None:
             logger.info(f"Skipping Discord RSVP update - reaction already matches desired state")
             
-            # Update availability record to show it's synced
+            # Record the attempt, but do NOT claim 'synced'.
+            #
+            # This branch skipped the Discord call entirely -- it compared the
+            # NEW response against the PREVIOUS value in our own database.
+            # Nothing here observed Discord, so stamping 'synced' asserted a fact
+            # we never checked, and it overwrote a genuine 'failed' with a clean
+            # bill of health. Since discord_sync_status is the sole input to
+            # monitor_rsvp_health, that is why failed_count sat at 0 through a
+            # month-long outage and the repair sweep had nothing to repair.
+            # Leaving the existing value alone keeps a real prior failure visible.
             availability = session.query(Availability).filter_by(match_id=match_id, discord_id=discord_id).first()
             if availability:
-                availability.discord_sync_status = 'synced'
                 availability.last_sync_attempt = datetime.utcnow()
-                availability.sync_error = None
-                
+
             return {
                 'success': True,
                 'message': 'Reaction already in desired state',
@@ -1524,10 +1531,26 @@ async def _execute_discord_sync_async(data):
 def _update_failed_records_after_sync(session, extract_result, api_result):
     """Update failed records after API call (Phase 3)."""
     failed_record_ids = extract_result.get('failed_record_ids', [])
-    
+
     if not failed_record_ids:
         return {'updated_records': 0}
-    
+
+    # Only clear the failure markers if the sync we just ran actually succeeded.
+    #
+    # This took api_result and never read it: it unconditionally wiped
+    # discord_sync_status, last_sync_attempt and sync_error on every failed row.
+    # Combined with the bot's /api/force_rsvp_sync returning success the instant
+    # it spawns a background task, that meant a query for
+    # discord_sync_status='failed' came back empty because the evidence had been
+    # scrubbed -- not because anything had been repaired.
+    if not (api_result or {}).get('success'):
+        logger.warning(
+            f"Sync did not succeed ({(api_result or {}).get('message', 'no detail')}); "
+            f"leaving {len(failed_record_ids)} failed record(s) flagged for retry"
+        )
+        return {'updated_records': 0, 'skipped_due_to_failed_sync': len(failed_record_ids)}
+
+
     # Process records in smaller batches to avoid long-running transactions
     batch_size = 50
     total_updated = 0

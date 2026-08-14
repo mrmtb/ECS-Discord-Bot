@@ -203,13 +203,43 @@ class SyncDiscordClient:
             )
             
             if response.status_code == 200:
-                result = response.json()
-                logger.info(f"Discord reactions updated successfully: {result}")
+                # HTTP 200 is NOT success here. /api/update_user_reaction returns
+                # 200 with {"status": "error"} for every logical failure (message
+                # deleted, channel gone, user not found) and 200 with
+                # {"status": "warning"} when it processed nothing at all -- its
+                # HTTPException(404) is raised inside its own try and swallowed by
+                # the terminal except. Trusting the status code marked those rows
+                # discord_sync_status='synced', which is why the RSVP health
+                # monitor could never report a failure.
+                try:
+                    result = response.json()
+                except ValueError:
+                    error_msg = "Bot returned a non-JSON 200 for update_user_reaction"
+                    logger.error(error_msg)
+                    return {
+                        'success': False,
+                        'message': error_msg,
+                        'api_call_success': True,
+                    }
+
+                bot_status = result.get('status')
+                if bot_status == 'success':
+                    logger.info(f"Discord reactions updated successfully: {result}")
+                    return {
+                        'success': True,
+                        'message': 'Discord reactions updated successfully',
+                        'discord_response': result,
+                        'api_call_success': True
+                    }
+
+                error_msg = (f"Bot did not update reactions (status={bot_status}): "
+                             f"{result.get('message', 'no detail')}")
+                logger.error(error_msg)
                 return {
-                    'success': True,
-                    'message': 'Discord reactions updated successfully',
+                    'success': False,
+                    'message': error_msg,
                     'discord_response': result,
-                    'api_call_success': True
+                    'api_call_success': True,
                 }
             else:
                 error_msg = f"Failed to update Discord reactions: {response.status_code} - {response.text}"
@@ -326,10 +356,18 @@ class SyncDiscordClient:
         Returns:
             Dictionary with success status and response.
         """
-        discord_bot_url = "http://discord-bot:5001/api/send_availability"
-        
+        # /api/send_availability DOES NOT EXIST on the bot -- grep the bot repo,
+        # there is no such route. Every call 404'd, and because the caller
+        # (tasks_core.send_availability_message_task) discarded the result and
+        # marked the ScheduledMessage 'SENT' regardless, the admin "Send now" and
+        # bulk-send buttons silently posted nothing while reporting success.
+        # The real route is /api/post_availability (api/routes/match_routes.py:78),
+        # which takes exactly the payload built here and raises a real 404 when a
+        # channel is missing.
+        discord_bot_url = "http://discord-bot:5001/api/post_availability"
+
         try:
-            logger.info(f"Sending availability message for user {message_data.get('user_id')} (synchronous)")
+            logger.info(f"Sending availability message for match {message_data.get('match_id')} (synchronous)")
             
             response = self.session.post(
                 discord_bot_url,

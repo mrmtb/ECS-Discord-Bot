@@ -65,7 +65,43 @@ app.include_router(poll_router)  # Native Discord poll posting (mobile sub cente
 # Health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "message": "Bot REST API is running"}
+    """Liveness + readiness for the bot.
+
+    This used to return a hardcoded {"status": "healthy"}, which meant the admin
+    "Discord API - healthy" tile stayed green while the gateway was dead, the
+    token was revoked, or the bot had never connected. That is a large part of
+    why a month-long RSVP outage went unnoticed.
+
+    Deliberately still returns HTTP 200 when Discord is down: docker-compose's
+    healthcheck calls this with raise_for_status(), so a 503 during the normal
+    connect window would fail the container healthcheck and cause restart loops.
+    Liveness (the process answers) and readiness (Discord is connected) are
+    reported as separate fields instead -- callers must read `bot_ready`, not the
+    status code. Mirrors api/routes/live_reporting_routes.py, which already did
+    this correctly.
+    """
+    bot_ready = False
+    latency_ms = None
+    detail = "bot instance not registered"
+    try:
+        from shared_states import get_bot_instance
+        bot = get_bot_instance()
+        if bot is not None:
+            bot_ready = bool(bot.is_ready() and not bot.is_closed())
+            # discord.py reports latency as inf before the first heartbeat.
+            raw_latency = getattr(bot, 'latency', None)
+            if raw_latency is not None and raw_latency == raw_latency and raw_latency != float('inf'):
+                latency_ms = round(raw_latency * 1000, 1)
+            detail = "connected to Discord" if bot_ready else "bot present but not ready"
+    except Exception as e:
+        detail = f"health check error: {e}"
+
+    return {
+        "status": "healthy" if bot_ready else "degraded",
+        "bot_ready": bot_ready,
+        "latency_ms": latency_ms,
+        "message": f"Bot REST API is running ({detail})",
+    }
 
 # Bot statistics endpoint
 @app.get("/api/stats")

@@ -78,24 +78,47 @@ def _check_discord_api_status():
                 response_time = f"{(end_time - start_time).total_seconds() * 1000:.0f}ms"
                 
                 if bot_health_response.status_code == 200:
+                    # A 200 means the bot's WEB PROCESS answered, NOT that it is
+                    # connected to Discord -- /health deliberately stays 200 so
+                    # the container healthcheck does not restart-loop during the
+                    # connect window. Readiness lives in the body.
+                    #
+                    # This block previously fell through to a hardcoded
+                    # 'healthy' on any 200 (and swallowed a JSON error with a
+                    # bare except), so the tile was green throughout a
+                    # month-long outage with the gateway effectively dead.
                     try:
                         bot_health_data = bot_health_response.json()
-                        bot_status = bot_health_data.get('status', 'unknown')
-                        if bot_status == 'healthy':
-                            return {
-                                'name': 'Discord API',
-                                'status': 'healthy',
-                                'message': f'Bot API healthy ({bot_api_url})',
-                                'last_check': datetime.utcnow(),
-                                'response_time': response_time
-                            }
-                    except:
-                        pass
-                        
+                    except ValueError:
+                        return {
+                            'name': 'Discord API',
+                            'status': 'warning',
+                            'message': f'Bot API returned a non-JSON 200 ({bot_api_url})',
+                            'last_check': datetime.utcnow(),
+                            'response_time': response_time
+                        }
+
+                    bot_ready = bot_health_data.get('bot_ready')
+                    bot_status = bot_health_data.get('status', 'unknown')
+
+                    if bot_ready is True or (bot_ready is None and bot_status == 'healthy'):
+                        # bot_ready is None => an older bot build that predates the
+                        # readiness field; fall back to its status string.
+                        latency = bot_health_data.get('latency_ms')
+                        return {
+                            'name': 'Discord API',
+                            'status': 'healthy',
+                            'message': (f'Bot connected to Discord'
+                                        + (f' ({latency}ms gateway)' if latency is not None else '')),
+                            'last_check': datetime.utcnow(),
+                            'response_time': response_time
+                        }
+
                     return {
                         'name': 'Discord API',
-                        'status': 'healthy',
-                        'message': f'Bot API responding ({bot_api_url})',
+                        'status': 'warning',
+                        'message': (f'Bot process is up but NOT connected to Discord '
+                                    f'({bot_health_data.get("message", bot_status)})'),
                         'last_check': datetime.utcnow(),
                         'response_time': response_time
                     }
