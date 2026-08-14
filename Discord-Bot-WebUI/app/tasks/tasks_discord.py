@@ -89,11 +89,11 @@ def get_current_season_teams(session, player):
 
         # Get ALL current seasons (Pub League AND ECS FC can both be current)
         current_seasons = session.query(Season).filter_by(is_current=True).all()
-        logger.info(f"[DEBUG] Player {player.id}: Found {len(current_seasons)} current seasons: {[(s.id, s.name, s.league_type) for s in current_seasons]}")
+        logger.debug(f"[DEBUG] Player {player.id}: Found {len(current_seasons)} current seasons: {[(s.id, s.name, s.league_type) for s in current_seasons]}")
 
         if current_seasons:
             current_season_ids = [s.id for s in current_seasons]
-            logger.info(f"[DEBUG] Player {player.id}: Current season IDs: {current_season_ids}")
+            logger.debug(f"[DEBUG] Player {player.id}: Current season IDs: {current_season_ids}")
 
             # Query teams through PlayerTeamSeason for ALL current seasons
             current_season_teams = session.query(Team).join(
@@ -103,7 +103,7 @@ def get_current_season_teams(session, player):
                 PlayerTeamSeason.season_id.in_(current_season_ids)
             ).all()
 
-            logger.info(f"[DEBUG] Player {player.id}: Found {len(current_season_teams)} teams via PlayerTeamSeason: {[(t.id, t.name, t.league.name if t.league else None) for t in current_season_teams]}")
+            logger.debug(f"[DEBUG] Player {player.id}: Found {len(current_season_teams)} teams via PlayerTeamSeason: {[(t.id, t.name, t.league.name if t.league else None) for t in current_season_teams]}")
 
             # UNION both sources, never either/or. This used to return the
             # PlayerTeamSeason result the moment it was non-empty and only fall back
@@ -131,7 +131,7 @@ def get_current_season_teams(session, player):
                            'league_name': team.league.name if team.league else None,
                            'is_coach': coach_map.get(team.id, False)}
                           for team in merged.values()]
-                logger.info(f"[DEBUG] Player {player.id}: Returning teams: {result}")
+                logger.debug(f"[DEBUG] Player {player.id}: Returning teams: {result}")
                 return result
 
         # Final fallback: return empty list to avoid assigning old roles
@@ -1098,8 +1098,8 @@ async def _execute_assign_roles_async(data):
     target_team = data.get('target_team')
     player_id = data.get('player_id')
 
-    logger.info(f"[DEBUG] Player {player_id}: _execute_assign_roles_async called")
-    logger.info(f"[DEBUG] Player {player_id}: target_team={target_team}")
+    logger.debug(f"[DEBUG] Player {player_id}: _execute_assign_roles_async called")
+    logger.debug(f"[DEBUG] Player {player_id}: target_team={target_team}")
 
     if target_team:
         scoped_teams = [target_team]
@@ -1113,7 +1113,7 @@ async def _execute_assign_roles_async(data):
         app_managed = _app_managed_roles(data)
         pattern_sweep = True
 
-    logger.info(f"[DEBUG] Player {player_id}: expected_roles={expected_roles}")
+    logger.debug(f"[DEBUG] Player {player_id}: expected_roles={expected_roles}")
 
     player_data = {
         'id': data['player_id'],

@@ -472,7 +472,7 @@ def handle_join_match_rsvp(data):
             'timestamp': datetime.utcnow().isoformat()
         }, room=room, include_self=False)
 
-        logger.info(f"👥 User {username} (player: {player_name}) joined match {match_id} RSVP room")
+        logger.debug(f"👥 User {username} (player: {player_name}) joined match {match_id} RSVP room")
             
     except Exception as e:
         logger.error(f"Error joining match RSVP room: {str(e)}", exc_info=True)

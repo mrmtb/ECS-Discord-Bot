@@ -1809,7 +1809,7 @@ def get_active_poll_messages():
     Get all active poll messages with their Discord message IDs.
     Returns data needed by the Discord bot to track poll reactions.
     """
-    logger.info(f"🔵 [AVAILABILITY_API] get_active_poll_messages called")
+    logger.debug(f"🔵 [AVAILABILITY_API] get_active_poll_messages called")
     
     try:
         with managed_session() as session_db:
@@ -1835,7 +1835,13 @@ def get_active_poll_messages():
                     'message_id': msg.message_id
                 })
             
-            logger.info(f"🟢 [AVAILABILITY_API] Returning {len(result)} active poll messages")
+            # Only worth a line when there is something to report; the bot
+            # polls this on a tight loop and "Returning 0" twice a call was
+            # the single noisiest thing in rsvp.log.
+            if result:
+                logger.info(f"🟢 [AVAILABILITY_API] Returning {len(result)} active poll messages")
+            else:
+                logger.debug("🟢 [AVAILABILITY_API] Returning 0 active poll messages")
             return jsonify(result)
         
     except Exception as e:
