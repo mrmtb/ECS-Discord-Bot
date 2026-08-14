@@ -1124,16 +1124,33 @@ async def force_rsvp_sync_endpoint(bot: commands.Bot = Depends(get_bot), throttl
         throttled: If True, adds delays between operations to avoid rate limiting
     """
     try:
-        # Get the full_rsvp_sync function from the main module
+        # Resolve the RUNNING module, do not re-import it.
+        #
+        # Dockerfile.bot runs `python ECS_Discord_Bot.py`, so the live bot -- the
+        # ECSBot that actually logged in and holds the channel cache -- lives in
+        # sys.modules['__main__']. `import ECS_Discord_Bot` does NOT return that
+        # module: Python has no entry for it under that name, so it re-executes
+        # the file top to bottom as a SECOND module object, complete with its own
+        # `bot = ECSBot(...)` that never logs in and whose cache is empty.
+        #
+        # full_rsvp_sync from that copy closes over the dead bot, so every embed
+        # update died on the first Discord call:
+        #     bot.get_channel(...)   -> None            (empty cache)
+        #     bot.fetch_channel(...) -> AttributeError: '_MissingSentinel' object
+        #                               has no attribute 'is_set'
+        # because HTTPClient._global_over is only created in static_login().
         import sys
-        import ECS_Discord_Bot
-        
-        if hasattr(ECS_Discord_Bot, 'full_rsvp_sync'):
+        main_module = sys.modules.get('__main__')
+        if main_module is None or not hasattr(main_module, 'full_rsvp_sync'):
+            # Fallback for a launch style where the bot is not __main__.
+            import ECS_Discord_Bot as main_module
+
+        if hasattr(main_module, 'full_rsvp_sync'):
             logger.info("Starting forced full RSVP synchronization...")
-            
+
             # Create a task with a background sync that has throttling options
             # The background sync process will handle all the updates with the rate limit protections
-            task = asyncio.create_task(ECS_Discord_Bot.full_rsvp_sync(force_sync=True))
+            task = asyncio.create_task(main_module.full_rsvp_sync(force_sync=True))
             
             # We don't await the task because we want it to run in the background
             # This way the API can respond immediately while the sync happens asynchronously

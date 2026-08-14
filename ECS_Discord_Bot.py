@@ -22,7 +22,7 @@ from api.utils.api_client import get_session
 import signal
 import sys
 import traceback
-from shared_states import bot_state, set_bot_instance, periodic_check
+from shared_states import bot_state, set_bot_instance, periodic_check, get_bot_instance
 from typing import Dict, List, Optional, Any
 
 WEBUI_API_URL = os.getenv("WEBUI_API_URL")
@@ -574,7 +574,15 @@ async def sync_single_match_rsvps(match_id: int) -> Dict[str, Any]:
 async def sync_single_message(message_id: str, channel_id: str, match_id: int, team_id: int) -> bool:
     """
     Sync a single Discord message - extracted from full_rsvp_sync for reuse.
+
+    Resolves the live bot through shared_states rather than reading the module
+    global. This file runs as __main__ (Dockerfile.bot: `python
+    ECS_Discord_Bot.py`), so anything doing `import ECS_Discord_Bot` gets a
+    SECOND copy of this module whose `bot` global never logged in -- see the note
+    in api/routes/match_routes.py force_rsvp_sync_endpoint. shared_states is
+    always imported by name, so bot_state holds the one real instance.
     """
+    bot = get_bot_instance()
     try:
         # Get Discord reactions for this message
         discord_rsvps = await get_message_reactions(int(channel_id), int(message_id))
@@ -621,10 +629,16 @@ async def full_rsvp_sync(force_sync=False):
     """
     Performs a full synchronization between Discord reactions/embeds and Flask RSVPs.
     This ensures consistency even after bot downtime or network failures.
-    
+
+    Uses get_bot_instance() rather than the module-global `bot`: this coroutine is
+    invoked from the REST layer, which historically reached it via
+    `import ECS_Discord_Bot` -- a second copy of this module whose `bot` never
+    logged in (empty cache, HTTPClient.static_login never ran).
+
     Args:
         force_sync: If True, update all messages even if no discrepancy detected.
     """
+    bot = get_bot_instance()
     logger.info(f"Starting full RSVP synchronization (force_sync={force_sync}) - processing only matches from last 7 days")
     message_ids = list(bot_state.get_managed_message_ids())
     synced_count = 0
@@ -848,7 +862,11 @@ async def reconcile_rsvps(match_id, team_id, discord_rsvps, flask_rsvps, channel
     This improved function fixes a race condition that previously
     caused reaction loops. It now focuses on detecting actual mismatches
     and only performs the minimum necessary changes.
+
+    Resolves the bot via shared_states for the same reason as full_rsvp_sync --
+    it sits on the same call path from the REST layer.
     """
+    bot = get_bot_instance()
     reconciliation_needed = False
     
     # Get all users in either system

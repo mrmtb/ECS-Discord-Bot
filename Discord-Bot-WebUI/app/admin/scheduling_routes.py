@@ -349,17 +349,33 @@ def cleanup_old_messages_route():
         # Direct implementation without using Celery
         cutoff_date = datetime.utcnow() - timedelta(days=days_old)
         
-        # Get count first for messaging
-        total_messages = session.query(ScheduledMessage).filter(
-            ScheduledMessage.scheduled_send_time < cutoff_date,
-            ScheduledMessage.status.in_(['SENT', 'FAILED'])
-        ).count()
-        
+        # Never delete a row for a match that has not been played.
+        #
+        # That row is what maps a Discord message_id back to (match, team); losing
+        # it while the embed is still live killed RSVP updates AND reaction
+        # recording for weeks (see cleanup_old_scheduled_messages in
+        # app/tasks/tasks_maintenance.py, same defect). Here the risk is sharper:
+        # days_old comes from the form, and a SMALLER value moves the cutoff
+        # closer to now, so a well-meaning admin clicking this because "RSVPs look
+        # broken" is exactly how a live row gets deleted. scheduled_send_time is
+        # the POST time (~6 days pre-kickoff), not the match date, so filtering on
+        # it alone does not bound this.
+        stale_ids = [
+            row.id for row in session.query(ScheduledMessage.id)
+            .join(Match, ScheduledMessage.match_id == Match.id)
+            .filter(
+                ScheduledMessage.scheduled_send_time < cutoff_date,
+                ScheduledMessage.status.in_(['SENT', 'FAILED']),
+                Match.date < datetime.utcnow().date()
+            )
+        ]
+
         # Delete the old messages
-        deleted_count = session.query(ScheduledMessage).filter(
-            ScheduledMessage.scheduled_send_time < cutoff_date,
-            ScheduledMessage.status.in_(['SENT', 'FAILED'])
-        ).delete(synchronize_session=False)
+        deleted_count = 0
+        if stale_ids:
+            deleted_count = session.query(ScheduledMessage).filter(
+                ScheduledMessage.id.in_(stale_ids)
+            ).delete(synchronize_session=False)
         
         session.commit()
         
