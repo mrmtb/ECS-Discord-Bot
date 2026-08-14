@@ -389,10 +389,20 @@ def monitor_redis_connections(self):
                 f"{pool_stats.get('created_connections', 0)} created, {max_conn} max"
             )
             
-            # Include circuit breaker status
+            # Include circuit breaker status.
+            #
+            # Distinguish "the circuit is open" from "I could not read the
+            # circuit state". The check used to be `!= 'closed'`, so a MISSING
+            # key returned None, compared unequal, and logged
+            # "Redis circuit breaker is None" as a WARNING on every single run --
+            # a permanent false alarm in errors.log for a metric that was never
+            # being reported in the first place.
             service_status = service_metrics.get('service_status', {})
-            if service_status.get('circuit_state') != 'closed':
-                logger.warning(f"Redis circuit breaker is {service_status.get('circuit_state')}")
+            circuit_state = service_status.get('circuit_state')
+            if circuit_state is None:
+                logger.debug("Redis circuit breaker state not reported by the service metrics")
+            elif circuit_state != 'closed':
+                logger.warning(f"Redis circuit breaker is {circuit_state}")
             
             # Combine all stats for comprehensive monitoring
             combined_stats = {

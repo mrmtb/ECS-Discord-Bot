@@ -47,7 +47,12 @@ def emergency_queue_recovery(self, session) -> Dict[str, Any]:
     This is a last-resort mechanism that should rarely trigger.
     """
     try:
-        logger.warning("Emergency queue recovery initiated")
+        # INFO, not WARNING: this is the scheduled CHECK, which runs on a timer
+        # and finds nothing the overwhelming majority of the time. Logging the
+        # entry at WARNING put a scary "Emergency queue recovery initiated" line
+        # in errors.log on every run, ahead of the check that decides there is no
+        # emergency. The genuine emergency is logged below, once detected.
+        logger.info("Emergency queue recovery check starting")
 
         redis_service = get_redis_service()
         recovery_actions = []

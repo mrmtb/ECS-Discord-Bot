@@ -28,6 +28,30 @@ from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
+# LogRecord attributes that logging populates itself. Passing any of these in
+# `extra=` makes makeRecord() raise KeyError("Attempt to overwrite ...").
+_RESERVED_LOG_ATTRS = frozenset({
+    'name', 'msg', 'args', 'levelname', 'levelno', 'pathname', 'filename',
+    'module', 'exc_info', 'exc_text', 'stack_info', 'lineno', 'funcName',
+    'created', 'msecs', 'relativeCreated', 'thread', 'threadName',
+    'processName', 'process', 'message', 'asctime', 'taskName',
+})
+
+
+def _safe_log_extra(data):
+    """Prefix reserved keys so a result dict can be passed straight to `extra=`.
+
+    Handing a whole result dict to logger.*(extra=...) is a landmine: a 'message'
+    key raises KeyError inside makeRecord and takes down the *caller*, not just
+    the log line. monitor_rsvp_health did exactly that, and it stayed hidden
+    only because app.tasks used to log at ERROR -- logger.info() short-circuited
+    before building the record. Raising that logger to INFO made it fire every
+    run and killed the health check outright.
+    """
+    if not isinstance(data, dict):
+        return {}
+    return {(f'ctx_{k}' if k in _RESERVED_LOG_ATTRS else k): v for k, v in data.items()}
+
 
 @celery_task(name='app.tasks.tasks_rsvp.update_rsvp', max_retries=3, queue='discord')
 def update_rsvp(self, session, match_id: int, player_id: int, new_response: str,
@@ -1455,7 +1479,7 @@ def monitor_rsvp_health(self, session) -> Dict[str, Any]:
             'timestamp': datetime.utcnow().isoformat()
         }
 
-        logger.info("RSVP health check completed (last 7 days only)", extra=result)
+        logger.info("RSVP health check completed (last 7 days only)", extra=_safe_log_extra(result))
         return result
 
     except SQLAlchemyError as e:
