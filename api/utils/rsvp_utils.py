@@ -237,8 +237,13 @@ async def update_embed_for_message(message_id: str, channel_id: str, match_id: i
             return False
 
         # Fetch team-specific RSVP data with retry logic
+        # The webui's celery task gives up on this whole endpoint after 10s, and
+        # get_team_id_for_message has already spent part of that budget. Two
+        # attempts at 4s each per callback keeps the worst case inside it; the
+        # old 3 attempts at 10/20/30s could not finish before the caller left,
+        # so every embed update failed with a client-side read timeout.
         rsvp_data = None
-        max_retries = 3
+        max_retries = 2
         
         for attempt in range(max_retries):
             try:
@@ -246,7 +251,7 @@ async def update_embed_for_message(message_id: str, channel_id: str, match_id: i
                 logger.debug(f"Fetching RSVP data (attempt {attempt+1}/{max_retries}) from {api_url}")
                 
                 async with aiohttp.ClientSession() as session:
-                    timeout = 10 * (attempt + 1)  # Increase timeout with each attempt
+                    timeout = 4  # fixed: the caller's budget does not grow with our retries
                     async with session.get(api_url, timeout=timeout) as response:
                         if response.status == 200:
                             rsvp_data = await response.json()
@@ -256,14 +261,14 @@ async def update_embed_for_message(message_id: str, channel_id: str, match_id: i
                             error_text = await response.text()
                             logger.error(f"Failed to fetch RSVP data (attempt {attempt+1}/{max_retries}): {error_text}")
                             if attempt < max_retries - 1:
-                                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                                await asyncio.sleep(0.5)
                                 continue
                             else:
                                 return False
             except Exception as e:
                 logger.error(f"Error fetching RSVP data (attempt {attempt+1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    await asyncio.sleep(0.5)
                     continue
                 else:
                     return False
@@ -280,7 +285,7 @@ async def update_embed_for_message(message_id: str, channel_id: str, match_id: i
                 logger.debug(f"Fetching match data (attempt {attempt+1}/{max_retries}) from {api_url}")
                 
                 async with aiohttp.ClientSession() as session:
-                    timeout = 10 * (attempt + 1)  # Increase timeout with each attempt
+                    timeout = 4  # fixed: the caller's budget does not grow with our retries
                     async with session.get(api_url, timeout=timeout) as response:
                         if response.status == 200:
                             match_data = await response.json()
@@ -290,7 +295,7 @@ async def update_embed_for_message(message_id: str, channel_id: str, match_id: i
                             error_text = await response.text()
                             logger.error(f"Failed to fetch match data (attempt {attempt+1}/{max_retries}): {error_text}")
                             if attempt < max_retries - 1:
-                                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                                await asyncio.sleep(0.5)
                                 continue
                             else:
                                 # We can still proceed without match data
@@ -299,7 +304,7 @@ async def update_embed_for_message(message_id: str, channel_id: str, match_id: i
             except Exception as e:
                 logger.error(f"Error fetching match data (attempt {attempt+1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    await asyncio.sleep(0.5)
                     continue
                 else:
                     # We can still proceed without match data

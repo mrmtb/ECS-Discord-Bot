@@ -16,6 +16,7 @@ This module contains models related to communication and notifications:
 
 import logging
 from datetime import datetime
+from enum import Enum
 from sqlalchemy import JSON, DateTime
 
 from app.core import db
@@ -278,6 +279,17 @@ class SMSLog(db.Model):
             SMSLog: The created log entry
         """
         try:
+            # message_type is a String(50) column. Callers routinely hand us an
+            # Enum member (e.g. notification_orchestrator's NotificationType),
+            # which psycopg2 cannot adapt -- and because this method swallows its
+            # own exceptions, that failure was invisible: no audit row, no cost
+            # tracking, and Twilio's status callback found nothing to update.
+            # Coerce here so no caller can reintroduce it.
+            if isinstance(message_type, Enum):
+                message_type = message_type.value
+            elif message_type is not None and not isinstance(message_type, str):
+                message_type = str(message_type)
+
             # Hash phone number for privacy
             phone_hash = None
             if phone_number:

@@ -8,6 +8,7 @@ Configure logging using dictConfig for production or simple console logging for 
 
 import logging
 import logging.config
+import os
 
 
 def init_logging(app):
@@ -34,8 +35,13 @@ def init_logging(app):
         app.logger.handlers = [console_handler]
         app.logger.setLevel(logging.DEBUG if app.debug else logging.INFO)
     else:
-        # Use full logging configuration for production
+        # Use full logging configuration for production.
+        # RotatingFileHandler creates the FILE but not its directory, and
+        # dictConfig raises FileNotFoundError if logs/ is missing -- which takes
+        # the whole app down at import time on a fresh checkout or a wiped
+        # volume. Creating it here is cheaper than an unbootable container.
         from app.log_config.logging_config import LOGGING_CONFIG
+        os.makedirs('logs', exist_ok=True)
         logging.config.dictConfig(LOGGING_CONFIG)
         app.logger.setLevel(logging.INFO if app.debug else logging.WARNING)
         if app.debug:

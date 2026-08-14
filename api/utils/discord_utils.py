@@ -80,24 +80,44 @@ def extract_channel_and_message_id(message_id_str):
         raise ValueError(f"Invalid message ID format: {message_id_str}")
 
 
-async def get_team_id_for_message(message_id: int, channel_id: int, max_retries=5) -> Tuple[Optional[int], Optional[int]]:
+async def get_team_id_for_message(message_id: int, channel_id: int, max_retries=2) -> Tuple[Optional[int], Optional[int]]:
     """
     Get team ID for a given message with improved error handling.
-    
+
     Makes API requests to retrieve match and team information associated with a Discord message.
-    
+
+    The old defaults -- 5 attempts, 5s sleeps and NO timeout on the request itself
+    -- meant the sleeps alone were 20s and a hung webui blocked forever. That
+    exceeded the /api/update_embed caller's budget under any circumstances, so
+    embed updates were abandoned client-side while this kept retrying against a
+    caller that had already left.
+
+    Sizing this is a trade-off between two callers with opposite needs:
+      - /api/update_embed (match_routes.py) has a celery caller waiting on it, so
+        the total must stay inside that caller's timeout.
+      - process_reaction / process_reaction_removal (ECS_Discord_Bot.py) are bare
+        create_task with NOBODY waiting. Returning (None, None) there DISCARDS the
+        user's RSVP and blacklists the message for 5 minutes, and the only
+        reconciliation sweep runs at bot startup. Being impatient here silently
+        loses real responses -- far worse than being slow.
+
+    8s per attempt, 2 attempts, 1s sleep => ~17s worst case, which the callers'
+    30s+ budgets accommodate. The happy path is a couple of indexed queries, so
+    this ceiling is only reached under genuine webui/PgBouncer contention.
+
     Args:
         message_id (int): Discord message ID
         channel_id (int): Discord channel ID
-        max_retries (int, optional): Maximum number of retry attempts. Defaults to 5.
-        
+        max_retries (int, optional): Maximum number of retry attempts. Defaults to 2.
+
     Returns:
         Tuple[Optional[int], Optional[int]]: (match_id, team_id) or (None, None) if not found
     """
     api_url = f"{WEBUI_API_URL}/get_match_and_team_id_from_message"
     params = {'message_id': str(message_id), 'channel_id': str(channel_id)}
+    timeout = aiohttp.ClientTimeout(total=8)
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         for attempt in range(max_retries):
             try:
                 async with session.get(api_url, params=params) as response:
@@ -108,7 +128,7 @@ async def get_team_id_for_message(message_id: int, channel_id: int, max_retries=
                         response_data = json.loads(response_text)
                     except json.JSONDecodeError:
                         logger.error(f"Invalid JSON response on attempt {attempt + 1}: {response_text}")
-                        await asyncio.sleep(5)
+                        await asyncio.sleep(1)
                         continue
 
                     # Check response format and status
@@ -118,7 +138,7 @@ async def get_team_id_for_message(message_id: int, channel_id: int, max_retries=
                         data = response_data.get('data')
                         if not data:
                             logger.error("Success response without data")
-                            await asyncio.sleep(5)
+                            await asyncio.sleep(1)
                             continue
 
                         match_id = data.get('match_id')
@@ -141,16 +161,16 @@ async def get_team_id_for_message(message_id: int, channel_id: int, max_retries=
                         logger.error(f"Unexpected response format on attempt {attempt + 1}")
 
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(5)
+                        await asyncio.sleep(1)
 
             except aiohttp.ClientError as e:
                 logger.error(f"Request failed on attempt {attempt + 1}: {str(e)}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(1)
             except Exception as e:
                 logger.error(f"Unexpected error on attempt {attempt + 1}: {str(e)}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(1)
 
     logger.error(f"Failed to get team ID after {max_retries} attempts")
     return None, None

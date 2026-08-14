@@ -250,30 +250,75 @@ def cleanup_old_scheduled_messages(self, session):
         
         deleted_count = 0
         
-        # Delete messages older than 9 days
-        old_messages = session.query(ScheduledMessage).filter(
-            ScheduledMessage.created_at < cutoff_date
+        # Delete messages older than 9 days -- but ONLY for matches that have
+        # already been played.
+        #
+        # Age alone is the wrong test and it took the RSVP embeds down every week.
+        # The row is created up to 14 days ahead of kickoff (tasks_rsvp.py:1136),
+        # the embed is posted ~6 days before, and this task then deleted the row
+        # 9 days after CREATION -- i.e. two or three days BEFORE the match, while
+        # the Discord message was still live and being RSVP'd to.
+        #
+        # That row is the only thing translating a Discord message_id back into a
+        # (match, team). Losing it kills BOTH directions at once: the embed can no
+        # longer be updated, and reactions/buttons on it silently stop recording.
+        # Nothing rewrites the row, so it never recovers.
+        #
+        # Joining Match and requiring the match to be in the past keeps the
+        # original intent (don't accumulate dead rows) without ever touching a
+        # fixture that has not happened yet. ECS FC rows carry match_id IS NULL
+        # and are skipped by this join; they get their own sweep further down.
+        old_messages = session.query(ScheduledMessage).join(
+            Match, ScheduledMessage.match_id == Match.id
+        ).filter(
+            ScheduledMessage.created_at < cutoff_date,
+            Match.date < current_time.date()
         ).all()
-        
+
         for msg in old_messages:
             session.delete(msg)
             deleted_count += 1
         
-        # Delete messages in failed state for over 7 days  
-        failed_messages = session.query(ScheduledMessage).filter(
+        # Delete messages in failed state for over 7 days. Same past-match guard
+        # as above: a row can be marked FAILED after a partial post (one side up,
+        # the other not), and deleting it would strand the side that did post.
+        failed_messages = session.query(ScheduledMessage).join(
+            Match, ScheduledMessage.match_id == Match.id
+        ).filter(
             ScheduledMessage.status.in_(['FAILED', 'ERROR']),
-            ScheduledMessage.updated_at < failed_cutoff
+            ScheduledMessage.updated_at < failed_cutoff,
+            Match.date < current_time.date()
         ).all()
         
         for msg in failed_messages:
             session.delete(msg)
             deleted_count += 1
         
+        # ECS FC rows carry match_id IS NULL (app/ecs_fc_api.py:567,
+        # app/ecs_fc_schedule.py:579) so the Match joins above skip them
+        # entirely, and the orphan sweep below explicitly selects only
+        # match_id IS NOT NULL. Without this branch nothing would ever delete
+        # them and the table would grow without bound.
+        #
+        # There is no match row to date-check, so fall back to age alone. These
+        # rows are not the ones that broke RSVPs -- ECS FC resolves its Discord
+        # message via EcsFcMatch.discord_message_id, not via this table -- but
+        # keep the window generous anyway.
+        ecs_fc_cutoff = current_time - timedelta(days=30)
+        ecs_fc_messages = session.query(ScheduledMessage).filter(
+            ScheduledMessage.match_id.is_(None),
+            ScheduledMessage.created_at < ecs_fc_cutoff
+        ).all()
+
+        for msg in ecs_fc_messages:
+            session.delete(msg)
+            deleted_count += 1
+
         # Delete messages referencing non-existent matches
         orphaned_messages = session.query(ScheduledMessage).filter(
             ScheduledMessage.match_id.isnot(None)
         ).all()
-        
+
         for msg in orphaned_messages:
             match_exists = session.query(Match).filter_by(id=msg.match_id).first()
             if not match_exists:

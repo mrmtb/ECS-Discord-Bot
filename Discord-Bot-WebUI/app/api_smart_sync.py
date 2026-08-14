@@ -126,8 +126,21 @@ def get_matches_with_rsvp_activity_since():
         
         # Get matches that had RSVP messages posted since the timestamp
         # This is the key query - it finds matches where Discord bot might have missed RSVPs
+        #
+        # The UNION arm is load-bearing, not defensive. The first arm INNER JOINs
+        # scheduled_message, and this endpoint feeds the Smart RSVP Sync Manager,
+        # which is the PRIMARY post-restart recovery sweep. A match whose
+        # scheduled_message row was deleted while its Discord embed is still live
+        # is invisible to that join -- so the recovery pass skipped precisely the
+        # matches that needed recovering.
+        #
+        # matches.home_team_message_id is written in the same transaction as the
+        # scheduled_message row (availability_api_helpers.py:115-124) and is never
+        # nulled, so it identifies "this match has a live embed" independently.
+        # sent_at is unknown for those, so fall back to the match date, which the
+        # bot only uses for ordering/reporting.
         query = text("""
-            SELECT DISTINCT 
+            SELECT DISTINCT
                 m.id as match_id,
                 m.date as match_date,
                 m.home_team_id,
@@ -142,7 +155,24 @@ def get_matches_with_rsvp_activity_since():
                 AND m.date >= :min_date       -- Not too old
                 AND m.date <= :max_date       -- Not too far future
             GROUP BY m.id, m.date, m.home_team_id, m.away_team_id, sm.sent_at
-            ORDER BY sm.sent_at DESC
+            UNION
+            SELECT DISTINCT
+                m.id as match_id,
+                m.date as match_date,
+                m.home_team_id,
+                m.away_team_id,
+                m.date::timestamp as rsvp_message_posted_at,
+                1 as message_count
+            FROM matches m
+            WHERE m.home_team_message_id IS NOT NULL
+                AND m.date >= :min_date
+                AND m.date <= :max_date
+                AND NOT EXISTS (
+                    SELECT 1 FROM scheduled_message sm2
+                    WHERE sm2.match_id = m.id
+                      AND sm2.home_message_id IS NOT NULL
+                )
+            ORDER BY rsvp_message_posted_at DESC
             LIMIT 50
         """)
         

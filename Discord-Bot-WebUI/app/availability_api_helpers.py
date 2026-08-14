@@ -359,11 +359,49 @@ def get_message_data(match_id, session=None):
         session = g.db_session
 
     try:
+        # Prefer a row that actually carries message ids. match_id has no unique
+        # constraint, and several admin paths (bulk_schedule_messages,
+        # schedule_season) insert a fresh PENDING row with all four ids NULL for a
+        # match whose real row was deleted -- exactly what an admin does when they
+        # notice RSVPs are broken. An unordered .first() could then pick the empty
+        # row and mask the usable one.
         scheduled_message = (session.query(ScheduledMessage)
                              .join(Match)
                              .filter(ScheduledMessage.match_id == match_id)
+                             .order_by(ScheduledMessage.home_message_id.isnot(None).desc(),
+                                       ScheduledMessage.id.desc())
                              .first())
-        if not scheduled_message:
+        # Gate the fallback on the ids being USABLE, not merely on the row
+        # existing: an empty PENDING row would otherwise take the branch below,
+        # fail the all(data.values()) check and return None without ever
+        # consulting matches.* -- leaving the fallback unreachable for precisely
+        # the matches it was written to rescue.
+        if not scheduled_message or not (scheduled_message.home_message_id
+                                         and scheduled_message.away_message_id
+                                         and scheduled_message.home_channel_id
+                                         and scheduled_message.away_channel_id):
+            # Fall back to the ids on the Match row before giving up.
+            #
+            # store_message_ids_for_match writes both stores from the same values
+            # (see below in this module), but only ScheduledMessage was read back
+            # here -- so once that row was deleted while the Discord message was
+            # still live, this returned None, /get_message_ids/<id> 404'd, and the
+            # post-click embed redraw silently did nothing. To a user that is
+            # "the buttons don't work".
+            match = session.query(Match).filter(Match.id == match_id).first()
+            if match and match.home_team_message_id and match.away_team_message_id:
+                logger.info(
+                    f"No scheduled message row for match_id {match_id}; resolved "
+                    f"message ids from matches.* instead"
+                )
+                return {
+                    'home_message_id': match.home_team_message_id,
+                    'home_channel_id': match.home_team_channel_id,
+                    'home_team_id': match.home_team_id,
+                    'away_message_id': match.away_team_message_id,
+                    'away_channel_id': match.away_team_channel_id,
+                    'away_team_id': match.away_team_id
+                }
             logger.debug(f"No scheduled message found for match_id {match_id}")
             return None
 

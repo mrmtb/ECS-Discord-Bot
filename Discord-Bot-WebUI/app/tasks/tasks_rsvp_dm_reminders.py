@@ -112,6 +112,27 @@ def _finish_run(session, run_id, results):
     )
 
 
+def _commit_progress(session, what):
+    """Durably record the sends made so far, then start a fresh transaction.
+
+    Called between outbound sends. Failure here is not recoverable in-loop: the
+    session is left in a rolled-back state, so we roll back explicitly (otherwise
+    managed_session's own commit raises PendingRollbackError on the way out and
+    buries the real error) and re-raise so the task retries. Everything committed
+    before this point survives, which is the whole reason for committing early --
+    the retry will not re-contact anyone already logged as 'sent'.
+    """
+    try:
+        session.commit()
+    except Exception:
+        logger.error(f"Failed to commit reminder progress after {what}", exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
+
+
 @celery_task(max_retries=2, default_retry_delay=300)
 def send_rsvp_dm_reminders(self, session, options=None, run_id=None):
     """
@@ -281,7 +302,22 @@ def send_rsvp_dm_reminders(self, session, options=None, run_id=None):
             else:
                 results['skipped'] += 1
 
-        # Send orchestrator notifications per match (tiered, discord excluded)
+        # From here on every iteration commits its own RsvpDmReminderLog rows
+        # before moving to the next send. Two reasons, both load-bearing:
+        #
+        # 1. Re-send safety. The repeat cap counts 'sent' rows, so those rows ARE
+        #    the record that somebody was already contacted. Batching them into a
+        #    single commit at task end meant one failed commit discarded the
+        #    entire record while Twilio/Discord had already delivered -- the next
+        #    run then saw everyone as un-reminded and texted them all again.
+        #    Committing per send bounds the loss to the one in flight.
+        #
+        # 2. Transaction hold time. Each send makes an outbound HTTP call (Twilio,
+        #    then the bot API). Holding a transaction open across those pinned a
+        #    PgBouncer server connection for the whole fan-out, and Postgres
+        #    eventually closed it mid-task ("server closed the connection
+        #    unexpectedly" -> PendingRollbackError). Committing between sends
+        #    releases the connection while we are out on the network.
         for key, info in match_users.items():
             m = info['match']
             days_until = _days_until_match(m, today)
@@ -314,6 +350,12 @@ def send_rsvp_dm_reminders(self, session, options=None, run_id=None):
                 logger.error(f"Orchestrator notification failed for match {key}: {e}")
                 results['failed'] += len(info['user_ids'])
 
+            # Outside the try on purpose: a commit failure here is NOT a send
+            # failure (the notification already went out) and must not be
+            # swallowed and counted as one. Committing per match also closes the
+            # transaction between sends -- see the note above the send loop.
+            _commit_progress(session, f"orchestrator match {key}")
+
         # Step 2: Custom Discord DMs with interactive buttons
         if bot_api_url and discord_dm_players:
             for data in discord_dm_players:
@@ -335,6 +377,7 @@ def send_rsvp_dm_reminders(self, session, options=None, run_id=None):
                         error_message=error,
                         batch_id=batch_id
                     ))
+                _commit_progress(session, f"discord DM to player {player.id}")
 
                 if status == 'sent':
                     results['discord_dm'] += 1

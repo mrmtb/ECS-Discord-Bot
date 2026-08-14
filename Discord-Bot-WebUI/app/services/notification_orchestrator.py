@@ -1189,8 +1189,14 @@ class NotificationOrchestrator:
             # Add opt-out language
             sms_message += opt_out_text
 
-            # Map notification type to SMS message type for audit logging
-            message_type = payload.notification_type or 'notification'
+            # Map notification type to SMS message type for audit logging.
+            # sms_logs.message_type is a String(50) -- passing the enum object
+            # straight through made psycopg2 raise "can't adapt type
+            # 'NotificationType'" on every insert, so the audit row was silently
+            # dropped (log_sms swallows the error) and Twilio's status callback,
+            # which looks the row up by twilio_sid, had nothing to update.
+            nt = payload.notification_type
+            message_type = nt.value if isinstance(nt, NotificationType) else (nt or 'notification')
 
             success, result = send_sms(
                 phone, sms_message, user_id=user_id,

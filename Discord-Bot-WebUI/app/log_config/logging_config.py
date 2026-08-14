@@ -107,6 +107,59 @@ LOGGING_CONFIG = {
             'maxBytes': 26214400,   # 25MB
             'backupCount': 3,
             'encoding': 'utf-8'
+        },
+        # Console at WARNING, for loggers that now keep their INFO detail in a
+        # dedicated file. Without this, attaching 'console' to a logger raised to
+        # INFO would dump that detail into stdout/docker logs as well.
+        'console_warning': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'level': 'WARNING',
+        },
+        # Celery task execution. These loggers were console-only, so every task
+        # failure -- the SMS/RSVP/Discord errors that actually matter -- existed
+        # solely in `docker logs`, unrotated and unsearchable after a restart.
+        'celery_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'logs/celery_tasks.log',
+            'formatter': 'detailed',
+            'level': 'INFO',
+            'maxBytes': 26214400,   # 25MB
+            'backupCount': 3,
+            'encoding': 'utf-8'
+        },
+        # Everything that talks to the Discord bot: role sync, embed updates,
+        # the bot REST client.
+        'discord_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'logs/discord.log',
+            'formatter': 'detailed',
+            'level': 'INFO',
+            'maxBytes': 26214400,   # 25MB
+            'backupCount': 3,
+            'encoding': 'utf-8'
+        },
+        # The RSVP pipeline end to end: scheduling, posting, embed updates,
+        # inbound Discord/mobile responses, reminders.
+        'rsvp_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'logs/rsvp.log',
+            'formatter': 'detailed',
+            'level': 'INFO',
+            'maxBytes': 26214400,   # 25MB
+            'backupCount': 3,
+            'encoding': 'utf-8'
+        },
+        # Outbound member comms: SMS/Twilio, the notification orchestrator,
+        # email campaigns. Cost and delivery questions get answered here.
+        'notifications_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'logs/notifications.log',
+            'formatter': 'detailed',
+            'level': 'INFO',
+            'maxBytes': 26214400,   # 25MB
+            'backupCount': 3,
+            'encoding': 'utf-8'
         }
     },
 
@@ -152,9 +205,29 @@ LOGGING_CONFIG = {
             'level': 'ERROR',       # Only log serious errors
             'propagate': False
         },
+        # Was ['console', 'requests_file'] -- but requests_file is an ERROR-level
+        # handler, so every INFO line this logger emitted (including "SMS sent
+        # successfully to ... with ID SM...", the only durable record of a send
+        # once the sms_logs insert broke) was dropped on the floor and survived
+        # on stdout alone.
         'app.sms_helpers': {
-            'handlers': ['console', 'requests_file'],
+            'handlers': ['console_warning', 'notifications_file', 'errors_file'],
             'level': 'INFO',        # Keep SMS at INFO for debugging message issues
+            'propagate': False
+        },
+        'app.services.notification_orchestrator': {
+            'handlers': ['console_warning', 'notifications_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.services.notification_service': {
+            'handlers': ['console_warning', 'notifications_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.services.email_broadcast_service': {
+            'handlers': ['console_warning', 'notifications_file', 'errors_file'],
+            'level': 'INFO',
             'propagate': False
         },
         'app.auth': {
@@ -182,9 +255,74 @@ LOGGING_CONFIG = {
             'level': 'ERROR',       # Only HTTP errors
             'propagate': False
         },
+        # Celery tasks. Previously console-only at ERROR, which meant every task
+        # failure lived exclusively in `docker logs` -- unrotated, unsearchable,
+        # and gone on restart. The three production faults triaged on 2026-08-13
+        # (SMS enum adapt error, RSVP embed timeouts, reminder rollback) were all
+        # invisible in every log FILE on the box. Detail now lands in
+        # celery_tasks.log; WARNING+ still reaches stdout and errors.log.
         'app.tasks': {
-            'handlers': ['console'],
-            'level': 'ERROR',       # Only serious task errors
+            'handlers': ['console_warning', 'celery_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        # More specific than 'app.tasks' above, so these win for their modules.
+        # Split out because "why didn't the RSVP embed update?" and "why didn't
+        # this player get their Discord role?" are the two questions actually
+        # asked, and interleaving them with every other task made both harder.
+        'app.tasks.tasks_rsvp': {
+            'handlers': ['console_warning', 'rsvp_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.tasks.tasks_rsvp_ecs': {
+            'handlers': ['console_warning', 'rsvp_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.tasks.tasks_rsvp_dm_reminders': {
+            'handlers': ['console_warning', 'rsvp_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.tasks.tasks_ecs_fc_rsvp_helpers': {
+            'handlers': ['console_warning', 'rsvp_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.availability_api': {
+            'handlers': ['console_warning', 'rsvp_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.sockets.rsvp': {
+            'handlers': ['console_warning', 'rsvp_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.tasks.tasks_discord': {
+            'handlers': ['console_warning', 'discord_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.tasks.discord_cleanup': {
+            'handlers': ['console_warning', 'discord_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.utils.discord_request_handler': {
+            'handlers': ['console_warning', 'discord_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.utils.sync_discord_client': {
+            'handlers': ['console_warning', 'discord_file', 'errors_file'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app.utils.discord_helpers': {
+            'handlers': ['console_warning', 'discord_file', 'errors_file'],
+            'level': 'INFO',
             'propagate': False
         },
         'app.lifecycle': {

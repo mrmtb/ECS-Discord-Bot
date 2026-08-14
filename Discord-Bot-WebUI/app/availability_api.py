@@ -911,7 +911,9 @@ def get_match_and_team_id_from_message():
         # return 404 immediately rather than falling back to a Celery task; a
         # blocking task.get() here holds a web worker (and its DB connection)
         # long enough to starve the pool when orphaned messages are retried.
-        from app.models import ScheduledMessage
+        # Match is imported at module scope too; naming it here as well keeps the
+        # local-import shadowing footgun documented at line ~467 from biting.
+        from app.models import ScheduledMessage, Match
         from app.models_ecs import EcsFcMatch
         from sqlalchemy import or_
 
@@ -946,6 +948,54 @@ def get_match_and_team_id_from_message():
                     'status': 'success',
                     'data': {
                         'match_id': scheduled_msg.match_id,
+                        'team_id': team_id
+                    }
+                }), 200
+
+            # Fallback: resolve straight off the Match row.
+            #
+            # store_message_ids_for_match (availability_api_helpers.py:115-124)
+            # writes the SAME ids to both ScheduledMessage and matches.*, in one
+            # transaction. Only ScheduledMessage was ever read back, so anything
+            # that deleted that row -- the maintenance sweep, an admin action --
+            # permanently unresolved a Discord message that is still sitting in
+            # the channel, killing embed updates AND reactions/buttons with no
+            # self-healing path. The authoritative ids were on matches.* the whole
+            # time.
+            #
+            # Reading them here makes the lookup survive the loss of the
+            # ScheduledMessage row, which is what actually revives the embeds
+            # already broken in production.
+            # Bounded to recent/upcoming matches, matching get_scheduled_messages.
+            # matches.* is never nulled, so without a bound this would resolve a
+            # message from any past season forever -- reviving RSVP recording on
+            # embeds that the old (accidental) cap of "the ScheduledMessage row
+            # eventually got deleted" had retired.
+            resolve_cutoff = datetime.utcnow().date() - timedelta(days=14)
+            match_row = session_db.query(Match).filter(
+                Match.date >= resolve_cutoff,
+                or_(
+                    (Match.home_team_channel_id == channel_id) & (Match.home_team_message_id == message_id),
+                    (Match.away_team_channel_id == channel_id) & (Match.away_team_message_id == message_id)
+                )
+            ).first()
+
+            if match_row:
+                if (match_row.home_team_channel_id == channel_id
+                        and match_row.home_team_message_id == message_id):
+                    team_id = match_row.home_team_id
+                else:
+                    team_id = match_row.away_team_id
+
+                logger.info(
+                    f"🟢 [AVAILABILITY_API] Resolved match_id={match_row.id}, team_id={team_id} "
+                    f"from matches.* (no ScheduledMessage row -- it was deleted while the "
+                    f"Discord message is still live)"
+                )
+                return jsonify({
+                    'status': 'success',
+                    'data': {
+                        'match_id': match_row.id,
                         'team_id': team_id
                     }
                 }), 200
@@ -1132,11 +1182,57 @@ def get_scheduled_messages():
                 'message_type': 'ecs_fc'
             } for m in ecs_fc_matches]
 
-            # Debug logging
-            logger.info(f"Found {len(pub_league_data)} pub league messages and {len(ecs_fc_data)} ECS FC matches with Discord messages")
+            # Matches whose embed is live in Discord but whose ScheduledMessage
+            # row is gone. The bot builds its managed-message set from this
+            # endpoint, and full_rsvp_sync only sweeps messages in that set --
+            # so without this branch the exact messages broken by the missing
+            # row are also invisible to the recovery sweep that would fix them.
+            #
+            # matches.* carries the same ids (written by
+            # store_message_ids_for_match in the same transaction as the
+            # ScheduledMessage row), so these are authoritative.
+            # Only treat a match as covered when its row actually carries usable
+            # ids. An empty PENDING row (re-created by an admin bulk-schedule
+            # after the real row was deleted) would otherwise mask the match and
+            # keep it out of the recovery set.
+            already_covered = {
+                m['match_id'] for m in pub_league_data
+                if m['home_message_id'] and m['away_message_id']
+            }
+            orphan_matches = (
+                session_db.query(
+                    Match.id, Match.home_team_id, Match.away_team_id, Match.date,
+                    Match.home_team_message_id, Match.home_team_channel_id,
+                    Match.away_team_message_id, Match.away_team_channel_id
+                )
+                .filter(
+                    Match.date >= cutoff_date,
+                    Match.home_team_message_id.isnot(None),
+                    Match.away_team_message_id.isnot(None)
+                )
+                .all()
+            )
+            orphan_data = [{
+                'match_id': m.id,
+                'home_channel_id': m.home_team_channel_id,
+                'home_message_id': m.home_team_message_id,
+                'away_channel_id': m.away_team_channel_id,
+                'away_message_id': m.away_team_message_id,
+                'home_team_id': m.home_team_id,
+                'away_team_id': m.away_team_id,
+                'match_date': m.date.isoformat() if m.date else None,
+                'message_type': 'pub_league'
+            } for m in orphan_matches if m.id not in already_covered]
 
-        # Combine both types of messages
-        all_messages = pub_league_data + ecs_fc_data
+            # Debug logging
+            logger.info(
+                f"Found {len(pub_league_data)} pub league messages, {len(orphan_data)} recovered "
+                f"from matches.* (no ScheduledMessage row) and {len(ecs_fc_data)} ECS FC matches "
+                f"with Discord messages"
+            )
+
+        # Combine all types of messages
+        all_messages = pub_league_data + orphan_data + ecs_fc_data
 
         return jsonify(all_messages), 200
 
@@ -1240,14 +1336,22 @@ def get_message_info(message_id):
     logger.info(f"🔵 [AVAILABILITY_API] get_message_info called for message ID: {message_id}")
     
     try:
-        # Try cache first to reduce database connections
-        from app.cache_helpers import get_cached_message_info
-        cached_result = get_cached_message_info(message_id)
-        if cached_result:
-            logger.info(f"🔵 [AVAILABILITY_API] Found cached message info for {message_id}: {cached_result}")
-            return jsonify(cached_result)
-        
-        # Cache miss - continue with database lookup
+        # The get_cached_message_info() short-circuit that used to sit here was
+        # REMOVED, not disabled, because it returned wrong data for every
+        # pub-league message (app/cache_helpers.py:56-89):
+        #   - channel_id  -> os.getenv('MATCH_CHANNEL_ID'), the MLS match channel
+        #   - team_id     -> os.getenv('TEAM_ID', '9726'), Seattle Sounders
+        #   - is_recent_match -> hardcoded False, under a "# Calculate based on
+        #     your logic" placeholder comment
+        # and this endpoint returned it verbatim on any hit.
+        #
+        # The bot's full_rsvp_sync skips any message whose payload says
+        # is_recent_match is False (ECS_Discord_Bot.py:658), so the RSVP
+        # reconciliation sweep silently did nothing for every healthy match, and
+        # would have reconciled against the wrong team if it had run. The real
+        # query below is indexed on home_message_id/away_message_id
+        # (models/communication.py:70-72) and cheap enough not to need a cache.
+        #
         # Convert the message ID to a string for lookups (database columns are VARCHAR)
         message_id_str = str(message_id)
         
@@ -1259,23 +1363,49 @@ def get_message_info(message_id):
                 (ScheduledMessage.away_message_id == message_id_str)
             ).first()
             
-            if not scheduled_msg:
-                logger.info(f"🟡 [AVAILABILITY_API] No scheduled message found for message ID {message_id}")
-                return jsonify({'error': 'Message not found'}), 404
-                
-            # Determine if this is a home or away message
-            is_home = scheduled_msg.home_message_id == message_id
-            
-            # Get the associated match
-            match = scheduled_msg.match
-            if not match:
-                logger.warning(f"🟡 [AVAILABILITY_API] No match associated with scheduled message {scheduled_msg.id}")
-                return jsonify({'error': 'No match associated with this message'}), 404
-                
-            # Get the appropriate team ID and channel ID
-            team_id = match.home_team_id if is_home else match.away_team_id
-            channel_id = scheduled_msg.home_channel_id if is_home else scheduled_msg.away_channel_id
-            
+            if scheduled_msg:
+                # Determine if this is a home or away message
+                is_home = scheduled_msg.home_message_id == message_id_str
+
+                # Get the associated match
+                match = scheduled_msg.match
+                if not match:
+                    logger.warning(f"🟡 [AVAILABILITY_API] No match associated with scheduled message {scheduled_msg.id}")
+                    return jsonify({'error': 'No match associated with this message'}), 404
+
+                # Get the appropriate team ID and channel ID
+                team_id = match.home_team_id if is_home else match.away_team_id
+                channel_id = scheduled_msg.home_channel_id if is_home else scheduled_msg.away_channel_id
+            else:
+                # Fall back to matches.*, which carries the same ids (written by
+                # store_message_ids_for_match in the same transaction).
+                #
+                # This endpoint drives the bot's full_rsvp_sync, which is the ONLY
+                # thing that reads emoji reactions back OUT of Discord and into
+                # Flask. Without this fallback the recovery path is broken by the
+                # very same missing row that caused the outage -- so reactions
+                # people left while the embed was dead could never be recovered.
+                from sqlalchemy import or_
+                match = session_db.query(Match).filter(
+                    or_(
+                        Match.home_team_message_id == message_id_str,
+                        Match.away_team_message_id == message_id_str
+                    )
+                ).first()
+
+                if not match:
+                    logger.info(f"🟡 [AVAILABILITY_API] No scheduled message found for message ID {message_id}")
+                    return jsonify({'error': 'Message not found'}), 404
+
+                is_home = match.home_team_message_id == message_id_str
+                team_id = match.home_team_id if is_home else match.away_team_id
+                channel_id = match.home_team_channel_id if is_home else match.away_team_channel_id
+                logger.info(
+                    f"🟢 [AVAILABILITY_API] Resolved message {message_id} from matches.* "
+                    f"(no ScheduledMessage row)"
+                )
+
+
             # Check if match is recent (within last 7 days) to avoid processing old matches
             week_ago = datetime.utcnow().date() - timedelta(days=7) 
             is_recent_match = match.date >= week_ago

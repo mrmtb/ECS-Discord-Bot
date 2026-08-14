@@ -961,6 +961,15 @@ def notify_discord_of_rsvp_change_task(self, session, match_id: int) -> Dict[str
             update_url = f"{bot_base_url}/api/update_embed"
             success_count = 0
             errors = []
+
+            # Close the transaction before going out to the network. Everything
+            # below needs only the plain values already read into updates_to_make,
+            # and the bot can legitimately take tens of seconds; holding a
+            # PgBouncer server connection open for that pins a scarce resource and
+            # invites "server closed the connection unexpectedly" mid-task.
+            # expire_on_commit=False, so `match` stays usable afterwards.
+            session.commit()
+
             for info in updates_to_make:
                 try:
                     payload = {
@@ -969,7 +978,21 @@ def notify_discord_of_rsvp_change_task(self, session, match_id: int) -> Dict[str
                         'message_id': int(info['message_id']),
                         'trigger_source': 'notify_discord_of_rsvp_change_task',
                     }
-                    resp = _requests.post(update_url, json=payload, timeout=10)
+                    # 45s, not 10s. Budget arithmetic for the bot's
+                    # /api/update_embed, which calls back into THIS app before it
+                    # can edit anything:
+                    #   get_team_id_for_message   2 x 8s + 1s sleep  = 17s
+                    #   get_match_rsvps           2 x 4s + 0.5s      =  8.5s
+                    #   get_match_request         2 x 4s + 0.5s      =  8.5s
+                    #   2x fetch_message + edit                      ~  3s
+                    #                                          total ~ 37s
+                    # The old 10s was shorter than the callee's minimum work, so
+                    # the update was abandoned client-side every time while the
+                    # bot was still working -- and because the state hash is only
+                    # written on success, the next RSVP change failed identically,
+                    # forever. The happy path is ~2s; this ceiling only matters
+                    # under contention.
+                    resp = _requests.post(update_url, json=payload, timeout=45)
                     if resp.status_code == 200 and resp.json().get('success'):
                         success_count += 1
                     else:
@@ -1760,6 +1783,19 @@ def update_discord_embed_task(self, session, match_id: int, player_id: int, avai
 
         success_count = 0
         errors = []
+
+        # Same rule as notify_discord_of_rsvp_change_task: close the transaction
+        # before the network calls. This one matters MORE, not less -- it is
+        # queued from app/sockets/rsvp.py on every web/mobile RSVP change with no
+        # per-match rate limit, and pgbouncer-celery runs with
+        # IDLE_TRANSACTION_TIMEOUT=30 (docker-compose.yml:126). Holding the read
+        # transaction opened at `session.query(Match).get(...)` across two 30s
+        # posts sails past that ceiling, so PgBouncer kills the connection and the
+        # task dies at managed_session's final commit -- after the embeds were
+        # already posted. Nothing below touches the session, and
+        # expire_on_commit=False keeps `match` usable.
+        session.commit()
+
         for update_info in updates_to_make:
             try:
                 payload = {
@@ -1775,15 +1811,39 @@ def update_discord_embed_task(self, session, match_id: int, player_id: int, avai
                     }
                 }
 
-                # Make call to Discord bot with reasonable timeout
-                response = requests.post(update_url, json=payload, timeout=10)
+                # 45s, matching notify_discord_of_rsvp_change_task -- see the
+                # budget arithmetic there. /api/update_embed calls back into this
+                # app three times before it can edit, so a 10s budget expired
+                # while the bot was still working.
+                response = requests.post(update_url, json=payload, timeout=45)
 
+                # The bot's /api/update_embed returns HTTP 200 for EVERY logical
+                # failure -- channel missing, message deleted, no permission,
+                # "Could not determine team ID" -- with {"success": false} in the
+                # body (api/routes/match_routes.py:1223-1271). Checking only the
+                # status code counted all of those as successes, which is why the
+                # month-long embed outage reported "updated" the whole time.
+                # Mirrors the check in notify_discord_of_rsvp_change_task.
+                ok = False
+                detail = f"HTTP {response.status_code}"
                 if response.status_code == 200:
+                    try:
+                        body = response.json()
+                        ok = bool(body.get('success'))
+                        if not ok:
+                            detail = body.get('error') or 'bot reported success=false'
+                    except ValueError:
+                        detail = 'bot returned a non-JSON 200'
+
+                if ok:
                     success_count += 1
                     logger.debug(f"Discord embed updated for {update_info['team_type']} team (match {match_id})")
                 else:
-                    errors.append(f"{update_info['team_type']}: HTTP {response.status_code}")
-                    logger.warning(f"Discord embed update failed for {update_info['team_type']} team: {response.status_code}")
+                    errors.append(f"{update_info['team_type']}: {detail}")
+                    logger.warning(
+                        f"Discord embed update failed for {update_info['team_type']} team "
+                        f"(match {match_id}): {detail}"
+                    )
 
             except requests.exceptions.Timeout:
                 errors.append(f"{update_info['team_type']}: timeout")
