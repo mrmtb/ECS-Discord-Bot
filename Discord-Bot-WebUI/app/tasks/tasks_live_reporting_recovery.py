@@ -79,14 +79,14 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
             recovered_reporting = 0
             expired_tasks = 0
 
-            logger.info("=" * 70)
-            logger.info(f"🔍 Starting task recovery at {now.isoformat()}")
-            logger.info("=" * 70)
+            logger.debug("=" * 70)
+            logger.debug(f"🔍 Starting task recovery at {now.isoformat()}")
+            logger.debug("=" * 70)
 
             # ===================================================================
             # STEP 1: Recover thread creation tasks that are overdue
             # ===================================================================
-            logger.info("\n📋 Step 1: Checking for missing thread creations...")
+            logger.debug("\n📋 Step 1: Checking for missing thread creations...")
 
             pending_thread_tasks = ScheduledTask.get_pending_tasks(
                 session,
@@ -94,7 +94,7 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
                 now=now
             )
 
-            logger.info(f"Found {len(pending_thread_tasks)} overdue thread creation tasks")
+            logger.debug(f"Found {len(pending_thread_tasks)} overdue thread creation tasks")
 
             for task in pending_thread_tasks:
                 try:
@@ -134,7 +134,7 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
             # ===================================================================
             # STEP 2: Recover live reporting tasks that are overdue
             # ===================================================================
-            logger.info("\n📺 Step 2: Checking for missing live reporting sessions...")
+            logger.debug("\n📺 Step 2: Checking for missing live reporting sessions...")
 
             pending_reporting_tasks = ScheduledTask.get_pending_tasks(
                 session,
@@ -142,7 +142,7 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
                 now=now
             )
 
-            logger.info(f"Found {len(pending_reporting_tasks)} overdue live reporting tasks")
+            logger.debug(f"Found {len(pending_reporting_tasks)} overdue live reporting tasks")
 
             for task in pending_reporting_tasks:
                 try:
@@ -196,7 +196,7 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
             # ===================================================================
             # STEP 3: Clean up very old expired tasks (>7 days overdue)
             # ===================================================================
-            logger.info("\n🧹 Step 3: Cleaning up very old tasks...")
+            logger.debug("\n🧹 Step 3: Cleaning up very old tasks...")
 
             expiry_cutoff = now - timedelta(days=7)
             very_old_tasks = session.query(ScheduledTask).filter(
@@ -204,7 +204,7 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
                 ScheduledTask.scheduled_time < expiry_cutoff
             ).all()
 
-            logger.info(f"Found {len(very_old_tasks)} very old tasks to expire")
+            logger.debug(f"Found {len(very_old_tasks)} very old tasks to expire")
 
             for task in very_old_tasks:
                 task.mark_expired()
@@ -214,7 +214,7 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
             # ===================================================================
             # STEP 4: Mark old "not_started" matches as completed
             # ===================================================================
-            logger.info("\n🏁 Step 4: Marking old not_started matches as completed...")
+            logger.debug("\n🏁 Step 4: Marking old not_started matches as completed...")
 
             completed_old_matches = 0
             old_match_cutoff = now - timedelta(hours=6)
@@ -224,7 +224,7 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
                 MLSMatch.date_time < old_match_cutoff
             ).all()
 
-            logger.info(f"Found {len(old_not_started_matches)} old not_started matches")
+            logger.debug(f"Found {len(old_not_started_matches)} old not_started matches")
 
             for match in old_not_started_matches:
                 match.live_reporting_status = MatchStatus.COMPLETED
@@ -237,14 +237,26 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
             # ===================================================================
             # Summary
             # ===================================================================
-            logger.info("\n" + "=" * 70)
-            logger.info("📊 Recovery Summary")
-            logger.info("=" * 70)
-            logger.info(f"   Threads recovered: {recovered_threads}")
-            logger.info(f"   Reporting recovered: {recovered_reporting}")
-            logger.info(f"   Tasks expired: {expired_tasks}")
-            logger.info(f"   Old matches marked completed: {completed_old_matches}")
-            logger.info("=" * 70)
+            # This task runs every 5 minutes and recovers nothing the vast
+            # majority of the time. It used to print a 20-line banner on every
+            # run regardless -- ~5,800 lines a day of zeros, which is most of
+            # celery_tasks.log and drowns the runs that DID do something.
+            #
+            # Say one line when there is nothing to report; stay loud (and at
+            # WARNING, because recovery firing means something upstream failed)
+            # only when work was actually done. Full per-step detail is still
+            # available at DEBUG.
+            recovered_total = (recovered_threads + recovered_reporting
+                               + expired_tasks + completed_old_matches)
+            if recovered_total:
+                logger.warning(
+                    f"Task recovery ACTED: {recovered_threads} threads, "
+                    f"{recovered_reporting} reporting, {expired_tasks} expired, "
+                    f"{completed_old_matches} old matches completed "
+                    f"-- something upstream failed to schedule these"
+                )
+            else:
+                logger.info("Task recovery: nothing to recover")
 
             return {
                 'success': True,

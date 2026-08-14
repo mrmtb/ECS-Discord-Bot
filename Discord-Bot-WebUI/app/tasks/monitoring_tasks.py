@@ -48,19 +48,19 @@ def collect_db_stats(self):
         SQLAlchemyError: If a database error occurs during stats collection or commit.
         Exception: For any other errors during stats collection.
     """
-    logger.info("Starting collect_db_stats task")
+    logger.debug("Starting collect_db_stats task")
     
     # Retrieve the Flask app from the Celery instance.
     app = celery.flask_app
-    logger.info("Created Flask app")
+    logger.debug("Created Flask app")
     
     with app.app_context():
-        logger.info("Entered app context")
+        logger.debug("Entered app context")
         try:
             with task_session() as session:
                 # Test the database connection.
                 session.execute(text('SELECT 1'))
-                logger.info("Database connection successful")
+                logger.debug("Database connection successful")
 
                 # Import db_manager here to avoid circular dependencies.
                 from app.db_management import db_manager
@@ -93,7 +93,7 @@ def collect_db_stats(self):
                         stats['pool_stats']['total_connections'] = conn_stats.total_connections
                         stats['pool_stats']['idle_transactions'] = conn_stats.idle_transactions
                 
-                logger.info("Collected database stats")
+                logger.debug("Collected database stats")
 
                 # Create a snapshot instance with the collected stats.
                 snapshot = DBMonitoringSnapshot(
@@ -104,7 +104,7 @@ def collect_db_stats(self):
                     recent_events=stats.get('recent_events', []),
                     session_monitor=stats.get('session_monitor', {})
                 )
-                logger.info("Created DBMonitoringSnapshot instance")
+                logger.debug("Created DBMonitoringSnapshot instance")
 
                 # Save the snapshot to the database.
                 session.add(snapshot)
@@ -144,7 +144,7 @@ def snapshot_system_metrics(self):
                               (healthy non-idle / probed non-idle)
       redis_mem_mb .......... redis INFO used_memory
     """
-    logger.info("Starting snapshot_system_metrics task")
+    logger.debug("Starting snapshot_system_metrics task")
 
     app = celery.flask_app
     with app.app_context():
@@ -252,7 +252,7 @@ def check_for_session_leaks(self):
     Returns:
         Dict with leak detection results
     """
-    logger.info("Starting session leak detection task")
+    logger.debug("Starting session leak detection task")
     
     app = celery.flask_app
     
@@ -349,7 +349,7 @@ def monitor_redis_connections(self):
     Returns:
         Dict with Redis connection pool statistics
     """
-    logger.info("Starting Redis connection monitoring task")
+    logger.debug("Starting Redis connection monitoring task")
     
     app = celery.flask_app
     
