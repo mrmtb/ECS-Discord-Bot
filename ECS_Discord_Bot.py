@@ -639,6 +639,13 @@ async def full_rsvp_sync(force_sync=False):
         force_sync: If True, update all messages even if no discrepancy detected.
     """
     bot = get_bot_instance()
+    if bot is None:
+        # get_bot_instance() returns None (it does not raise) when on_ready has
+        # not run yet. Fail loudly here rather than letting every message in the
+        # sweep die on 'NoneType' has no attribute 'get_channel'.
+        logger.error("full_rsvp_sync aborted: no live bot instance registered in shared_states")
+        return
+
     logger.info(f"Starting full RSVP synchronization (force_sync={force_sync}) - processing only matches from last 7 days")
     message_ids = list(bot_state.get_managed_message_ids())
     synced_count = 0
