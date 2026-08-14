@@ -713,7 +713,11 @@ class CeleryConfig:
         },
         'cleanup-expired-bans': {
             'task': 'app.tasks.security_cleanup.cleanup_expired_bans',
-            'schedule': crontab(hour='*/12'),
+            # minute=0 is REQUIRED. celery's crontab defaults minute='*', so
+            # crontab(hour='*/12') means "every minute during hours 0 and 12",
+            # i.e. 120 runs a day rather than 2 -- it filled celery_tasks.log
+            # with a "marked 0 bans as inactive" pair every 60 seconds.
+            'schedule': crontab(hour='*/12', minute=0),
             'options': {
                 'queue': 'celery',
                 'expires': 3600,

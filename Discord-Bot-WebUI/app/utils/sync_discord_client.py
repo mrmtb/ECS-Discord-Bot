@@ -589,13 +589,37 @@ class SyncDiscordClient:
             )
             
             if response.status_code == 200:
-                result = response.json()
-                logger.info("RSVP update completed successfully")
+                # Same 200-on-failure contract as the sibling method above:
+                # /api/update_user_reaction returns 200 with {"status":"error"}
+                # (message deleted, channel gone) or {"status":"warning"} when it
+                # processed nothing at all. Observed in production 2026-08-14:
+                # the bot logged "No scheduled message found for match 566" three
+                # times, and this still logged "RSVP update completed
+                # successfully" and stamped discord_sync_status='synced'.
+                try:
+                    result = response.json()
+                except ValueError:
+                    error_msg = "Bot returned a non-JSON 200 for update_user_reaction"
+                    logger.error(error_msg)
+                    return {'success': False, 'message': error_msg}
+
+                bot_status = result.get('status')
+                if bot_status == 'success':
+                    logger.info(f"RSVP update completed for match {data.get('match_id')}")
+                    return {
+                        'success': True,
+                        'message': 'RSVP updated successfully',
+                        'discord_response': result,
+                        'timestamp': result.get('timestamp')
+                    }
+
+                error_msg = (f"Bot did not update the RSVP for match {data.get('match_id')} "
+                             f"(status={bot_status}): {result.get('message', 'no detail')}")
+                logger.warning(error_msg)
                 return {
-                    'success': True,
-                    'message': 'RSVP updated successfully',
+                    'success': False,
+                    'message': error_msg,
                     'discord_response': result,
-                    'timestamp': result.get('timestamp')
                 }
             else:
                 error_msg = f"Failed to update RSVP: {response.status_code} - {response.text}"
