@@ -379,6 +379,38 @@ def send_availability_message(self, session, scheduled_message_id: int) -> Dict[
         discord_client = get_sync_discord_client()
         result = discord_client.send_rsvp_availability_message(message_data)
         
+        # The bot posted, but its callback to store the message ids here may have
+        # failed -- that leaves LIVE embeds nothing can resolve back to a
+        # match+team, which is precisely the state behind the RSVP outage.
+        # We already have the ids in the response, so repair it locally rather
+        # than leaving it orphaned. Deliberately NOT marking the message FAILED:
+        # that would make process_scheduled_messages re-post and double up.
+        if result.get('success') and result.get('ids_stored') is False:
+            home_id, away_id = result.get('home_message_id'), result.get('away_message_id')
+            logger.error(
+                f"Bot posted match {message_data.get('match_id')} but could not store message ids "
+                f"(home={home_id}, away={away_id}); storing them locally"
+            )
+            try:
+                # Local import: availability_api_helpers imports from this
+                # module at line ~23, so a module-level import would be circular.
+                from app.availability_api_helpers import store_message_ids_for_match
+                store_message_ids_for_match(
+                    match_id=message_data.get('match_id'),
+                    home_channel_id=message_data.get('home_channel_id'),
+                    home_message_id=str(home_id) if home_id else None,
+                    away_channel_id=message_data.get('away_channel_id'),
+                    away_message_id=str(away_id) if away_id else None,
+                    session=session,
+                )
+                logger.info(f"Recovered message ids for match {message_data.get('match_id')} locally")
+            except Exception as store_err:
+                logger.error(
+                    f"Local recovery of message ids for match {message_data.get('match_id')} "
+                    f"FAILED: {store_err}. Embeds are live but unresolvable.",
+                    exc_info=True
+                )
+
         # Update the ScheduledMessage record based on the result
         message.last_send_attempt = datetime.utcnow()
         if result['success']:

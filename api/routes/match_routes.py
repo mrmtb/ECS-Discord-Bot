@@ -164,14 +164,33 @@ async def post_availability(request: AvailabilityRequest, bot: commands.Bot = De
             bot_state.add_managed_message_id(message.id)
         
         logger.debug("Storing message and channel IDs in web UI")
-        await store_message_ids_in_web_ui(
-            request.match_id, 
-            home_channel_id=request.home_channel_id, 
-            home_message_id=str(home_message.id), 
-            away_channel_id=request.away_channel_id, 
+        store_result = await store_message_ids_in_web_ui(
+            request.match_id,
+            home_channel_id=request.home_channel_id,
+            home_message_id=str(home_message.id),
+            away_channel_id=request.away_channel_id,
             away_message_id=str(away_message.id)
         )
-        logger.info(f"Stored IDs: Home msg={home_message.id}, Away msg={away_message.id}")
+        # store_message_ids_in_web_ui returns {"success": bool} and never raises.
+        # Ignoring it and logging "Stored IDs" regardless is how a match ends up
+        # with LIVE Discord embeds that nothing can resolve back to a match+team
+        # -- exactly the state that caused the month-long RSVP outage, recreated
+        # from scratch on every failed store.
+        #
+        # NOT raising here on purpose: the two messages are already posted, so
+        # failing the request would invite a retry that double-posts. Report it
+        # loudly and hand the ids back so the caller can store them without
+        # re-posting.
+        ids_stored = bool(store_result and store_result.get('success'))
+        if ids_stored:
+            logger.info(f"Stored IDs: Home msg={home_message.id}, Away msg={away_message.id}")
+        else:
+            logger.error(
+                f"POSTED but FAILED to store message IDs for match {request.match_id} "
+                f"(home={home_message.id}, away={away_message.id}): "
+                f"{(store_result or {}).get('message', 'no detail')}. "
+                f"These embeds are live in Discord but unresolvable until the ids are stored."
+            )
         
         # Join WebSocket room for real-time RSVP updates
         try:
@@ -189,7 +208,13 @@ async def post_availability(request: AvailabilityRequest, bot: commands.Bot = De
             logger.error(f"❌ [MATCH {request.match_id}] Failed to join WebSocket room: {str(ws_error)}")
         
         logger.info(f"Successfully posted availability for match {request.match_id}")
-        return {"home_message_id": home_message.id, "away_message_id": away_message.id}
+        # ids_stored lets the caller distinguish "posted and tracked" from
+        # "posted but orphaned"; older callers that ignore it are unaffected.
+        return {
+            "home_message_id": home_message.id,
+            "away_message_id": away_message.id,
+            "ids_stored": ids_stored,
+        }
     except Exception as e:
         logger.exception(f"Error in posting availability for match {request.match_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
@@ -204,10 +229,12 @@ async def post_week_reminder(request: WeekReminderRequest, bot: commands.Bot = D
         formatted_date = match_datetime.strftime('%-m/%-d/%y')
 
         sent_count = 0
+        missing_channels = []
         for channel_id, team_name in zip(request.team_channel_ids, request.team_names):
             channel = bot.get_channel(int(channel_id))
             if not channel:
                 logger.warning(f"Channel {channel_id} not found for {request.week_type} reminder")
+                missing_channels.append(str(channel_id))
                 continue
 
             embed = discord.Embed(
@@ -223,8 +250,27 @@ async def post_week_reminder(request: WeekReminderRequest, bot: commands.Bot = D
             )
             sent_count += 1
 
-        logger.info(f"Sent {request.week_type} reminder to {sent_count} channels")
-        return {"success": True, "sent_count": sent_count}
+        # success reflects whether every requested channel got the reminder.
+        # It used to be hardcoded True, so a run that resolved NO channels at all
+        # still reported success and the webui stamped the ScheduledMessage
+        # 'SENT' and cleared send_error -- a renamed or deleted team channel
+        # silently swallowed the whole reminder.
+        expected = len(request.team_channel_ids)
+        all_sent = sent_count == expected
+        if not all_sent:
+            logger.error(
+                f"{request.week_type} reminder reached only {sent_count}/{expected} channels; "
+                f"unresolved: {missing_channels}"
+            )
+        else:
+            logger.info(f"Sent {request.week_type} reminder to {sent_count} channels")
+
+        return {
+            "success": all_sent,
+            "sent_count": sent_count,
+            "expected_count": expected,
+            "missing_channels": missing_channels,
+        }
     except Exception as e:
         logger.exception(f"Error posting {request.week_type} reminder: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")

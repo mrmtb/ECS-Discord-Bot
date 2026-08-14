@@ -477,6 +477,10 @@ class SyncDiscordClient:
                     'discord_response': result,
                     'home_message_id': result.get('home_message_id'),
                     'away_message_id': result.get('away_message_id'),
+                    # False when the bot posted the embeds but its callback to
+                    # store the ids here failed -- live messages nothing can
+                    # resolve. None from an older bot build that predates the flag.
+                    'ids_stored': result.get('ids_stored'),
                     'timestamp': result.get('timestamp')
                 }
             else:
@@ -520,11 +524,29 @@ class SyncDiscordClient:
 
             if response.status_code == 200:
                 result = response.json()
-                logger.info("Week reminder sent successfully")
+                # Trust the bot's own success flag, not the status code: it
+                # skips channels it cannot resolve and used to return
+                # success:True with sent_count 0, so a renamed team channel
+                # left the reminder marked SENT having reached nobody.
+                # `is not False` keeps older bot builds (no flag) working.
+                sent_count = result.get('sent_count', 0)
+                expected = result.get('expected_count')
+                if result.get('success') is not False:
+                    logger.info(f"Week reminder sent successfully ({sent_count} channels)")
+                    return {
+                        'success': True,
+                        'message': 'Week reminder sent successfully',
+                        'sent_count': sent_count,
+                    }
+
+                error_msg = (f"Week reminder reached only {sent_count}"
+                             + (f"/{expected}" if expected is not None else "")
+                             + f" channels; missing: {result.get('missing_channels')}")
+                logger.error(error_msg)
                 return {
-                    'success': True,
-                    'message': 'Week reminder sent successfully',
-                    'sent_count': result.get('sent_count', 0)
+                    'success': False,
+                    'message': error_msg,
+                    'sent_count': sent_count,
                 }
             else:
                 error_msg = f"Failed to send week reminder: {response.status_code} - {response.text}"

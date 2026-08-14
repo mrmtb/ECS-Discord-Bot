@@ -50,6 +50,10 @@ class RSVPMessageResponse(BaseModel):
     message_id: Optional[str] = None
     channel_id: Optional[str] = None
     error: Optional[str] = None
+    # False when the embed posted but storing its id back in the web app failed.
+    # The message is then live in Discord with nothing able to resolve it, so
+    # every later /update_rsvp_embed/{id} 404s and the tallies freeze.
+    id_stored: Optional[bool] = None
 
 class DMBatchRequest(BaseModel):
     dm_list: List[Dict[str, str]]  # List of {"discord_id": str, "message": str}
@@ -256,13 +260,21 @@ async def post_rsvp_message(request: RSVPMessageRequest, bot: commands.Bot = Dep
         
         logger.info(f"Successfully posted ECS FC RSVP message: {message.id} in channel {channel_id}")
         
-        # Store the message ID in the scheduled_message table for future updates
-        await store_rsvp_message_id(request.match_id, message.id, channel_id)
-        
+        # Store the message ID in the scheduled_message table for future updates.
+        # Not raising on failure: the message is already posted, so a retry would
+        # double-post. Report it instead so the caller can store the id itself.
+        id_stored = await store_rsvp_message_id(request.match_id, message.id, channel_id)
+        if not id_stored:
+            logger.error(
+                f"POSTED ECS FC RSVP message {message.id} for match {request.match_id} but could "
+                f"NOT store its id; the embed is live and will not be updatable until it is stored"
+            )
+
         return RSVPMessageResponse(
             success=True,
             message_id=str(message.id),
-            channel_id=channel_id
+            channel_id=channel_id,
+            id_stored=id_stored,
         )
         
     except discord.Forbidden:
@@ -275,8 +287,14 @@ async def post_rsvp_message(request: RSVPMessageRequest, bot: commands.Bot = Dep
         logger.error(f"Unexpected error posting ECS FC RSVP message: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
-async def store_rsvp_message_id(match_id: int, message_id: str, channel_id: str):
-    """Store the RSVP message ID in the database for future updates."""
+async def store_rsvp_message_id(match_id: int, message_id: str, channel_id: str) -> bool:
+    """Store the RSVP message ID in the database for future updates.
+
+    Returns True only if the web app accepted it. This used to return None
+    unconditionally and log a warning on failure, while the caller reported
+    success:True regardless -- so a failed store left the embed live in Discord
+    and permanently unresolvable, and nothing anywhere said so.
+    """
     try:
         api_url = "http://webui:5000/api/ecs-fc/store_rsvp_message"
         data = {
@@ -284,13 +302,20 @@ async def store_rsvp_message_id(match_id: int, message_id: str, channel_id: str)
             "message_id": message_id,
             "channel_id": channel_id
         }
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.post(api_url, json=data) as response:
                 if response.status != 200:
-                    logger.warning(f"Failed to store RSVP message ID: {response.status}")
+                    body = await response.text()
+                    logger.error(
+                        f"Failed to store RSVP message ID for match {match_id}: "
+                        f"{response.status} - {body[:200]}"
+                    )
+                    return False
+                return True
     except Exception as e:
-        logger.error(f"Error storing RSVP message ID: {str(e)}")
+        logger.error(f"Error storing RSVP message ID for match {match_id}: {str(e)}")
+        return False
 
 @router.post("/update_rsvp_embed/{match_id}", response_model=UpdateEmbedResponse)
 async def update_rsvp_embed(match_id: int, bot: commands.Bot = Depends(get_bot)):

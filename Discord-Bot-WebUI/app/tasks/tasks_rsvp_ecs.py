@@ -272,11 +272,15 @@ def send_ecs_fc_rsvp_reminder(self, session, match_id: int, target_players: Opti
                 dm_result = send_ecs_fc_dm_sync(player.discord_id, reminder_message)
                 if dm_result['success']:
                     logger.info(f"RSVP reminder DM sent to player {player.discord_id} for match {match_id}")
+                    reminded_count += 1
                 else:
+                    # reminded_count used to increment here too (it sat outside
+                    # this if/else), so a run where every DM failed still
+                    # reported "reminded N players".
                     logger.warning(f"Failed to send RSVP reminder DM to player {player.discord_id}: {dm_result.get('message')}")
-                
-                reminded_count += 1
-                
+                    failed_count += 1
+
+
             except Exception as e:
                 logger.error(f"Failed to send reminder to player {player_id}: {str(e)}")
                 failed_count += 1
