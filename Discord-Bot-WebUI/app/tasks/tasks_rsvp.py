@@ -802,7 +802,42 @@ def update_discord_rsvp_task(self, session, match_id: int, discord_id: str, new_
                 'sync_timestamp': datetime.utcnow().isoformat()
             }
             
-        # Check 3: Verify current reaction state from Discord if we can
+        # Check 3: There is nothing to sync if the match has no Discord RSVP embed.
+        #
+        # get_message_data is the shared resolver (ScheduledMessage first, then the
+        # ids carried on matches.*). When it comes back empty, the bot's
+        # /api/update_user_reaction can only ever answer "404: Message IDs not
+        # found" -- a PERMANENT condition, not a transient one. Without this gate
+        # each click burned the full exponential-backoff ladder (10s/20s/40s/80s),
+        # every attempt re-triggering the bot's own 3x message-id lookup, and then
+        # fanned out an embed update that failed the same way. Two matches produced
+        # ~150 error lines in six minutes on 2026-08-16. Worse, the 'failed' stamp
+        # left behind made _extract_failed_rsvp_records re-drive the same rows on
+        # every repair sweep, so the storm was self-renewing.
+        #
+        # Record a terminal status that is deliberately NOT 'failed' (so the repair
+        # sweep leaves it alone) and NOT 'synced' (it genuinely is not on Discord --
+        # it still counts as unsynced in monitor_rsvp_health, which is the truth).
+        from app.availability_api_helpers import get_message_data
+        if not get_message_data(match_id, session=session):
+            logger.info(
+                f"No Discord RSVP embed exists for match {match_id}; skipping "
+                f"reaction sync for {discord_id} (nothing to update)"
+            )
+            availability = session.query(Availability).filter_by(
+                match_id=match_id, discord_id=discord_id).first()
+            if availability:
+                availability.discord_sync_status = 'no_embed'
+                availability.last_sync_attempt = datetime.utcnow()
+                availability.sync_error = 'No Discord RSVP message exists for this match'
+            return {
+                'success': True,
+                'message': 'No Discord RSVP message exists for this match',
+                'skipped': True,
+                'sync_timestamp': datetime.utcnow().isoformat()
+            }
+
+        # Check 4: Verify current reaction state from Discord if we can
         if not self.request.retries:  # Only on first attempt to avoid API spam
             try:
                 # Get the message IDs for this match from scheduled messages

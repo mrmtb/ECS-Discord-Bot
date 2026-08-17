@@ -2138,6 +2138,20 @@ def post_availability_poll(session, *, target_date=None, user_id=None,
 
     normalized_options = [{"text": b['label'], "emoji": None} for b in buckets]
 
+    # Discord's native poll API rejects anything with fewer than two answers
+    # ("List should have at least 2 items after validation"). Once only one
+    # program is running -- Summer Sprint on its own, one shared time-slot bucket
+    # -- every Friday beat run 502'd, retried twice and died, so no sub
+    # availability poll went out at all (prod, 2026-08-14).
+    #
+    # A one-option poll is also useless to a human: there is no way to say "not
+    # this week", only to not vote. Adding the decline answer fixes both. It is
+    # deliberately NOT in slot_map (the loop below only maps answer_ids
+    # 1..len(buckets)), so voting for it records nothing -- which is exactly what
+    # "can't play" means to the reconcile.
+    if len(normalized_options) < 2:
+        normalized_options.append({"text": "Can't play this week", "emoji": None})
+
     # Admin-configurable poll question (Settings tab). {date} is substituted; falls
     # back to the built-in wording. Nothing hardcoded.
     from app.models.admin_config import AdminConfig

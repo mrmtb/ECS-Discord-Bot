@@ -81,17 +81,30 @@ def security_maintenance(self, session):
     """
     try:
         logger.info("Starting comprehensive security maintenance")
-        
+
         results = {}
-        
-        # Clean up old security logs (keep 90 days by default)
-        log_result = cleanup_security_logs.apply_async(kwargs={'retention_days': 90})
-        results['logs'] = log_result.get(timeout=300)  # 5 minute timeout
-        
-        # Clean up expired bans
-        ban_result = cleanup_expired_bans.apply_async()
-        results['bans'] = ban_result.get(timeout=300)  # 5 minute timeout
-        
+
+        # Do the work INLINE rather than dispatching subtasks and blocking on
+        # result.get(). Celery forbids that inside a task ("Never call
+        # result.get() within a task!") and raised RuntimeError on the very first
+        # call, so this whole beat has never once completed: security_events was
+        # never pruned and expired IP bans were never marked inactive
+        # (prod errors.log, 02:30 nightly).
+        #
+        # Both bodies are just the two model helpers below -- neither touches the
+        # session or needs its own worker -- so there is nothing to gain from
+        # fanning out, and the two standalone tasks stay available for ad-hoc use.
+        from app.models import SecurityEvent, IPBan
+
+        deleted_events = SecurityEvent.cleanup_old_events(days=90)
+        results['logs'] = {'success': True, 'deleted_events': deleted_events,
+                           'retention_days': 90}
+        logger.info(f"Security logs cleanup completed - deleted {deleted_events} old events")
+
+        cleaned_bans = IPBan.clear_expired_bans()
+        results['bans'] = {'success': True, 'cleaned_bans': cleaned_bans}
+        logger.info(f"Expired bans cleanup completed - marked {cleaned_bans} bans as inactive")
+
         logger.info("Security maintenance completed successfully")
         
         return {
