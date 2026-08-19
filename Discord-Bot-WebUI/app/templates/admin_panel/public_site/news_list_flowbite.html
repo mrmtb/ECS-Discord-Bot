@@ -26,6 +26,7 @@
       <tr>
         <th class="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400">Title</th>
         <th class="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400 hidden md:table-cell">Status</th>
+        <th class="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400 hidden lg:table-cell">Category</th>
         <th class="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400 hidden md:table-cell">Date</th>
         <th class="px-4 py-3 text-right font-semibold text-gray-500 dark:text-gray-400">Actions</th>
       </tr>
@@ -44,6 +45,7 @@
           <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300"><i class="ti ti-pencil"></i> Draft</span>
           {% endif %}
         </td>
+        <td class="px-4 py-3 hidden lg:table-cell text-gray-500 dark:text-gray-400">{{ post.category or '—' }}</td>
         <td class="px-4 py-3 hidden md:table-cell text-gray-500 dark:text-gray-400">{{ post.display_date.strftime('%b %-d, %Y') if post.display_date else '—' }}</td>
         <td class="px-4 py-3 text-right whitespace-nowrap">
           {% if post.is_published %}

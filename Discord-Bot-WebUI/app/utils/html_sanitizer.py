@@ -107,6 +107,13 @@ def is_safe_link_url(url):
         return False
     if any(c in u for c in '"\'<>` ') or '\t' in u or '\n' in u:
         return False
+    # Protocol-relative URLs ('//host', and the '/\\host' variant several
+    # browsers normalize the same way) start with '/' but navigate OFF-SITE.
+    # These values are Site-Editor-writable and render on PUBLIC pages (nav,
+    # mobile nav, footer), so accepting them would let a least-privilege editor
+    # point real visitors at an attacker's host under our own chrome.
+    if u.startswith('//') or u.startswith('/\\'):
+        return False
     if u.startswith('/') or u.startswith('#'):
         return True
     lowered = u.lower()

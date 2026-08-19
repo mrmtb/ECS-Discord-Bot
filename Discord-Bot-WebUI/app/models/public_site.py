@@ -168,6 +168,16 @@ class SitePage(db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow,
                            onupdate=datetime.utcnow)
     updated_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    # Who created the page (PSB-06). Nullable on purpose: pages that predate
+    # authorship have no correct value to backfill, and the FK is ON DELETE SET
+    # NULL so removing a user never deletes their pages.
+    author_id = db.Column(db.Integer,
+                          db.ForeignKey('users.id', ondelete='SET NULL'),
+                          nullable=True, index=True)
+    # Explicit manual ordering for the Pages screen (PSB-06). Ties broken by
+    # the caller's secondary sort; 0 for everything until an admin reorders.
+    sort_order = db.Column(db.Integer, nullable=False, default=0,
+                           server_default='0', index=True)
     # Soft delete (WordPress-style Trash). NULL = live; set = in Trash.
     deleted_at = db.Column(db.DateTime, nullable=True, index=True)
     # Draft vs published (WordPress-style). Defaults to 'published' so existing

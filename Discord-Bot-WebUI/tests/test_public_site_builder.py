@@ -60,6 +60,24 @@ class TestSanitizer:
         assert not is_safe_link_url('data:text/html,x')
         assert not is_safe_link_url('vbscript:x')
 
+    def test_link_url_rejects_protocol_relative(self):
+        """Protocol-relative URLs start with '/' but navigate off-site.
+
+        These values are Site-Editor-writable and render on public pages
+        (desktop nav, mobile nav, and — since Phase 2 — the footer), so a
+        '//evil.tld' link would send real visitors off-domain under our own
+        chrome. The '/\\evil.tld' form is included because several browsers
+        normalize a backslash here to a forward slash.
+        """
+        from app.utils.html_sanitizer import is_safe_link_url
+        assert not is_safe_link_url('//evil.example.com/phish')
+        assert not is_safe_link_url('//attacker.tld')
+        assert not is_safe_link_url('/\\evil.tld')
+        # Genuine same-site paths and anchors must still pass.
+        assert is_safe_link_url('/about')
+        assert is_safe_link_url('/news/foo')
+        assert is_safe_link_url('#top')
+
     def test_embed_urls(self):
         from app.utils.html_sanitizer import build_embed_url
         assert build_embed_url('https://www.youtube.com/watch?v=dQw4w9WgXcQ') \
