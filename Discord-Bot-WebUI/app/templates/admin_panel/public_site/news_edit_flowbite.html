@@ -120,37 +120,91 @@
       <div>
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Featured image</label>
         <div class="mt-1 flex items-center gap-2">
-          <label class="inline-flex items-center gap-1.5 cursor-pointer rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-            <i class="ti ti-upload"></i> Upload
-            <input type="file" id="featured-file" accept="image/*" class="hidden">
-          </label>
-          <span id="featured-upload-status" class="text-xs text-gray-400"></span>
+          <button type="button" id="featured-image-open" class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+            <i class="ti ti-photo"></i> Set featured image
+          </button>
+          <button type="button" id="featured-image-remove" class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 {{ '' if post and post.featured_image_url else 'hidden' }}">
+            <i class="ti ti-x"></i> Remove
+          </button>
         </div>
-        <input type="text" name="featured_image_url" id="featured_image_url" value="{{ post.featured_image_url if post else '' }}" placeholder="…or paste an image URL / path" class="mt-2 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-ecs-green focus:ring-ecs-green">
         <img id="featured-preview" src="{{ post.featured_image_url if post and post.featured_image_url else '' }}" alt="" class="mt-2 rounded-lg max-h-32 object-cover {{ '' if post and post.featured_image_url else 'hidden' }}">
+        <details class="mt-2">
+          <summary class="cursor-pointer text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Or paste an image URL / path directly</summary>
+          <input type="text" name="featured_image_url" id="featured_image_url" value="{{ post.featured_image_url if post else '' }}" placeholder="/static/img/publeague/..." class="mt-2 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-ecs-green focus:ring-ecs-green">
+        </details>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Tags <span class="text-gray-400 font-normal">(optional)</span></label>
+        <input type="text" name="tags" value="{{ post.tags if post else '' }}" placeholder="e.g. recap, playoffs, sounders" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white focus:border-ecs-green focus:ring-ecs-green">
+        <p class="mt-1 text-xs text-gray-400">Comma-separated — e.g. <span class="font-mono">recap, playoffs</span>. Shown on the post and clickable on the public news list.</p>
       </div>
     </div>
   </div>
 </form>
+
+<!-- Media Library modal (Flowbite-style) — body is the shared picker's mount point. -->
+<div id="featured-media-modal" tabindex="-1" aria-hidden="true" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  <div class="w-full max-w-2xl rounded-xl bg-white dark:bg-gray-800 shadow-lg">
+    <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-3">
+      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Choose an image</h3>
+      <button type="button" id="featured-media-modal-close" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="featured-media-mount" class="max-h-[70vh] overflow-y-auto p-5"></div>
+  </div>
+</div>
 {% endblock %}
 
 {% block custom_js %}
 {{ super() }}
 {{ rich_editor('#body_html') }}
+{{ vite_asset('js/site-editor/media-picker.js') }}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Featured image upload widget (reuses window.publicSiteUpload from the editor macro)
-    var fileInput = document.getElementById('featured-file');
-    if (fileInput) fileInput.addEventListener('change', function () {
-        if (!this.files || !this.files[0] || !window.publicSiteUpload) return;
-        var status = document.getElementById('featured-upload-status');
-        status.textContent = 'Uploading…';
-        window.publicSiteUpload(this.files[0]).then(function (url) {
-            document.getElementById('featured_image_url').value = url;
-            var prev = document.getElementById('featured-preview');
-            prev.src = url; prev.classList.remove('hidden');
-            status.textContent = 'Uploaded ✓';
-        }).catch(function (e) { status.textContent = e.message; });
+    // Featured image control: opens the shared Media Library picker
+    // (window.ECSMediaPicker, from the bundle loaded above) into the modal
+    // below — the SAME picker the site editor's image blocks use, not a
+    // second implementation. The paste-a-URL fallback (inside the <details>
+    // above) stays reachable for correcting seeded/migrated posts.
+    var openBtn = document.getElementById('featured-image-open');
+    var removeBtn = document.getElementById('featured-image-remove');
+    var modal = document.getElementById('featured-media-modal');
+    var modalClose = document.getElementById('featured-media-modal-close');
+    var mount = document.getElementById('featured-media-mount');
+    var hidden = document.getElementById('featured_image_url');
+    var preview = document.getElementById('featured-preview');
+    var csrf = (document.querySelector('meta[name=csrf-token]') || {}).content || '';
+
+    function openModal() {
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+    function closeModal() {
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    if (openBtn && mount) {
+        openBtn.addEventListener('click', function () {
+            if (!window.ECSMediaPicker) return;
+            openModal();
+            window.ECSMediaPicker.open({ mount: mount, csrf: csrf, onClose: closeModal }).then(function (picked) {
+                if (picked && picked.url) {
+                    hidden.value = picked.url;
+                    preview.src = picked.url;
+                    preview.classList.remove('hidden');
+                    if (removeBtn) removeBtn.classList.remove('hidden');
+                }
+            });
+        });
+    }
+    if (modalClose) modalClose.addEventListener('click', closeModal);
+    if (removeBtn) removeBtn.addEventListener('click', function () {
+        hidden.value = '';
+        preview.src = '';
+        preview.classList.add('hidden');
+        removeBtn.classList.add('hidden');
     });
 });
 </script>

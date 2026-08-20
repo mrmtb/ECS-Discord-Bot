@@ -71,6 +71,11 @@ class NewsPost(db.Model):
     published_at = db.Column(db.DateTime, nullable=True, index=True)
     # Optional category/tag for the blog (WordPress-style). NULL = uncategorized.
     category = db.Column(db.String(80), nullable=True, index=True)
+    # Comma-separated free-form tags (WordPress-style), distinct from category
+    # (one category, many tags). Read/written by the Posts admin form and list,
+    # and surfaced publicly as a tag filter (added by plan 03-05). Matched with
+    # a LIKE/pattern query, which is why there is deliberately no btree index.
+    tags = db.Column(db.String(255), nullable=True)
 
     # Per-post SEO overrides (fall back to title/excerpt when null).
     meta_title = db.Column(db.String(255), nullable=True)
@@ -158,6 +163,18 @@ class SitePage(db.Model):
     slug = db.Column(db.String(120), unique=True, nullable=False, index=True)
     title = db.Column(db.String(255), nullable=True)
     body_html = db.Column(db.Text, nullable=True)
+
+    # Short summary shown in the editor's Page settings panel and used as the
+    # meta-description / og:description fallback when no explicit
+    # meta_description is set — mirrors NewsPost.excerpt exactly (PSB-08).
+    excerpt = db.Column(db.Text, nullable=True)
+    # Path under /static (an uploaded Media Library asset), NOT a remote URL —
+    # keeps everything on our own un-rate-limited /static router, mirrors
+    # NewsPost.featured_image_url exactly. Deliberately validated with the
+    # tighter same-app static rule (section_schema._image_ref), not
+    # is_safe_link_url() — this value is emitted as og:image to every visitor,
+    # not an author-chosen link, so absolute/off-site URLs must be refused.
+    featured_image_url = db.Column(db.String(500), nullable=True)
 
     # Per-page SEO (used when the page is a top-level route, e.g. /about).
     meta_title = db.Column(db.String(255), nullable=True)

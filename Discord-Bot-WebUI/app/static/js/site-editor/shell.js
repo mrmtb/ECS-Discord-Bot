@@ -9,6 +9,8 @@
 // Save protocol: every write carries base_rev; a 409 means another tab/editor
 // moved the draft — we reload state and tell the user, never blind-overwrite.
 
+import { openMediaPicker } from './media-picker.js';
+
 const root = document.getElementById('site-editor');
 if (root) initEditor(root);
 
@@ -22,6 +24,9 @@ function initEditor(rootEl) {
 
   let doc = { v: 1, sections: [] };
   let draftRev = 0;
+  // Page-level metadata (status, slug, excerpt, featured image, SEO) shown by
+  // the Page settings panel — populated from data.page inside loadState().
+  let pageSettings = {};
   let dirty = false;
   let saving = false;
   let saveTimer = null;
@@ -261,6 +266,8 @@ function initEditor(rootEl) {
       return;
     }
     if (data.success) {
+      pageSettings.status = 'published';
+      setPublishLabel();
       publishBtn && publishBtn.classList.remove('animate-pulse');
       // Close the editor after publishing — the natural "I'm done" flow. With
       // Swal, offer to stay; without it, exit to the live page.
@@ -297,7 +304,10 @@ function initEditor(rootEl) {
   const FIELD = {
     select: (f, v) => `<select data-k="${f.key}" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm">${
       f.options.map((o) => `<option value="${o}" ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select>`,
-    text: (f, v) => `<input data-k="${f.key}" type="text" value="${escAttr(v)}" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm">`,
+    // `readonly` is set by callers whose value is server-locked (the Permalink
+    // field when pageSettings.slug_locked is true) — one interpolation, no
+    // separate read-only field type.
+    text: (f, v) => `<input data-k="${f.key}" type="text" value="${escAttr(v)}"${f.readonly ? ' readonly' : ''} class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm${f.readonly ? ' opacity-60 cursor-not-allowed' : ''}">`,
     // Multi-line text (card body copy). Holds sanitized HTML; plain typed text
     // is fine too — the server sanitizer normalizes either way.
     textarea: (f, v) => `<textarea data-k="${f.key}" rows="4" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm">${escAttr(v)}</textarea>`,
@@ -401,6 +411,21 @@ function initEditor(rootEl) {
     ],
   };
 
+  // Page settings panel — status/visibility, permalink, excerpt, featured
+  // image and SEO (PSB-08 criterion 3). A function, not a module constant,
+  // because Permalink's read-only flag depends on server state
+  // (pageSettings.slug_locked) that isn't known until loadState() runs.
+  function PAGE_FIELDS() {
+    return [
+      { key: 'status', label: 'Visibility', type: 'select', options: ['draft', 'published'] },
+      { key: 'slug', label: 'Permalink', type: 'text', readonly: !!pageSettings.slug_locked },
+      { key: 'excerpt', label: 'Excerpt', type: 'textarea' },
+      { key: 'featured_image_url', label: 'Featured image', type: 'imageurl' },
+      { key: 'meta_title', label: 'Search title', type: 'text' },
+      { key: 'meta_description', label: 'Search description', type: 'textarea' },
+    ];
+  }
+
   function renderFields(fields, values, container) {
     // Each field wires its own controls within its own `wrap` element (not via a
     // post-loop querySelectorAll on the container) so nested repeater rows — which
@@ -468,6 +493,28 @@ function initEditor(rootEl) {
         btn.addEventListener('click', async () => {
           const picked = await pickImage();
           if (picked) { btn.dataset.assetId = picked.id; showImg(picked.url); }
+        });
+      } else if (f.type === 'imageurl') {
+        // Simpler cousin of the `image` branch above: the column is a plain
+        // /static path string (not a typed {asset_id, focal} reference), so
+        // there is no focal-point box — a focal point would have nowhere to
+        // live on a bare string. Reuses the same pickImage() picker; the
+        // hidden input carries the value collectFields reads back.
+        const val = values[f.key] || '';
+        wrap.innerHTML = `<label class="block text-sm font-medium mb-1.5">${f.label}</label>
+          <img data-imgurl-preview src="${escAttr(val)}" class="mb-2 h-32 w-full rounded-lg object-cover bg-gray-100 dark:bg-gray-900 ${val ? '' : 'hidden'}">
+          <input type="hidden" data-k="${f.key}" value="${escAttr(val)}">
+          <button type="button" data-pick-imageurl="${f.key}" class="px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200">Set featured image</button>`;
+        const btn = wrap.querySelector('[data-pick-imageurl]');
+        const hidden = wrap.querySelector(`[data-k="${f.key}"]`);
+        const preview = wrap.querySelector('[data-imgurl-preview]');
+        btn.addEventListener('click', async () => {
+          const picked = await pickImage();
+          if (picked) {
+            hidden.value = picked.url;
+            preview.src = picked.url;
+            preview.classList.remove('hidden');
+          }
         });
       } else if (f.type === 'link') {
         const link = values[f.key] || {};
@@ -558,6 +605,11 @@ function initEditor(rootEl) {
         }
         return;
       }
+      if (f.type === 'imageurl') {
+        const el = container.querySelector(`[data-k="${f.key}"]`);
+        into[f.key] = el ? el.value : '';
+        return;
+      }
       if (f.type === 'link') {
         const kind = container.querySelector(`[data-linkkind="${f.key}"]`).value;
         into[f.key] = kind === 'url'
@@ -618,6 +670,49 @@ function initEditor(rootEl) {
       closePanel();
       const res = await save({ renderSection: section.id });
       if (res && res.section_html) sendBridge({ type: 'swap-section', sid: section.id, html: res.section_html });
+    });
+  }
+
+  // Rewrites the Publish button's word to WordPress's vocabulary — Publish for
+  // a page that isn't live yet, Update once it is — without touching its icon.
+  // Called from inside loadState() (the one function every reload path already
+  // funnels through: initEditor's tail, _doSave's 409 branch, publish()'s 409
+  // branch) so a conflict-resolution reload can never leave a stale label.
+  function setPublishLabel() {
+    if (!publishBtn) return;
+    const verb = pageSettings.status === 'published' ? 'Update' : 'Publish';
+    publishBtn.innerHTML = `<i class="ti ti-world-upload"></i> ${verb}`;
+  }
+
+  function openPageSettings() {
+    openPanel('Page settings');
+    const fields = PAGE_FIELDS();
+    settingsForm(fields, pageSettings, async (formEl) => {
+      const out = {};
+      collectFields(fields, formEl, out);
+      out.base_rev = draftRev;
+      const { status, data } = await jfetch(api('/page-settings'), out);
+      if (status === 409) {
+        toast('This page changed somewhere else — reloading the latest draft.', 'warning');
+        await loadState();
+        openPageSettings();   // re-open with the refreshed values
+        return;
+      }
+      if (!data.success) {
+        toast(data.error === 'empty_page' ? 'Add some content before publishing this page.'
+              : (data.error || 'Save failed'), 'error');
+        return;
+      }
+      Object.assign(pageSettings, data.page);
+      setPublishLabel();
+      closePanel();
+      toast('Page settings saved.', 'success');
+      if (data.slug_changed) {
+        // The iframe src and the exit URL are both derived server-side from
+        // the slug; staying put would leave the canvas pointed at a dead
+        // address, so reload the whole editor at its (now current) URL.
+        window.location.reload();
+      }
     });
   }
 
@@ -798,60 +893,13 @@ function initEditor(rootEl) {
     return mediaUrlCache[assetId] || null;
   }
 
+  // Thin wrapper around the shared media-picker.js module — the ONE Media
+  // Library picker, also mounted by the Posts featured-image control. Do
+  // not re-add the grid/upload/prompt logic here; that would be exactly the
+  // second-implementation drift this extraction exists to prevent.
   function pickImage() {
-    return new Promise((resolve) => {
-      openPanel('Choose an image');
-      const up = document.createElement('label');
-      up.className = 'block mb-3 cursor-pointer rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 p-4 text-center text-sm text-gray-500 hover:border-ecs-green';
-      up.innerHTML = 'Upload a new image<input type="file" accept="image/*" class="hidden">';
-      up.querySelector('input').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const fd = new FormData();
-        fd.append('file', file);
-        let data = {};
-        try {
-          const r = await fetch('/admin-panel/public-site/upload-image',
-            { method: 'POST', headers: { 'X-CSRFToken': csrf }, body: fd });
-          data = await r.json();
-        } catch (err) {
-          toast('Upload failed — the file may be too large.', 'error');
-          return;
-        }
-        if (data.url) { await renderGrid(); toast('Uploaded.', 'success'); }
-        else toast(data.error || 'Upload failed', 'error');
-      });
-      panelBody.appendChild(up);
-      const grid = document.createElement('div');
-      grid.className = 'grid grid-cols-3 gap-2';
-      panelBody.appendChild(grid);
-      async function renderGrid() {
-        const r = await fetch('/admin-panel/public-site/media/list');
-        const { assets } = await r.json();
-        grid.innerHTML = '';
-        (assets || []).forEach((a) => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'aspect-square overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 hover:ring-2 hover:ring-ecs-green';
-          btn.innerHTML = `<img src="${escAttr(a.url)}" alt="" class="h-full w-full object-cover">`;
-          btn.addEventListener('click', () => {
-            if (!a.alt) {
-              const alt = window.prompt('Describe this image for screen readers (alt text):', '');
-              if (alt) {
-                const fd = new FormData();
-                fd.append('alt_text', alt);
-                fetch(`/admin-panel/public-site/media/${a.id}/save`,
-                  { method: 'POST', headers: { 'X-CSRFToken': csrf }, body: fd });
-              }
-            }
-            closePanel();
-            resolve(a);
-          });
-          grid.appendChild(btn);
-        });
-      }
-      renderGrid();
-    });
+    openPanel('Choose an image');
+    return openMediaPicker({ mount: panelBody, csrf, onClose: closePanel });
   }
 
   // ---------- messaging / boot ----------
@@ -868,6 +916,11 @@ function initEditor(rootEl) {
     if (data.success) {
       doc = data.doc;
       draftRev = data.draft_rev;
+      pageSettings = data.page;
+      // Per RESEARCH.md Pitfall 2: refresh the Publish/Update label from
+      // INSIDE loadState(), the one function every reload path shares, so a
+      // conflict-resolution reload can never leave the button reading stale.
+      setPublishLabel();
       setStatus(data.page.has_unpublished_changes ? 'Unpublished changes' : 'Up to date');
       if (data.page.has_unpublished_changes && publishBtn) publishBtn.classList.add('animate-pulse');
     }
@@ -903,6 +956,7 @@ function initEditor(rootEl) {
   // top-bar wiring
   document.getElementById('pse-undo').addEventListener('click', undo);
   document.getElementById('pse-redo').addEventListener('click', redo);
+  document.getElementById('pse-page-settings').addEventListener('click', openPageSettings);
   publishBtn.addEventListener('click', publish);
   document.getElementById('pse-add-section').addEventListener('click', () => openSectionPicker(
     doc.sections.length ? doc.sections[doc.sections.length - 1].id : null));
@@ -920,5 +974,12 @@ function initEditor(rootEl) {
   });
 
   lock(false);
-  loadState();
+  // The retired page-settings screen (public_site_page_edit) 302s here with
+  // ?panel=page so a stale bookmark still lands somewhere useful — open the
+  // panel once state (and therefore pageSettings) has loaded, not before.
+  loadState().then(() => {
+    if (new URLSearchParams(window.location.search).get('panel') === 'page') {
+      openPageSettings();
+    }
+  });
 }

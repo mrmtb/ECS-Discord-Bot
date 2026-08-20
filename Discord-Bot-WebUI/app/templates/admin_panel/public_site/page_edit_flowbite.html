@@ -1,3 +1,16 @@
+{#
+  RETIRED (D-02, Phase 3 plan 03-01): nothing renders this template anymore.
+  Page settings — status/visibility, permalink, excerpt, featured image, SEO —
+  live in the site editor's in-place "Page settings" slide-over panel now
+  (app/static/js/site-editor/shell.js's openPageSettings()), posting to
+  POST /admin-panel/site-editor/<id>/page-settings. The route that used to
+  render this template (admin_panel.public_site_page_edit) now 302s straight
+  into the editor with that panel pre-opened, so an old bookmark or the
+  Pages-list gear icon lands somewhere useful instead of 404ing.
+  Kept only as a record, per this plan's explicit decision not to delete it —
+  do NOT re-wire a route to render this file; that would resurrect the exact
+  second editing surface this plan removed.
+#}
 {% extends "admin_panel/base_flowbite.html" %}
 {% block admin_title %}Page settings: {{ page.title or page.slug }}{% endblock %}
 

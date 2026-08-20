@@ -18,6 +18,8 @@
 // (parent -> bridge): swap-section {sid, html}, remove-section {sid},
 // refresh-page {html}, deselect.
 
+import { reorderIntentFromKey } from './reorder-keys.js';
+
 const parentWin = window.parent;
 const SAME = window.location.origin;
 
@@ -158,6 +160,34 @@ document.addEventListener('mouseover', (e) => {
 });
 
 // ---------------------------------------------------------------------------
+// Keyboard reorder — plain ArrowUp/ArrowDown while a drag handle has focus
+// (the keyboard-only path), or Alt+ArrowUp/ArrowDown on whatever is
+// currently selected (the mouse-user shortcut). Posts the exact same op
+// payload the toolbar buttons already post (see onToolbarClick above) — one
+// reorder implementation, two triggers.
+// ---------------------------------------------------------------------------
+
+document.addEventListener('keydown', (e) => {
+  const active = document.activeElement;
+  const handleFocused = !!(active && active.classList && active.classList.contains('pse-drag'));
+  // First arrow press after tabbing onto a handle should do something, not
+  // nothing — select the handle's owning section if nothing is selected yet.
+  if (handleFocused && !selected) {
+    const owningSection = active.closest('[data-sid]');
+    if (owningSection) select('section', owningSection);
+  }
+  const ctx = {
+    selectedKind: selected ? selected.kind : null,
+    handleFocused,
+    textEditing: !!activeTextEl,
+  };
+  const kind = reorderIntentFromKey(e, ctx);
+  if (!kind || !selected) return;
+  e.preventDefault();
+  post({ type: 'op', kind, sid: selected.sid, bid: selected.bid, btype: selected.btype });
+});
+
+// ---------------------------------------------------------------------------
 // Inline text editing (TinyMCE inline inside THIS document)
 // ---------------------------------------------------------------------------
 
@@ -257,11 +287,26 @@ function addDragHandle(sectionEl) {
   h.className = 'pse-drag';
   h.title = 'Drag to reorder section';
   h.textContent = '⠿';
+  h.tabIndex = 0;
+  h.setAttribute('role', 'button');
+  h.setAttribute('aria-label', 'Reorder this section. Press Arrow Up or Arrow Down to move it.');
   h.style.cssText = 'position:absolute;top:8px;right:8px;z-index:9997;width:28px;height:28px;' +
     'display:flex;align-items:center;justify-content:center;background:#111827;color:#fff;' +
-    'border-radius:6px;cursor:grab;opacity:0;transition:opacity .15s;font-size:15px;line-height:1;';
+    'border-radius:6px;cursor:grab;opacity:0;transition:opacity .15s;font-size:15px;line-height:1;' +
+    'outline:none;';
   sectionEl.addEventListener('mouseenter', () => { h.style.opacity = '1'; });
-  sectionEl.addEventListener('mouseleave', () => { h.style.opacity = '0'; });
+  sectionEl.addEventListener('mouseleave', () => {
+    if (document.activeElement !== h) h.style.opacity = '0';
+  });
+  h.addEventListener('focus', () => {
+    h.style.opacity = '1';
+    h.style.outline = '2px solid #2563eb';
+    h.style.outlineOffset = '2px';
+  });
+  h.addEventListener('blur', () => {
+    h.style.opacity = '0';
+    h.style.outline = 'none';
+  });
   sectionEl.appendChild(h);
 }
 
@@ -286,6 +331,10 @@ function addBlockBar(sectionEl) {
 }
 
 let sortContainer = null;
+// Stashed inline placeholder styles, restored in onEnd so a section can never
+// be left permanently dimmed if the drag is aborted or the save fails.
+let stashedPlaceholderStyle = null;
+
 function setupDrag() {
   loadSortable().then(() => {
     if (!window.Sortable) return;
@@ -301,8 +350,36 @@ function setupDrag() {
       draggable: '[data-sid]',
       handle: '.pse-drag',
       animation: 150,
-      onStart() { deselect(); post({ type: 'deselect' }); },
-      onEnd() {
+      onStart(evt) {
+        deselect();
+        post({ type: 'deselect' });
+        // The dragged item (evt.item) IS the drop placeholder in SortableJS's
+        // default HTML5 drag mode — style it inline so the landing position
+        // is unmistakable, matching this file's existing injected-chrome
+        // convention (#pse-outline, .pse-drag) rather than a stylesheet
+        // class the iframe's own page does not define.
+        const item = evt && evt.item;
+        if (!item) return;
+        stashedPlaceholderStyle = {
+          outline: item.style.outline,
+          outlineOffset: item.style.outlineOffset,
+          opacity: item.style.opacity,
+          background: item.style.background,
+        };
+        item.style.outline = '3px dashed #2563eb';
+        item.style.outlineOffset = '-3px';
+        item.style.opacity = '0.6';
+        item.style.background = 'rgba(37,99,235,.10)';
+      },
+      onEnd(evt) {
+        const item = evt && evt.item;
+        if (item && stashedPlaceholderStyle) {
+          item.style.outline = stashedPlaceholderStyle.outline;
+          item.style.outlineOffset = stashedPlaceholderStyle.outlineOffset;
+          item.style.opacity = stashedPlaceholderStyle.opacity;
+          item.style.background = stashedPlaceholderStyle.background;
+        }
+        stashedPlaceholderStyle = null;
         const order = Array.from(container.querySelectorAll(':scope > [data-sid]'))
           .map((el) => el.getAttribute('data-sid'));
         post({ type: 'op', kind: 'reorder-sections', order });
@@ -345,10 +422,18 @@ window.addEventListener('message', (e) => {
   } else if (msg.type === 'move-section-dom') {
     const el = document.querySelector(`[data-sid="${CSS.escape(msg.sid)}"]`);
     if (!el) return;
+    // Re-inserting the node (below) drops focus in most browsers — if the
+    // moved section's own handle was the active element, re-acquire it by
+    // selector afterward so a second ArrowDown keeps working.
+    const handleWasFocused = document.activeElement === el.querySelector(':scope > .pse-drag');
     const sib = msg.dir === 'up' ? el.previousElementSibling : el.nextElementSibling;
     if (sib && sib.hasAttribute('data-sid')) {
       if (msg.dir === 'up') sib.before(el); else sib.after(el);
       if (selected && selected.el === el) positionChrome(el);
+      if (handleWasFocused) {
+        const handle = el.querySelector(':scope > .pse-drag');
+        if (handle) handle.focus();
+      }
     }
   } else if (msg.type === 'refresh-page') {
     window.location.reload();

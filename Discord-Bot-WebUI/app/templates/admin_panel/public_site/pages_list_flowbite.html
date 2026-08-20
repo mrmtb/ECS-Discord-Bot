@@ -30,16 +30,40 @@
 
 {% if view != 'trash' and pages %}
 <p class="mb-4 text-xs text-gray-500 dark:text-gray-400"><i class="ti ti-info-circle"></i>
-  <strong>Edit</strong> opens the page editor — click any text, image, or section right on the page to change it, then Publish. The gear icon is for the page's title, address &amp; SEO.</p>
+  <strong>Edit</strong> opens the page editor — click any text, image, or section right on the page to change it, then Publish. The gear icon is for the page's title, address &amp; SEO. <strong>Quick Edit</strong> changes the title, permalink &amp; status without leaving this list.</p>
+{% endif %}
+
+{% if view != 'trash' and pages %}
+{# WordPress-style bulk actions bar. Pages-specific action name AND checkbox
+   class — the generic "bulk-action" name is already registered globally by
+   handlers/user-management-comprehensive.js on every admin page, and reusing
+   it would make this silently do nothing (see 03-03-PLAN.md objective). #}
+<div class="mb-3 flex items-center gap-2">
+  <button type="button" id="pagesBulkActionsBtn" data-dropdown-toggle="pagesBulkActionsDropdown" class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ecs-green">
+    Bulk actions <i class="ti ti-chevron-down ml-1" aria-hidden="true"></i>
+  </button>
+  <div id="pagesBulkActionsDropdown" class="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow-sm w-52 dark:bg-gray-700">
+    <ul class="py-2 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="pagesBulkActionsBtn"
+        data-bulk-url="{{ url_for('admin_panel.public_site_pages_bulk') }}">
+      <li><a href="#" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-ecs-green" data-action="pages-bulk-action" data-bulk-action="publish"><i class="ti ti-rocket mr-2" aria-hidden="true"></i>Publish Selected</a></li>
+      <li><a href="#" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-amber-600 dark:text-amber-400" data-action="pages-bulk-action" data-bulk-action="unpublish"><i class="ti ti-eye-off mr-2" aria-hidden="true"></i>Unpublish Selected</a></li>
+      <li class="border-t border-gray-200 dark:border-gray-600"><a href="#" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-red-600 dark:text-red-400" data-action="pages-bulk-action" data-bulk-action="trash"><i class="ti ti-trash mr-2" aria-hidden="true"></i>Move to Trash</a></li>
+    </ul>
+  </div>
+</div>
 {% endif %}
 
 {% if not pages %}
   {{ empty_state("ti-file-text", ("Trash is empty" if view == 'trash' else "No pages yet"), ("" if view == 'trash' else "Add your first page above.")) }}
 {% else %}
+{% set _reserved = ['about', 'guide', 'guests', 'home', 'news', 'faqs', 'calendar', 'register', 'contact'] %}
 <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
   <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
     <thead class="bg-gray-50 dark:bg-gray-900/50">
       <tr>
+        {% if view != 'trash' %}
+        <th class="px-4 py-3 text-left w-8"><input type="checkbox" id="pagesSelectAll" class="w-4 h-4 text-ecs-green bg-gray-100 border-gray-300 rounded-sm focus:ring-ecs-green dark:bg-gray-700 dark:border-gray-600" aria-label="Select all pages"></th>
+        {% endif %}
         <th class="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400">Title</th>
         <th class="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400 hidden md:table-cell">URL</th>
         <th class="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400 hidden md:table-cell">Updated</th>
@@ -49,13 +73,17 @@
     <tbody class="divide-y divide-gray-100 dark:divide-gray-700/50">
       {% for page in pages %}
       {% set view_url = url_for('public.about') if page.slug == 'about' else url_for('public.guide') if page.slug == 'guide' else url_for('public.guests') if page.slug == 'guests' else url_for('public.dynamic_page', slug=page.slug) %}
-      <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-        <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ page.title or page.slug }}
+      {% set _slug_locked = page.slug in _reserved or page.slug.startswith('home_') %}
+      <tr id="pages-row-{{ page.id }}" class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+        {% if view != 'trash' %}
+        <td class="px-4 py-3 align-top"><input type="checkbox" class="pages-row-checkbox w-4 h-4 text-ecs-green bg-gray-100 border-gray-300 rounded-sm focus:ring-ecs-green dark:bg-gray-700 dark:border-gray-600" value="{{ page.id }}" aria-label="Select {{ page.title or page.slug }}"></td>
+        {% endif %}
+        <td class="px-4 py-3 font-medium text-gray-900 dark:text-white"><span id="pages-title-text-{{ page.id }}">{{ page.title or page.slug }}</span>
           {% if view != 'trash' %}
-            {% if page.status == 'published' %}<span class="ml-2 inline-flex items-center rounded-full bg-ecs-green/10 px-2 py-0.5 text-xs font-medium text-ecs-green dark:text-ecs-blue-400">Live</span>{% else %}<span class="ml-2 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">Draft</span>{% endif %}
+            {% if page.status == 'published' %}<span id="pages-status-badge-{{ page.id }}" class="ml-2 inline-flex items-center rounded-full bg-ecs-green/10 px-2 py-0.5 text-xs font-medium text-ecs-green dark:text-ecs-blue-400">Live</span>{% else %}<span id="pages-status-badge-{{ page.id }}" class="ml-2 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">Draft</span>{% endif %}
           {% endif %}
         </td>
-        <td class="px-4 py-3 hidden md:table-cell"><code class="text-xs text-gray-400">/{{ page.slug }}</code></td>
+        <td class="px-4 py-3 hidden md:table-cell"><code id="pages-slug-text-{{ page.id }}" class="text-xs text-gray-400">/{{ page.slug }}</code></td>
         <td class="px-4 py-3 hidden md:table-cell text-gray-500 dark:text-gray-400">{{ page.updated_at.strftime('%b %-d, %Y') if page.updated_at else '—' }}</td>
         <td class="px-4 py-3 text-right whitespace-nowrap">
           {% if view == 'trash' %}
@@ -68,15 +96,17 @@
             <button type="submit" class="inline-flex items-center gap-1 rounded-lg border border-red-200 dark:border-red-900/50 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"><i class="ti ti-trash"></i> Delete permanently</button>
           </form>
           {% else %}
+          {% set _page_label = (page.title or page.slug) | replace("'", "’") %}
           <a href="{{ view_url }}" target="_blank" class="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-ecs-green mr-1"><i class="ti ti-external-link"></i> View</a>
-          <form method="POST" action="{{ url_for('admin_panel.public_site_page_publish', page_id=page.id) }}" class="inline">
+          <form method="POST" action="{{ url_for('admin_panel.public_site_page_publish', page_id=page.id) }}" class="inline" onsubmit="return confirm('{{ ('Unpublish “' ~ _page_label ~ '”? It will be hidden from visitors immediately.') if page.status == 'published' else ('Publish “' ~ _page_label ~ '”? It will be visible to visitors immediately.') }}');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50">{% if page.status == 'published' %}<i class="ti ti-eye-off"></i> Unpublish{% else %}<i class="ti ti-rocket"></i> Publish{% endif %}</button>
           </form>
           {% set _btn_secondary = 'inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50' %}
           {% set _btn_primary = 'inline-flex items-center gap-1 rounded-lg bg-ecs-green px-3 py-1.5 text-xs font-semibold text-white hover:bg-ecs-green-dark' %}
+          <button type="button" class="{{ _btn_secondary }}" title="Quick Edit — title, permalink &amp; status inline" data-action="pages-quick-edit-open" data-page-id="{{ page.id }}"><i class="ti ti-pencil"></i></button>
           <a href="{{ url_for('admin_panel.site_editor', page_id=page.id) }}" class="{{ _btn_primary }}" title="Edit the page in place"><i class="ti ti-edit"></i> Edit</a>
-          <a href="{{ url_for('admin_panel.public_site_page_edit', page_id=page.id) }}" class="{{ _btn_secondary }}" title="Title, permalink, status & SEO"><i class="ti ti-settings"></i></a>
+          <a href="{{ url_for('admin_panel.site_editor', page_id=page.id, panel='page') }}" class="{{ _btn_secondary }}" title="Open the page's settings in the editor"><i class="ti ti-settings"></i></a>
           <a href="{{ url_for('admin_panel.public_site_page_revisions', page_id=page.id) }}" class="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50" title="History / undo (revisions)"><i class="ti ti-history"></i></a>
           <form method="POST" action="{{ url_for('admin_panel.public_site_page_duplicate', page_id=page.id) }}" class="inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -89,9 +119,205 @@
           {% endif %}
         </td>
       </tr>
+      {% if view != 'trash' %}
+      {# Quick Edit row — an in-table row transformation, not a modal. Values
+         are pre-rendered by Jinja (autoescaped), so the client only toggles
+         `hidden` and writes results back with textContent — no raw-HTML
+         DOM injection, no client-built markup. #}
+      <tr id="pages-qe-row-{{ page.id }}" class="hidden bg-gray-50 dark:bg-gray-900/40">
+        <td colspan="5" class="px-4 py-3">
+          <div class="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400" for="pages-qe-title-{{ page.id }}">Title</label>
+              <input type="text" id="pages-qe-title-{{ page.id }}" data-field="title" data-original-value="{{ page.title or '' }}" value="{{ page.title or '' }}" class="mt-1 block w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400" for="pages-qe-slug-{{ page.id }}">Permalink</label>
+              <input type="text" id="pages-qe-slug-{{ page.id }}" data-field="slug" data-original-value="{{ page.slug }}" value="{{ page.slug }}" {{ 'disabled' if _slug_locked }} class="mt-1 block w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm disabled:opacity-60">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400" for="pages-qe-status-{{ page.id }}">Status</label>
+              <select id="pages-qe-status-{{ page.id }}" data-field="status" data-original-value="{{ page.status }}" class="mt-1 block w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm">
+                <option value="draft" {{ 'selected' if page.status != 'published' }}>Draft</option>
+                <option value="published" {{ 'selected' if page.status == 'published' }}>Published</option>
+              </select>
+            </div>
+          </div>
+          <p id="pages-qe-error-{{ page.id }}" class="mt-2 hidden text-xs text-red-600 dark:text-red-400"></p>
+          <div class="mt-3 flex items-center gap-2">
+            <button type="button" class="{{ 'inline-flex items-center gap-1 rounded-lg bg-ecs-green px-3 py-1.5 text-xs font-semibold text-white hover:bg-ecs-green-dark' }}" data-action="pages-quick-edit-save" data-page-id="{{ page.id }}" data-url="{{ url_for('admin_panel.public_site_page_quick_edit', page_id=page.id) }}"><i class="ti ti-device-floppy"></i> Update</button>
+            <button type="button" class="{{ 'inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50' }}" data-action="pages-quick-edit-cancel" data-page-id="{{ page.id }}">Cancel</button>
+          </div>
+        </td>
+      </tr>
+      {% endif %}
       {% endfor %}
     </tbody>
   </table>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block custom_js %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  if (!window.EventDelegation || typeof window.EventDelegation.register !== 'function') {
+    return;
+  }
+
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+  function selectedPageIds() {
+    return Array.from(document.querySelectorAll('.pages-row-checkbox:checked')).map(function (cb) { return cb.value; });
+  }
+
+  function confirmAction(title, text) {
+    if (window.Swal) {
+      return window.Swal.fire({
+        title: title, text: text, icon: 'question',
+        showCancelButton: true, confirmButtonText: 'Yes', cancelButtonText: 'Cancel'
+      }).then(function (result) { return result.isConfirmed; });
+    }
+    return Promise.resolve(window.confirm(title + (text ? ' ' + text : '')));
+  }
+
+  function notify(title, message, type) {
+    if (window.Swal) {
+      window.Swal.fire({ title: title, text: message, icon: type === 'error' ? 'error' : 'warning' });
+    } else {
+      window.alert(title + ': ' + message);
+    }
+  }
+
+  // ---- select-all mirrors onto every row checkbox (plain change listener) ----
+  var selectAll = document.getElementById('pagesSelectAll');
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      document.querySelectorAll('.pages-row-checkbox').forEach(function (cb) {
+        cb.checked = selectAll.checked;
+      });
+    });
+  }
+
+  // ---- bulk publish / unpublish / trash ----
+  window.EventDelegation.register('pages-bulk-action', function (element, e) {
+    e.preventDefault();
+    var action = element.dataset.bulkAction;
+    if (!action) return;
+    var ids = selectedPageIds();
+    if (ids.length === 0) {
+      notify('No Selection', 'Select one or more pages first.', 'warning');
+      return;
+    }
+    var dropdown = element.closest('ul');
+    var bulkUrl = dropdown ? dropdown.dataset.bulkUrl : null;
+    if (!bulkUrl) return;
+    var labels = { publish: 'Publish', unpublish: 'Unpublish', trash: 'Move to Trash' };
+    var label = labels[action] || action;
+    confirmAction(label + ' ' + ids.length + ' page(s)?',
+                  action === 'trash' ? 'Trashed pages can be restored from the Trash tab.' : '')
+      .then(function (ok) {
+        if (!ok) return;
+        fetch(bulkUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+          body: JSON.stringify({ action: action, page_ids: ids })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.success) {
+              location.reload();
+            } else {
+              notify('Bulk action failed', (data && data.error) || 'Unknown error', 'error');
+            }
+          })
+          .catch(function () { notify('Bulk action failed', 'Network error', 'error'); });
+      });
+  }, { preventDefault: true });
+
+  // ---- Quick Edit: open / cancel / save (in-table row transformation) ----
+  window.EventDelegation.register('pages-quick-edit-open', function (element, e) {
+    e.preventDefault();
+    var id = element.dataset.pageId;
+    if (!id) return;
+    var displayRow = document.getElementById('pages-row-' + id);
+    var editRow = document.getElementById('pages-qe-row-' + id);
+    if (displayRow) displayRow.classList.add('hidden');
+    if (editRow) editRow.classList.remove('hidden');
+  }, { preventDefault: true });
+
+  window.EventDelegation.register('pages-quick-edit-cancel', function (element, e) {
+    e.preventDefault();
+    var id = element.dataset.pageId;
+    if (!id) return;
+    var editRow = document.getElementById('pages-qe-row-' + id);
+    var displayRow = document.getElementById('pages-row-' + id);
+    if (editRow) {
+      editRow.querySelectorAll('[data-field]').forEach(function (input) {
+        input.value = input.dataset.originalValue || '';
+      });
+      var err = document.getElementById('pages-qe-error-' + id);
+      if (err) { err.classList.add('hidden'); err.textContent = ''; }
+      editRow.classList.add('hidden');
+    }
+    if (displayRow) displayRow.classList.remove('hidden');
+  }, { preventDefault: true });
+
+  window.EventDelegation.register('pages-quick-edit-save', function (element, e) {
+    e.preventDefault();
+    var id = element.dataset.pageId;
+    var url = element.dataset.url;
+    if (!id || !url) return;
+    var editRow = document.getElementById('pages-qe-row-' + id);
+    if (!editRow) return;
+    var payload = {};
+    editRow.querySelectorAll('[data-field]').forEach(function (input) {
+      if (input.disabled) return;
+      payload[input.dataset.field] = input.value;
+    });
+    var errEl = document.getElementById('pages-qe-error-' + id);
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (result) {
+        if (result.ok && result.data && result.data.success) {
+          var page = result.data.page;
+          var titleEl = document.getElementById('pages-title-text-' + id);
+          if (titleEl) titleEl.textContent = page.title || page.slug;
+          var slugEl = document.getElementById('pages-slug-text-' + id);
+          if (slugEl) slugEl.textContent = '/' + page.slug;
+          var badgeEl = document.getElementById('pages-status-badge-' + id);
+          if (badgeEl) {
+            var live = page.status === 'published';
+            badgeEl.textContent = live ? 'Live' : 'Draft';
+            badgeEl.className = live
+              ? 'ml-2 inline-flex items-center rounded-full bg-ecs-green/10 px-2 py-0.5 text-xs font-medium text-ecs-green dark:text-ecs-blue-400'
+              : 'ml-2 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400';
+          }
+          editRow.querySelectorAll('[data-field]').forEach(function (input) {
+            var field = input.dataset.field;
+            if (field && Object.prototype.hasOwnProperty.call(page, field)) {
+              input.value = page[field];
+              input.dataset.originalValue = page[field];
+            }
+          });
+          if (errEl) { errEl.classList.add('hidden'); errEl.textContent = ''; }
+          editRow.classList.add('hidden');
+          var displayRow = document.getElementById('pages-row-' + id);
+          if (displayRow) displayRow.classList.remove('hidden');
+        } else {
+          var msg = (result.data && result.data.error) || 'Save failed';
+          if (errEl) { errEl.textContent = msg; errEl.classList.remove('hidden'); }
+        }
+      })
+      .catch(function () {
+        if (errEl) { errEl.textContent = 'Network error'; errEl.classList.remove('hidden'); }
+      });
+  }, { preventDefault: true });
+});
+</script>
 {% endblock %}

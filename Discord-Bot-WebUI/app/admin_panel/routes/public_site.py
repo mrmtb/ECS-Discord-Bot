@@ -47,6 +47,13 @@ _ADMIN_ROLES = ['Global Admin', 'Pub League Admin']
 _BLOCK_SLUGS = ('home_hero', 'home_intro', 'home_justforfun',
                 'home_division_classic', 'home_division_premier', 'home_body')
 
+# Slugs whose permalink can never be renamed (block slugs + fixed top-level
+# routes). Shared by apply_page_settings's server-side guard and the editor
+# panel's slug_locked flag (site_editor.py) so the client-side read-only lock
+# is decoration over this one rule, never a second copy of it.
+_RESERVED_SLUGS = set(_BLOCK_SLUGS) | {'about', 'guide', 'guests', 'home', 'news',
+                                       'faqs', 'calendar', 'register', 'contact'}
+
 # Default public nav menu + the built-in destinations an admin can pick.
 _DEFAULT_MENU = [
     {'kind': 'builtin', 'value': 'home', 'label': None, 'visible': True},
@@ -377,6 +384,11 @@ def public_site_news_save():
     post.body_html = sanitize_html(request.form.get('body_html')) or None
     post.author_name = (request.form.get('author_name') or '').strip() or None
     post.category = (request.form.get('category') or '').strip() or None
+    # Tags are Category's sibling field (PSB-12): plain text, never HTML-
+    # sanitized (a legitimate tag containing an ampersand would be mangled
+    # by sanitize_html), normalized by _normalize_tags below, written
+    # alongside category so the two stay easy to keep in step.
+    post.tags = _normalize_tags(request.form.get('tags'))
     post.featured_image_url = (request.form.get('featured_image_url') or '').strip() or None
     post.meta_title = (request.form.get('meta_title') or '').strip() or None
     post.meta_description = (request.form.get('meta_description') or '').strip() or None
@@ -803,32 +815,99 @@ def public_site_page_create():
 @transactional
 def public_site_page_publish(page_id):
     """One-click Publish / Unpublish (back to Draft) from the Pages list.
-    Publishing here goes through the SAME draft->published copy the site editor
-    uses, so a page can never go live showing the draft (or the retired
-    body_html placeholder) instead of its real content."""
+    Delegates the publish half to apply_page_settings (below) so the per-row
+    toggle and the bulk 'publish' verb can never diverge on the empty-page
+    refusal or the draft->published section copy — one implementation, two
+    callers, exactly like apply_page_settings' own docstring promises."""
     page = g.db_session.query(SitePage).get(page_id)
     if not page:
         abort(404)
     if page.status == 'published':
         page.status = 'draft'
-    else:
-        if not (page.sections_draft or {}).get('sections') \
-                and not (page.sections_published or {}).get('sections'):
-            flash('Add some content before publishing this page.', 'error')
-            return redirect(url_for('admin_panel.public_site_pages'))
-        page.status = 'published'
-        if (page.sections_draft or {}).get('sections'):
-            page.sections_published = page.sections_draft
-            page.published_at = datetime.utcnow()
-    page.updated_at = datetime.utcnow()
-    try:
-        page.updated_by_id = current_user.id
-    except Exception:
-        pass
-    flash('Page published — it is now live.' if page.status == 'published'
-          else 'Page unpublished — back to Draft (hidden from visitors).', 'success')
+        page.updated_at = datetime.utcnow()
+        try:
+            page.updated_by_id = current_user.id
+        except Exception:
+            pass
+        _bump_public()
+        flash('Page unpublished — back to Draft (hidden from visitors).', 'success')
+        return redirect(url_for('admin_panel.public_site_pages'))
+
+    ok, error = apply_page_settings(page, {'status': 'published'})
+    if not ok:
+        flash('Add some content before publishing this page.', 'error')
+        return redirect(url_for('admin_panel.public_site_pages'))
     _bump_public()
+    flash('Page published — it is now live.', 'success')
     return redirect(url_for('admin_panel.public_site_pages'))
+
+
+_BULK_ACTIONS = ('publish', 'unpublish', 'trash')
+
+
+@admin_panel_bp.route('/public-site/pages/bulk', methods=['POST'])
+@login_required
+@role_required(_ROLES)
+@transactional
+def public_site_pages_bulk():
+    """WordPress-style bulk actions from the Pages list — publish, unpublish
+    or trash several pages in one action. JSON in, JSON out (the caller is
+    the Pages-list inline script, not a form submit).
+
+    Every id is re-derived from the database inside the loop — never trust a
+    client-supplied id list as a set of already-authorized rows (T-03-11).
+    Dispatches through apply_page_settings so this can never re-implement (and
+    drift from) the empty-page publish refusal or the section copy. A page
+    this endpoint can't act on (missing, trashed, non-integer id, or refused
+    by apply_page_settings) is counted under `skipped`, never silently folded
+    into `updated` and never a 500.
+    """
+    data = request.get_json(silent=True) or {}
+    action = data.get('action')
+    raw_ids = data.get('page_ids')
+    if action not in _BULK_ACTIONS or not isinstance(raw_ids, list):
+        return jsonify({'success': False, 'error': 'invalid_request'}), 400
+
+    updated = 0
+    skipped = []
+    for raw_id in raw_ids:
+        try:
+            page_id = int(raw_id)
+        except (TypeError, ValueError):
+            skipped.append(raw_id)
+            continue
+        page = g.db_session.query(SitePage).get(page_id)
+        # Block slugs (home_hero, home_intro, ...) are home-page CONTENT BLOCKS,
+        # not pages. The Pages list, its counts and the Trash view all exclude
+        # them (see the ~SitePage.slug.in_(_BLOCK_SLUGS) filters above), so a
+        # block trashed here would vanish from the home page with NO admin
+        # recovery path — Trash cannot show it either. The id arrives from the
+        # client, so this must be enforced server-side, not by the UI omitting
+        # the checkbox.
+        if page is not None and page.slug in _BLOCK_SLUGS:
+            skipped.append(page_id)
+            continue
+        if not page or page.deleted_at is not None:
+            skipped.append(page_id)
+            continue
+        if action == 'trash':
+            page.deleted_at = datetime.utcnow()
+            page.updated_at = datetime.utcnow()
+            try:
+                page.updated_by_id = current_user.id
+            except Exception:
+                pass
+            updated += 1
+            continue
+        target_status = 'published' if action == 'publish' else 'draft'
+        ok, _error = apply_page_settings(page, {'status': target_status})
+        if ok:
+            updated += 1
+        else:
+            skipped.append(page_id)
+
+    _bump_public()
+    return jsonify({'success': True, 'updated': updated, 'skipped': skipped})
 
 
 @admin_panel_bp.route('/public-site/pages/<int:page_id>/revisions')
@@ -894,16 +973,150 @@ def public_site_page_duplicate(page_id):
     return redirect(url_for('admin_panel.site_editor', page_id=copy.id))
 
 
+def apply_page_settings(page, data, allow_publish_copy=True):
+    """The ONE implementation of every page-metadata write: title, permalink,
+    excerpt, featured image, SEO and draft/published status. Called both by
+    the retired standalone settings form (public_site_page_save, below, which
+    builds `data` from request.form) and by the site editor's in-panel
+    Page settings save (site_editor.py's POST /page-settings, which builds
+    `data` from a JSON body) — one implementation, two entry points, so the
+    panel and the legacy form can never drift apart (T-03-05).
+
+    CRITICAL: only writes a key that is PRESENT in `data` — guard every field
+    on `key in data`, never on `data.get(key)` (a truthiness test can't tell
+    "field omitted" from "field explicitly cleared"). The retired form always
+    posted every input on every save, so that distinction never mattered
+    there. A JSON caller is different: plan 03-03's Quick Edit sends only
+    {title, slug, status} and its bulk actions send only {status}. Treating
+    an absent key as "clear this field" would silently null out every field
+    a partial-payload caller didn't send — wiping titles, excerpts and SEO
+    the moment someone bulk-publishes a set of pages.
+
+    `allow_publish_copy` lets a caller refuse the draft -> published copy
+    specifically (used by the page-settings endpoint's stale_rev gate) without
+    touching any other field in the same payload.
+
+    Returns (True, None) on success, or (False, <short machine error string>)
+    on failure — 'empty_page' or 'stale_rev'. Never flash()es and never
+    redirect()s; the JSON caller can use neither.
+    """
+    from app.models import SitePageSlugHistory
+    from app.services.public_cache import bump_public_cache_after_commit as bump_public_cache
+
+    if 'title' in data:
+        page.title = (data.get('title') or '').strip() or None
+    if 'meta_title' in data:
+        page.meta_title = (data.get('meta_title') or '').strip() or None
+    if 'meta_description' in data:
+        page.meta_description = (data.get('meta_description') or '').strip() or None
+    if 'og_image_url' in data:
+        page.og_image_url = (data.get('og_image_url') or '').strip() or None
+    if 'excerpt' in data:
+        page.excerpt = (data.get('excerpt') or '').strip()[:500] or None
+    if 'featured_image_url' in data:
+        url = data.get('featured_image_url')
+        # Tighter than is_safe_link_url() ON PURPOSE: is_safe_link_url() exists
+        # for author-supplied LINKS and deliberately allows absolute https/http/
+        # mailto/tel — correct for a nav item, wrong here. This value is
+        # rendered as og:image to every anonymous visitor, so it must stay on
+        # our own /static router. Mirrors section_schema._image_ref's same-app
+        # static rule exactly (section_schema.py:128-135) — a strict SUBSET of
+        # what is_safe_link_url allows, not an exemption from it. Do not "fix"
+        # this by swapping in the looser link validator.
+        if (isinstance(url, str) and url.startswith('/static/') and len(url) <= 500
+                and not any(c in url for c in '"\'<>` \t\n')):
+            page.featured_image_url = url
+        else:
+            page.featured_image_url = None
+
+    # Permalink rename (WordPress-style). Reserved/block slugs can never be
+    # renamed — this is the server-side rule the editor panel's read-only
+    # permalink field is decoration over. Renames write slug history (auto-301)
+    # and bust the old slug's cache entry.
+    if 'slug' in data:
+        new_slug = (data.get('slug') or '').strip()
+        if new_slug and page.slug not in _RESERVED_SLUGS:
+            s = slugify(new_slug)
+            if s and s != page.slug and s not in _RESERVED_SLUGS:
+                old = page.slug
+                page.slug = _unique_slug(s, exclude_id=page.id, model=SitePage)
+                try:
+                    if not g.db_session.query(SitePageSlugHistory).filter_by(old_slug=old).first():
+                        g.db_session.add(SitePageSlugHistory(page_id=page.id, old_slug=old))
+                except Exception:
+                    logger.warning('slug history insert failed', exc_info=True)
+                bump_public_cache('page', old)
+
+    # Publish state. Flipping draft -> published copies sections_draft into
+    # sections_published (exactly what the editor's own Publish does) so the
+    # page never goes public showing draft/placeholder content — that copy is
+    # the one metadata write with a lost-update hazard, so it's the one thing
+    # allow_publish_copy can refuse.
+    if 'status' in data:
+        new_status = data.get('status')
+        if new_status in ('draft', 'published'):
+            if new_status == 'published' and page.status != 'published':
+                if not allow_publish_copy:
+                    return False, 'stale_rev'
+                if not (page.sections_draft or {}).get('sections') \
+                        and not (page.sections_published or {}).get('sections'):
+                    return False, 'empty_page'
+                if (page.sections_draft or {}).get('sections'):
+                    page.sections_published = page.sections_draft
+                    page.published_at = datetime.utcnow()
+            page.status = new_status
+
+    page.updated_at = datetime.utcnow()
+    try:
+        page.updated_by_id = current_user.id
+    except Exception:
+        pass
+    bump_public_cache('page', page.slug)
+    return True, None
+
+
 @admin_panel_bp.route('/public-site/pages/<int:page_id>/edit')
 @login_required
 @role_required(_ROLES)
 def public_site_page_edit(page_id):
-    """Page SETTINGS (title/slug/status/SEO). Content editing happens in the
-    in-place site editor — this screen deliberately has no body editor."""
+    """RETIRED (D-02): page settings now live in the site editor's Page
+    settings panel, not on a separate screen. This route survives only so an
+    old link/bookmark/the Pages-list gear icon lands somewhere useful instead
+    of a 404 — it 302s straight into the editor with the panel pre-opened."""
     page = SitePage.query.get_or_404(page_id)
-    return render_template('admin_panel/public_site/page_edit_flowbite.html', page=page)
+    return redirect(url_for('admin_panel.site_editor', page_id=page.id, panel='page'))
 
 
+@admin_panel_bp.route('/public-site/pages/<int:page_id>/quick-edit', methods=['POST'])
+@login_required
+@role_required(_ROLES)
+@transactional
+def public_site_page_quick_edit(page_id):
+    """WordPress-style Quick Edit: title, permalink and status, saved from an
+    in-table row on the Pages list without opening the editor. JSON in, JSON
+    out — the caller is the Pages-list inline script. Builds `data` from only
+    the keys the client actually sent (title/slug/status) and hands it to
+    apply_page_settings unchanged, so excerpt/featured image/SEO can never be
+    touched by a Quick Edit save (apply_page_settings' own membership-test
+    contract). Echoes back what the server settled on — in particular the
+    slug _unique_slug may have suffixed — rather than what the client asked
+    for."""
+    page = g.db_session.query(SitePage).get(page_id)
+    # Same guard as the bulk endpoint: block slugs are home-page content blocks,
+    # excluded from the Pages list and from Trash, so they must not be reachable
+    # by a client-supplied id here either.
+    if page is not None and page.slug in _BLOCK_SLUGS:
+        abort(404)
+    if not page or page.deleted_at is not None:
+        abort(404)
+    body = request.get_json(silent=True) or {}
+    data = {k: body[k] for k in ('title', 'slug', 'status') if k in body}
+    ok, error = apply_page_settings(page, data)
+    if not ok:
+        return jsonify({'success': False, 'error': error}), 400
+    _bump_public()
+    return jsonify({'success': True, 'page': {'id': page.id, 'title': page.title,
+                                              'slug': page.slug, 'status': page.status}})
 
 
 @admin_panel_bp.route('/public-site/pages/save', methods=['POST'])
@@ -911,58 +1124,30 @@ def public_site_page_edit(page_id):
 @role_required(_ROLES)
 @transactional
 def public_site_page_save():
-    """Page SETTINGS save: title/slug/status/SEO only. Content (sections) is
-    owned by the site editor; body_html/hero are retired columns nothing
-    writes anymore. Slug renames record slug history (auto-301) and bust the
-    public cache."""
-    from app.models import SitePageSlugHistory
-    from app.services.public_cache import bump_public_cache_after_commit as bump_public_cache
+    """Retired form's POST target, kept reachable but now a thin wrapper over
+    apply_page_settings — even a POST here goes through the ONE implementation
+    of these writes. Builds `data` from request.form and keeps this route's
+    original flash()+redirect() behaviour based on the returned tuple."""
     page_id = request.form.get('id', type=int)
     page = g.db_session.query(SitePage).get(page_id) if page_id else None
     if not page:
         flash('Page not found.', 'error')
         return redirect(url_for('admin_panel.public_site_pages'))
-    page.title = (request.form.get('title') or '').strip() or None
-    page.meta_title = (request.form.get('meta_title') or '').strip() or None
-    page.meta_description = (request.form.get('meta_description') or '').strip() or None
-    page.og_image_url = (request.form.get('og_image_url') or '').strip() or None
-    # Optional slug change (WordPress-style permalink edit); block/reserved slugs
-    # can't be renamed, and the new slug is uniqued. Renames write slug history
-    # so old inbound links 301 instead of 404ing.
-    new_slug = (request.form.get('slug') or '').strip()
-    _reserved = set(_BLOCK_SLUGS) | {'about', 'guide', 'guests', 'home', 'news',
-                                     'faqs', 'calendar', 'register', 'contact'}
-    if new_slug and page.slug not in _reserved:
-        s = slugify(new_slug)
-        if s and s != page.slug and s not in _reserved:
-            old = page.slug
-            page.slug = _unique_slug(s, exclude_id=page.id, model=SitePage)
-            try:
-                if not g.db_session.query(SitePageSlugHistory).filter_by(old_slug=old).first():
-                    g.db_session.add(SitePageSlugHistory(page_id=page.id, old_slug=old))
-            except Exception:
-                logger.warning('slug history insert failed', exc_info=True)
-            bump_public_cache('page', old)
-    # Publish state — flipping to published copies the draft to live (same as
-    # the editor's Publish) so the page never goes public showing draft/
-    # placeholder content.
-    new_status = request.form.get('status')
-    if new_status in ('draft', 'published'):
-        if new_status == 'published' and not (page.sections_draft or {}).get('sections') \
-                and not (page.sections_published or {}).get('sections'):
+    data = {
+        'title': request.form.get('title'),
+        'meta_title': request.form.get('meta_title'),
+        'meta_description': request.form.get('meta_description'),
+        'og_image_url': request.form.get('og_image_url'),
+        'slug': request.form.get('slug'),
+        'status': request.form.get('status'),
+    }
+    ok, error = apply_page_settings(page, data)
+    if not ok:
+        if error == 'empty_page':
             flash('Add some content before publishing this page.', 'error')
-            return redirect(url_for('admin_panel.public_site_page_edit', page_id=page.id))
-        if new_status == 'published' and page.status != 'published' \
-                and (page.sections_draft or {}).get('sections'):
-            page.sections_published = page.sections_draft
-            page.published_at = datetime.utcnow()
-        page.status = new_status
-    page.updated_at = datetime.utcnow()
-    try:
-        page.updated_by_id = current_user.id
-    except Exception:
-        pass
-    bump_public_cache('page', page.slug)
+        else:
+            flash('Could not save page settings.', 'error')
+        return redirect(url_for('admin_panel.public_site_page_edit', page_id=page.id))
     if page.status == 'published':
         flash('Settings saved.', 'success')
     else:
@@ -1114,3 +1299,52 @@ def _parse_dt(value):
         except (ValueError, TypeError):
             continue
     return None
+
+
+# Per-tag cap: keeps one abusive/pasted-in value from eating the whole
+# column on its own, while leaving room for several real tags.
+_TAG_MAX_LEN = 40
+# NewsPost.tags is db.String(255) — mirror that width here so a truncation
+# decision is made once, in the pure helper, rather than relying on the DB
+# driver to silently clip (or error) on an overlong value at flush time.
+_TAGS_COLUMN_LEN = 255
+
+
+def _normalize_tags(raw):
+    """Normalize a free-text, comma-separated tag string (PSB-12's Posts
+    tags — Category's sibling field, WordPress-style, one column, no join
+    table). Each entry is stripped of surrounding whitespace, empty entries
+    are dropped, duplicates are removed case-insensitively while keeping the
+    first spelling the author used, each entry is capped at `_TAG_MAX_LEN`
+    characters, and the whole list is truncated to `_TAGS_COLUMN_LEN` at an
+    entry boundary (never mid-entry) before being rejoined with ', '.
+    Returns the joined string, or None for an empty/blank input — mirroring
+    how `category` is already stored (empty string is never persisted).
+
+    Pure and free of request/session access, so tests can call it directly
+    without a Flask request context."""
+    if not raw:
+        return None
+    seen = set()
+    entries = []
+    for part in raw.split(','):
+        entry = part.strip()[:_TAG_MAX_LEN].strip()
+        if not entry:
+            continue
+        key = entry.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append(entry)
+    if not entries:
+        return None
+
+    kept = []
+    total_len = 0
+    for entry in entries:
+        added_len = len(entry) if not kept else len(', ') + len(entry)
+        if total_len + added_len > _TAGS_COLUMN_LEN:
+            break
+        kept.append(entry)
+        total_len += added_len
+    return ', '.join(kept) or None

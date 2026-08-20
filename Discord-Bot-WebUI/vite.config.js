@@ -68,6 +68,10 @@ export default defineConfig({
         // the in-iframe bridge injected into edit-mode /preview renders.
         'site-editor-shell': resolve(__dirname, 'app/static/js/site-editor/shell.js'),
         'site-editor-bridge': resolve(__dirname, 'app/static/js/site-editor/bridge.js'),
+        // The ONE Media Library picker: loaded standalone by the Posts
+        // featured-image control (news_edit_flowbite.html) and also bundled
+        // into the shell above by import — one implementation, two mounts.
+        'site-editor-media-picker': resolve(__dirname, 'app/static/js/site-editor/media-picker.js'),
         // Public /guide long-read chrome (TOC + search + scrollspy); loaded
         // only on that page, so it must stay its own small entry.
         'public-guide': resolve(__dirname, 'app/static/js/public-guide.js'),

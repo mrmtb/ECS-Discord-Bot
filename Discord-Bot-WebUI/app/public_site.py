@@ -496,12 +496,19 @@ def _is_site_admin():
 @public_bp.route('/')
 def home():
     page = _page_block('home')
+    # Precedence mirrors NewsPost's at :812-814 — an explicit override always
+    # wins, then the page's excerpt/featured_image_url, then the shipped
+    # fallback copy (home has never had og_image at all before this).
+    _default_desc = ('Beginner-friendly, radically inclusive adult soccer in '
+                     'Seattle. Classic and Premier divisions. No experience '
+                     'needed — everyone plays.')
     seo = _seo(
         title='ECS Pub League — Radically Inclusive Adult Soccer in Seattle',
-        description=('Beginner-friendly, radically inclusive adult soccer in '
-                     'Seattle. Classic and Premier divisions. No experience '
-                     'needed — everyone plays.'),
+        description=(page.meta_description if page and page.meta_description
+                     else (page.excerpt if page and page.excerpt else _default_desc)),
         canonical_endpoint='public.home',
+        og_image=(_abs_static(page.og_image_url or page.featured_image_url)
+                  if page and (page.og_image_url or page.featured_image_url) else None),
         json_ld=[_org_json_ld()],
     )
 
@@ -622,9 +629,12 @@ def dynamic_page(slug):
         abort(404)
     seo = _seo(
         title=page.meta_title or f'{page.title or slug.title()} — ECS Pub League',
-        description=page.meta_description,
+        # Explicit meta_description still wins; excerpt is the fallback
+        # (D-01), mirroring NewsPost's precedence at :812-814.
+        description=page.meta_description or page.excerpt,
         canonical_endpoint='public.dynamic_page', canonical_values={'slug': slug},
-        og_image=_abs_static(page.og_image_url) if page.og_image_url else None,
+        og_image=(_abs_static(page.og_image_url or page.featured_image_url)
+                  if (page.og_image_url or page.featured_image_url) else None),
         json_ld=[_org_json_ld()],
     )
 
@@ -646,9 +656,13 @@ def _render_site_page(slug, title_fallback, active='', desc=None):
              else f'{(page.title if page and page.title else title_fallback)} — ECS Pub League')
     seo = _seo(
         title=title,
-        description=(page.meta_description if page and page.meta_description else desc),
+        # meta_description wins, then excerpt, then the caller's literal
+        # fallback (D-01, mirrors NewsPost's precedence at :812-814).
+        description=(page.meta_description if page and page.meta_description
+                     else (page.excerpt if page and page.excerpt else desc)),
         canonical_endpoint=f'public.{slug}',
-        og_image=(_abs_static(page.og_image_url) if page and page.og_image_url else None),
+        og_image=(_abs_static(page.og_image_url or page.featured_image_url)
+                  if page and (page.og_image_url or page.featured_image_url) else None),
         json_ld=[_org_json_ld()],
     )
 
@@ -672,9 +686,13 @@ def guide():
         title=(page.meta_title if page and page.meta_title
                else 'The Pub League Guide — ECS Pub League'),
         description=(page.meta_description if page and page.meta_description
-                     else 'The ECS Pub League unofficial guide — skills, positions, '
-                          'rules, and a full lexicon for players new to the league or to soccer.'),
+                     else (page.excerpt if page and page.excerpt else
+                     'The ECS Pub League unofficial guide — skills, positions, '
+                     'rules, and a full lexicon for players new to the league or to soccer.')),
         canonical_endpoint='public.guide',
+        # guide() had no og_image at all before this (D-01).
+        og_image=(_abs_static(page.og_image_url or page.featured_image_url)
+                  if page and (page.og_image_url or page.featured_image_url) else None),
         json_ld=[_org_json_ld()],
     )
 
@@ -731,6 +749,10 @@ def faqs():
 @public_bp.route('/news')
 def news_list():
     category = (request.args.get('category') or '').strip() or None
+    # Length-capped so a pathological value never even reaches the query —
+    # every stored tag entry is already capped to 40 chars by
+    # _normalize_tags, so nothing longer could ever be a real match anyway.
+    tag = (request.args.get('tag') or '').strip()[:80] or None
     page_num = max(1, request.args.get('page', 1, type=int))
     copy = _dynamic_copy('news')
 
@@ -743,6 +765,23 @@ def news_list():
                          NewsPost.published_at <= datetime.utcnow()))
             if category:
                 q = q.filter(NewsPost.category == category)
+            if tag:
+                from sqlalchemy import func
+                # Delimiter-anchored, case-insensitive, wildcard-escaped
+                # match. Tags are stored joined with ', ' (_normalize_tags
+                # in the admin route) — collapse that separator to a bare
+                # ',' and wrap the whole value in leading/trailing commas so
+                # a substring match can never cross a tag boundary (a query
+                # for "foot" must not match a post tagged "football"), and
+                # escape %/_/\\ in the incoming tag so a wildcard character
+                # in the query matches literally instead of matching every
+                # post's tags.
+                escaped_tag = (tag.lower()
+                               .replace('\\', '\\\\')
+                               .replace('%', '\\%')
+                               .replace('_', '\\_'))
+                wrapped_tags = ',' + func.replace(func.lower(NewsPost.tags), ', ', ',') + ','
+                q = q.filter(wrapped_tags.like(f'%,{escaped_tag},%', escape='\\'))
             per_page = 12
             total_posts = q.count()
             posts = (q.order_by(NewsPost.published_at.desc())
@@ -766,21 +805,29 @@ def news_list():
         except Exception:
             imgs = {}
             g.public_render_degraded = True
+        title_bits = []
+        if category:
+            title_bits.append(category)
+        if tag:
+            title_bits.append(f'#{tag}')
+        title_prefix = ' · '.join(title_bits)
         seo = _seo(
-            title=(f'{category} — News — ECS Pub League' if category else 'News — ECS Pub League'),
+            title=(f'{title_prefix} — News — ECS Pub League' if title_prefix else 'News — ECS Pub League'),
             description=copy['hero_subtitle'],
             canonical_endpoint='public.news_list',
             json_ld=[_org_json_ld()],
         )
         return render_template('public/news_list.html', active_page='news', seo=seo,
                                posts=posts, categories=categories, active_category=category,
+                               active_tag=tag,
                                page_num=page_num, total_pages=total_pages, imgs=imgs,
                                copy=copy,
                                edit_url=_edit_url('admin_panel.public_site_news'))
 
-    # Free-text category filters and deep pages are served live — the cache
-    # key space must stay bounded (an attacker can mint ?category values).
-    suffix = f'?p={page_num}' if (category is None and page_num <= 50) else None
+    # Free-text category/tag filters and deep pages are served live — the
+    # cache key space must stay bounded (an attacker can mint unbounded
+    # ?category or ?tag values).
+    suffix = f'?p={page_num}' if (category is None and tag is None and page_num <= 50) else None
     return _dynamic_page_cache('news', suffix, _render)
 
 

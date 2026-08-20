@@ -14,6 +14,12 @@
             {% endfor %}
         </div>
         {% endif %}
+        {% if active_tag %}
+        <div class="mb-8 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+            <span>Filtered by tag: <span class="font-semibold text-gray-900 dark:text-white">#{{ active_tag }}</span></span>
+            <a href="{{ url_for('public.news_list', category=active_category or None) }}" class="inline-flex items-center gap-1 text-ecs-green dark:text-ecs-blue-400 hover:underline"><i class="ti ti-x"></i> Clear</a>
+        </div>
+        {% endif %}
         {% if not posts %}
         <div class="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-gray-500 dark:text-gray-400">
             <i class="ti ti-news text-4xl"></i>
@@ -22,8 +28,12 @@
         {% else %}
         <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {% for post in posts %}
-            <a href="{{ url_for('public.news_detail', slug=post.slug) }}"
-               class="group flex flex-col rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 overflow-hidden shadow-xs hover:shadow-md transition">
+            {# A tag chip must be independently clickable, so the card can no
+               longer be one giant <a> (nesting an <a> inside an <a> is
+               invalid HTML and unreliable to click) — the image, title and
+               "Read more" are each their own link instead. #}
+            <div class="group flex flex-col rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 overflow-hidden shadow-xs hover:shadow-md transition">
+                <a href="{{ url_for('public.news_detail', slug=post.slug) }}" class="block">
                 {% set info = imgs.get(post.featured_image_url) if imgs is defined and imgs else none %}
                 {% if info %}
                 {# Media-library asset: responsive variants + WebP (same
@@ -39,13 +49,27 @@
                 {% else %}
                 <div class="h-48 w-full bg-linear-to-br from-ecs-green to-ecs-green-dark flex items-center justify-center"><i class="ti ti-news text-4xl text-white/40"></i></div>
                 {% endif %}
+                </a>
                 <div class="flex flex-col flex-1 p-5">
                     <p class="text-xs text-gray-500 dark:text-gray-400">{{ post.display_date.strftime('%B %-d, %Y') if post.display_date else '' }}{% if post.category %} · <span class="text-ecs-green dark:text-ecs-blue-400 font-medium">{{ post.category }}</span>{% endif %}</p>
-                    <h2 class="mt-1 font-semibold text-lg text-gray-900 dark:text-white group-hover:text-ecs-green dark:group-hover:text-ecs-blue-400">{{ post.title }}</h2>
+                    <h2 class="mt-1 font-semibold text-lg text-gray-900 dark:text-white">
+                        <a href="{{ url_for('public.news_detail', slug=post.slug) }}" class="group-hover:text-ecs-green dark:group-hover:text-ecs-blue-400">{{ post.title }}</a>
+                    </h2>
                     {% if post.excerpt %}<p class="mt-2 text-sm text-gray-600 dark:text-gray-400 line-clamp-3">{{ post.excerpt }}</p>{% endif %}
-                    <span class="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-ecs-green dark:text-ecs-blue-400">Read more <i class="ti ti-arrow-right"></i></span>
+                    {% if post.tags %}
+                    <div class="mt-3 flex flex-wrap gap-1.5">
+                        {% for raw_tag in post.tags.split(',') %}
+                        {% set post_tag = raw_tag.strip() %}
+                        {% if post_tag %}
+                        <a href="{{ url_for('public.news_list', tag=post_tag) }}"
+                           class="rounded-full px-2.5 py-1 text-xs font-medium {{ 'bg-ecs-green text-white' if active_tag and active_tag.lower() == post_tag.lower() else 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700' }}">#{{ post_tag }}</a>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    <a href="{{ url_for('public.news_detail', slug=post.slug) }}" class="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-ecs-green dark:text-ecs-blue-400 hover:underline">Read more <i class="ti ti-arrow-right"></i></a>
                 </div>
-            </a>
+            </div>
             {% endfor %}
         </div>
         {% endif %}
@@ -56,14 +80,14 @@
 {% if total_pages and total_pages > 1 %}
 <nav class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-16 flex items-center justify-center gap-2" aria-label="News pages">
     {% if page_num > 1 %}
-    <a href="{{ url_for('public.news_list', page=page_num - 1, category=active_category or None) }}"
+    <a href="{{ url_for('public.news_list', page=page_num - 1, category=active_category or None, tag=active_tag or None) }}"
        class="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-900">
         <i class="ti ti-chevron-left"></i> Newer
     </a>
     {% endif %}
     <span class="text-sm text-gray-500 dark:text-gray-400">Page {{ page_num }} of {{ total_pages }}</span>
     {% if page_num < total_pages %}
-    <a href="{{ url_for('public.news_list', page=page_num + 1, category=active_category or None) }}"
+    <a href="{{ url_for('public.news_list', page=page_num + 1, category=active_category or None, tag=active_tag or None) }}"
        class="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-900">
         Older <i class="ti ti-chevron-right"></i>
     </a>

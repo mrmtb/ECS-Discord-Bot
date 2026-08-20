@@ -34,6 +34,7 @@
            title="Exit editor — back to the page">
             <img src="{{ url_for('static', filename='img/ecs_logo.png') }}" alt="ECS" class="h-6 w-6">
             <i class="ti ti-arrow-left"></i>
+            <span class="hidden sm:inline text-sm font-medium">View</span>
         </a>
 
         <select onchange="if(this.value) window.location.href=this.value"
@@ -69,6 +70,8 @@
            class="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-gray-700 dark:text-gray-200 ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700">
             <i class="ti ti-eye"></i> Preview
         </a>
+        <button type="button" id="pse-page-settings" title="Page settings"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><i class="ti ti-settings text-lg"></i></button>
         <button type="button" id="pse-publish"
                 class="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ecs-blue-600 px-4 text-sm font-bold text-white hover:bg-ecs-blue-700">
             <i class="ti ti-world-upload"></i> Publish

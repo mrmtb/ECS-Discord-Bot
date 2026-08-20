@@ -11,6 +11,17 @@
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ post.display_date.strftime('%B %-d, %Y') if post.display_date else '' }}{% if post.author_name %} · {{ post.author_name }}{% endif %}</p>
             <h1 class="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">{{ post.title }}</h1>
             {% if post.excerpt %}<p class="mt-4 text-lg text-gray-600 dark:text-gray-300">{{ post.excerpt }}</p>{% endif %}
+            {% if post.tags %}
+            <div class="mt-4 flex flex-wrap gap-1.5">
+                {% for raw_tag in post.tags.split(',') %}
+                {% set post_tag = raw_tag.strip() %}
+                {% if post_tag %}
+                <a href="{{ url_for('public.news_list', tag=post_tag) }}"
+                   class="rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">#{{ post_tag }}</a>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
         </header>
 
         {% if img is defined and img %}

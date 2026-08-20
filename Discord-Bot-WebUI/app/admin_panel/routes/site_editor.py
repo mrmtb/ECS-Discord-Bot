@@ -55,6 +55,25 @@ def _get_page(page_id):
     return page
 
 
+def _slug_locked(slug):
+    """True when a page's permalink can never be renamed (block slug, fixed
+    top-level route, or a home_* content block). Single source shared with
+    apply_page_settings's server-side guard (public_site.py) so the editor
+    panel's read-only permalink field is decoration over that one rule, never
+    a second copy of it."""
+    from app.admin_panel.routes.public_site import _RESERVED_SLUGS
+    return slug in _RESERVED_SLUGS or slug.startswith('home_')
+
+
+def _page_settings_dict(page):
+    """The page-metadata fields the editor's Page settings panel renders and
+    the panel's POST echoes back on success."""
+    return {'status': page.status, 'slug': page.slug, 'title': page.title,
+            'excerpt': page.excerpt, 'featured_image_url': page.featured_image_url,
+            'meta_title': page.meta_title, 'meta_description': page.meta_description,
+            'slug_locked': _slug_locked(page.slug)}
+
+
 def _rebuild_media_usage(page, doc):
     from app.services.section_schema import collect_asset_ids
     (g.db_session.query(MediaUsage)
@@ -148,7 +167,10 @@ def site_editor_state(page_id):
         'page': {'id': page.id, 'slug': page.slug, 'title': page.title,
                  'status': page.status,
                  'published_at': page.published_at.isoformat() if page.published_at else None,
-                 'has_unpublished_changes': page.sections_draft != page.sections_published},
+                 'has_unpublished_changes': page.sections_draft != page.sections_published,
+                 'excerpt': page.excerpt, 'featured_image_url': page.featured_image_url,
+                 'meta_title': page.meta_title, 'meta_description': page.meta_description,
+                 'slug_locked': _slug_locked(page.slug)},
         'doc': doc,
         'draft_rev': page.draft_rev or 0,
         'catalog': {
@@ -259,6 +281,58 @@ def site_editor_render_section(page_id):
     if html is None:
         return jsonify({'success': False, 'error': 'unknown_section'}), 404
     return jsonify({'success': True, 'section_html': html})
+
+
+@admin_panel_bp.route('/site-editor/<int:page_id>/page-settings', methods=['POST'])
+@login_required
+@role_required(_ROLES)
+@transactional
+def site_editor_page_settings(page_id):
+    """JSON write target for the editor's Page settings panel — status,
+    permalink, excerpt, featured image and SEO. Delegates every field write to
+    apply_page_settings (app/admin_panel/routes/public_site.py) so the panel
+    and the legacy settings form can never drift apart (T-03-05). Uses _ROLES,
+    NOT _ADMIN_ROLES — a Site Editor must be able to edit page settings;
+    _ADMIN_ROLES is reserved for Appearance.
+
+    Page-settings saves are NOT compare-and-swap protected on draft_rev in
+    general (metadata lives in different columns than the section document,
+    so there's no lost-update hazard against it, and bumping draft_rev here
+    would spuriously invalidate every other open tab's base_rev). The one
+    exception is the draft -> published transition, which copies
+    sections_draft into sections_published -- exactly the stale-publish race
+    /publish's CAS exists to prevent -- so THAT transition alone carries
+    base_rev, checked identically to site_editor_publish. This endpoint never
+    writes draft_rev itself.
+    """
+    page = _get_page(page_id)
+    data = request.get_json(silent=True) or {}
+
+    transitioning_to_published = (data.get('status') == 'published'
+                                  and page.status != 'published')
+    if transitioning_to_published:
+        base_rev = data.get('base_rev')
+        # base_rev arrives from the client, so a non-numeric value is a bad
+        # request, not a server fault — int() would otherwise raise ValueError
+        # and surface as a 500.
+        try:
+            base_rev_int = int(base_rev)
+        except (TypeError, ValueError):
+            base_rev_int = None
+        if base_rev_int is None or base_rev_int != (page.draft_rev or 0):
+            return jsonify({'success': False, 'error': 'stale_rev',
+                            'draft_rev': page.draft_rev or 0}), 409
+
+    old_slug = page.slug
+    from app.admin_panel.routes.public_site import apply_page_settings
+    ok, error = apply_page_settings(page, data, allow_publish_copy=True)
+    if not ok:
+        code = 409 if error == 'stale_rev' else 400
+        return jsonify({'success': False, 'error': error,
+                        'draft_rev': page.draft_rev or 0}), code
+
+    return jsonify({'success': True, 'page': _page_settings_dict(page),
+                    'slug_changed': page.slug != old_slug})
 
 
 @admin_panel_bp.route('/site-editor/<int:page_id>/publish', methods=['POST'])
