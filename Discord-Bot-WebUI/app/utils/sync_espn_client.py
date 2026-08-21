@@ -7,11 +7,40 @@ Eliminates ThreadPoolExecutor usage that causes queue buildup.
 
 import logging
 import requests
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
+from zoneinfo import ZoneInfo
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
+
+# ESPN buckets its scoreboard by US *Pacific* calendar date, not UTC. A 6:30 PM
+# PT kickoff is 01:30 UTC the *next* day, so asking for the UTC date returns an
+# empty slate for every Sounders home fixture.
+#
+# Pacific, not Eastern: the scoreboard response's own
+# leagues[0].calendar lists each day boundary as 08:00Z in winter and 07:00Z in
+# summer -- i.e. exactly 00:00 PST/PDT, tracking US DST. (Eastern would put the
+# boundary at 03:00 local, which is not a day boundary in any calendar.)
+# The two only disagree for kickoffs in the 04:00Z-07:00Z window, which MLS
+# never uses but late Concacaf / Leagues Cup fixtures can.
+ESPN_SCOREBOARD_TZ = ZoneInfo("America/Los_Angeles")
+
+
+def espn_scoreboard_date(match_dt: Optional[datetime]) -> Optional[str]:
+    """
+    Convert a kickoff time to the ``YYYYMMDD`` string ESPN files it under.
+
+    Naive datetimes are treated as UTC (that is how ``MLSMatch.date_time`` is
+    stored). Returns None for a missing kickoff so callers can skip the
+    ``dates`` param entirely rather than send a wrong one.
+    """
+    if match_dt is None:
+        return None
+    if match_dt.tzinfo is None:
+        match_dt = match_dt.replace(tzinfo=timezone.utc)
+    return match_dt.astimezone(ESPN_SCOREBOARD_TZ).strftime("%Y%m%d")
 
 
 class SyncESPNClient:
@@ -196,6 +225,54 @@ class SyncESPNClient:
             logger.error(f"Error fetching team info for {team_id}: {e}")
             return None
 
+    def _competitors_from_summary(
+        self, match_id: str, competition: str
+    ) -> Optional[Dict[str, str]]:
+        """
+        Resolve home/away from ESPN's /summary?event={id} endpoint.
+
+        Unlike the scoreboard this is keyed on the match id, needs no ``dates``
+        param, and works for scheduled fixtures as well as finished ones.
+        Returns None on any failure so the caller can fall back.
+        """
+        try:
+            url = f"{self.base_url}/{competition}/summary"
+            response = self.session.get(
+                url, params={'event': match_id}, timeout=self.timeout
+            )
+            if response.status_code != 200:
+                logger.info(
+                    f"ESPN summary returned {response.status_code} for "
+                    f"{competition} event {match_id}; falling back to scoreboard"
+                )
+                return None
+
+            competitions = ((response.json().get('header') or {})
+                            .get('competitions') or [])
+            if not competitions:
+                return None
+            competitors = competitions[0].get('competitors') or []
+            if len(competitors) < 2:
+                return None
+
+            result = {}
+            for comp in competitors:
+                team = comp.get('team', {})
+                side = 'home' if comp.get('homeAway') == 'home' else 'away'
+                result[f'{side}_team_id'] = team.get('id', '')
+                result[f'{side}_team_name'] = team.get('displayName', '')
+
+            if result.get('home_team_id') and result.get('away_team_id'):
+                return result
+            return None
+
+        except Exception as e:
+            logger.info(
+                f"ESPN summary competitor lookup failed for {match_id}: {e}; "
+                f"falling back to scoreboard"
+            )
+            return None
+
     def get_event_competitors(
         self,
         match_id: str,
@@ -221,6 +298,14 @@ class SyncESPNClient:
             Dict with 'home_team_id', 'away_team_id', 'home_team_name',
             'away_team_name' or None if unavailable.
         """
+        # Preferred path: /summary?event={id} is keyed directly on the match id,
+        # so it needs no date at all and cannot be defeated by a stale
+        # MLSMatch.date_time, a rescheduled fixture, or a day-boundary edge.
+        # The scoreboard below stays as a fallback.
+        by_summary = self._competitors_from_summary(match_id, competition)
+        if by_summary:
+            return by_summary
+
         try:
             url = f"{self.base_url}/{competition}/scoreboard"
             params = {}

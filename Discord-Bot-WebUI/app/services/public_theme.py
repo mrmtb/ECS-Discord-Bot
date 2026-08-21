@@ -38,6 +38,48 @@ FONT_PAIRS = {
 }
 DEFAULT_FONT_PAIR = 'modern'
 
+# Section rhythm — how consecutive sections are separated on a public page.
+#
+# WHY THIS IS A SETTING AND NOT A HARDCODED STYLE: a page's sections are composed
+# by a volunteer at runtime, and each section already carries its own `theme`
+# (inherit/light/dark/brand). Baking a separator into the section macros would
+# override an authoring decision nobody could undo. Making it a site-wide
+# Appearance choice keeps ONE person (the admin) in control of page rhythm
+# without touching any individual section.
+#
+# Implemented as CSS adjacent-sibling / nth-of-type utilities applied to <main>,
+# NOT as an index passed into the macros. That matters: render_single_section()
+# renders a ONE-section document for the editor's swap payload, so any Jinja
+# index would always be 0 and a swapped section would visibly change appearance
+# on edit and change back on reload. CSS re-evaluates against real DOM position,
+# so it stays correct through editor swaps.
+SECTION_RHYTHM = {
+    'none': {
+        'label': 'None — sections separated by spacing only',
+        'classes': '',
+    },
+    'hairline': {
+        'label': 'Hairline — a soft rule between sections',
+        # Additive only: draws a rule between adjacent sections. Never changes a
+        # section's own background, so a volunteer's theme choice is untouched.
+        'classes': '[&>section+section]:border-t [&>section+section]:border-ecs-green/15 '
+                   'dark:[&>section+section]:border-ecs-green/20',
+    },
+    'tint': {
+        'label': 'Alternating tint — every other section on a warm ground',
+        # Only paints sections that did NOT opt into their own background, so an
+        # explicitly light/dark/brand section keeps exactly what the author chose.
+        'classes': '[&>section:nth-of-type(even):not([class*=bg-])]:bg-ecs-green/[0.04] '
+                   'dark:[&>section:nth-of-type(even):not([class*=bg-])]:bg-white/[0.02]',
+    },
+}
+DEFAULT_SECTION_RHYTHM = 'none'
+
+
+def section_rhythm_classes(key):
+    """Tailwind utility string for the chosen rhythm. Unknown/missing -> none."""
+    return SECTION_RHYTHM.get(key, SECTION_RHYTHM[DEFAULT_SECTION_RHYTHM])['classes']
+
 DEFAULT_PRIMARY = '#40b050'   # ECS Pub League logo green
 DEFAULT_ACCENT = '#203090'    # ECS Pub League logo blue
 

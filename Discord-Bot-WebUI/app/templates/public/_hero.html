@@ -29,7 +29,7 @@
   {% endif %}
   <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ _pad }}">
     <div class="max-w-2xl space-y-6 {{ 'mx-auto text-center' if align == 'center' else '' }}">
-      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight drop-shadow-xs"
+      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-balance break-words drop-shadow-xs"
           style="color: {{ text_color or '#ffffff' }};">{{ title }}</h1>
       {% if subtitle %}
       <p class="text-lg opacity-90 drop-shadow-sm {{ 'mx-auto' if align == 'center' else '' }}"

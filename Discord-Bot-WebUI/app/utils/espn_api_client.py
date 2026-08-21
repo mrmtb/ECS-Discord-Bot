@@ -28,7 +28,11 @@ class ESPNAPIClient:
     (MLS, Concacaf, Leagues Cup, etc.) without timezone/date heuristics.
     """
 
-    BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer"
+    # site.api.espn.com sits behind a WAF that 403s unrecognised
+    # User-Agents (including ours). site.web.api.espn.com serves the
+    # byte-identical summary payload with no such gate, and is the host
+    # get_match_lineups() has always used successfully.
+    BASE_URL = "https://site.web.api.espn.com/apis/site/v2/sports/soccer"
     TIMEOUT = 5
     MAX_RETRIES = 2
 
@@ -65,8 +69,10 @@ class ESPNAPIClient:
 
     def __init__(self):
         self.session = requests.Session()
+        # Deliberately no custom User-Agent: ESPN 403s 'ECS-Discord-Bot/2.0'
+        # (and 'Mozilla/5.0') on site.api.espn.com. Leaving the requests default
+        # in place is what SyncESPNClient does, and it is not blocked.
         self.session.headers.update({
-            'User-Agent': 'ECS-Discord-Bot/2.0',
             'Accept': 'application/json',
             'Accept-Encoding': 'gzip, deflate'
         })
@@ -657,7 +663,7 @@ class ESPNAPIClient:
         Returns None if lineups aren't available yet.
         """
         try:
-            url = f"https://site.web.api.espn.com/apis/site/v2/sports/soccer/{competition}/summary?event={match_id}"
+            url = f"{self.BASE_URL}/{competition}/summary?event={match_id}"
             response = self.session.get(url, timeout=self.TIMEOUT)
 
             if response.status_code != 200:

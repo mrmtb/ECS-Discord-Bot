@@ -3,8 +3,8 @@
 {% block content %}
 <article class="py-12 sm:py-16">
     <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-        <a href="{{ url_for('public.news_list') }}" class="inline-flex items-center gap-1.5 text-sm font-semibold text-ecs-green dark:text-ecs-blue-400 hover:underline">
-            <i class="ti ti-arrow-left"></i> Back to news
+        <a href="{{ url_for('public.news_list') }}" class="group inline-flex items-center gap-1.5 rounded text-sm font-semibold text-ecs-green hover:underline dark:text-ecs-blue-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
+            <i class="ti ti-arrow-left transition-transform duration-150 ease-out group-hover:-translate-x-0.5 motion-reduce:transform-none"></i> Back to news
         </a>
 
         <header class="mt-6">
@@ -17,7 +17,7 @@
                 {% set post_tag = raw_tag.strip() %}
                 {% if post_tag %}
                 <a href="{{ url_for('public.news_list', tag=post_tag) }}"
-                   class="rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">#{{ post_tag }}</a>
+                   class="rounded-full bg-ecs-green/10 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-ecs-green/20 hover:text-ecs-green dark:bg-ecs-green/15 dark:text-gray-300 dark:hover:bg-ecs-green/25 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">#{{ post_tag }}</a>
                 {% endif %}
                 {% endfor %}
             </div>
@@ -31,21 +31,21 @@
             {% if img.webp_srcset %}<source type="image/webp" srcset="{{ img.webp_srcset }}" sizes="(min-width: 768px) 720px, 100vw">{% endif %}
             <img src="{{ img.url }}" {% if img.srcset %}srcset="{{ img.srcset }}" sizes="(min-width: 768px) 720px, 100vw"{% endif %}
                  {% if img.width and img.height %}width="{{ img.width }}" height="{{ img.height }}"{% endif %}
-                 alt="{{ post.title }}" class="mt-8 w-full rounded-2xl object-cover">
+                 alt="{{ post.title }}" class="mt-8 w-full rounded-xl object-cover">
         </picture>
         {% elif post.featured_image_url %}
-        <img src="{{ post.featured_image_url }}" alt="{{ post.title }}" class="mt-8 w-full rounded-2xl object-cover">
+        <img src="{{ post.featured_image_url }}" alt="{{ post.title }}" class="mt-8 w-full rounded-xl object-cover">
         {% endif %}
 
-        <div class="mt-8 prose prose-lg dark:prose-invert max-w-none prose-headings:text-gray-900 dark:prose-headings:text-white prose-a:text-ecs-green dark:prose-a:text-ecs-blue-600 prose-img:rounded-xl">
+        <div class="mt-8 prose prose-lg dark:prose-invert max-w-none prose-headings:text-gray-900 dark:prose-headings:text-white prose-a:text-ecs-green dark:prose-a:text-ecs-blue-400 prose-img:rounded-xl">
             {{ post.body_html | safe }}
         </div>
 
         <div class="mt-12 border-t border-gray-200 dark:border-gray-800 pt-8 flex flex-col sm:flex-row gap-3">
-            <a href="{{ cta.url }}" class="inline-flex items-center justify-center gap-2 rounded-lg bg-ecs-green px-5 py-2.5 text-sm font-semibold text-white hover:bg-ecs-green-dark transition">
+            <a href="{{ cta.url }}" class="inline-flex items-center justify-center gap-2 rounded-full bg-ecs-green px-5.5 py-2.5 text-sm font-semibold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
                 <i class="ti ti-user-plus"></i> {{ cta.label }}
             </a>
-            <a href="{{ url_for('public.news_list') }}" class="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 dark:border-gray-700 px-5 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-900 transition">
+            <a href="{{ url_for('public.news_list') }}" class="inline-flex items-center justify-center gap-2 rounded-full border border-ecs-green/30 px-5.5 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green dark:border-ecs-green/25 dark:text-gray-200 dark:hover:bg-ecs-green/15 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
                 <i class="ti ti-news"></i> More news
             </a>
         </div>

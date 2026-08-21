@@ -644,12 +644,24 @@ Write only the reaction."""
         # Detect cup/knockout competitions
         is_cup = any(kw in competition.lower() for kw in ['cup', 'champions', 'concacaf', 'open', 'playoff'])
 
+        # The one-liner is written from Seattle's point of view, so spell the
+        # venue posture out. "Portland at home" means Portland are visiting US;
+        # an away fixture must read "Portland away". Leaving this implicit got a
+        # Sounders-at-Cincinnati thread described as "Cincinnati at home".
+        posture = (
+            f"Seattle are AT HOME to {opponent}. Phrase it as \"{opponent} at home\"."
+            if is_home else
+            f"Seattle are AWAY at {opponent}. Phrase it as \"{opponent} away\". Do NOT write \"at home\"."
+        )
+
         if espn_info:
             prompt = f"""Rewrite this ESPN match info as a short one-liner for a Sounders supporters Discord thread. Under 200 characters. No em dashes. Use the real stats. No welcomes, no predictions, no hype.
 
 ESPN info: "{espn_info}"
 Competition: {competition}
-{"Home match." if is_home else "Away match."} {rivalry}
+{posture} {rivalry}
+
+Hard rule: use ONLY the numbers in the ESPN info above. If it contains no league position, no record and no last meeting, do not mention any. Never guess or invent a table position, a record or a scoreline.
 
 Examples of ESPN info -> one-liner:
 "Seattle Sounders FC (12W-5D-3L, 4th Western). Portland Timbers (10W-7D-5L, 2nd Western). Last meeting: SEA 2 - 1 POR" -> "Portland at home. Beat them 2-1 last time. Sitting 4th, need to close the gap."
@@ -665,8 +677,10 @@ Write only the one-liner."""
 
 Match: {home_team} vs {away_team} at {venue}
 Competition: {competition}
-{"Home match." if is_home else "Away match."}
+{posture}
 {rivalry}
+
+Hard rule: you have no stats for this match. Do not mention any league position, record, points total or previous scoreline. Describe only the fixture itself.
 
 Examples:
 "Portland at home tonight. Three points would put some distance in the table."

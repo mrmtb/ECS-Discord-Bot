@@ -8,10 +8,15 @@
    ctx.resolve_link(), ctx.dyn() are pure prefetched lookups — macros never
    query the database).
 
-   Design vocabulary matches the shipped public site exactly (golden-test
-   parity with the old home.html): max-w-7xl px-4 sm:px-6 lg:px-8 containers,
-   py-16 sm:py-20 rhythm, gray-* + dark: pairs, ecs-green / ecs-blue-600
-   accents, rounded-2xl cards, Tabler icons.
+   Design vocabulary (Hallmark pass, 2026-08-21 — genre: playful, macrostructure:
+   Split Studio applied as a section-type vocabulary): max-w-7xl px-4 sm:px-6 lg:px-8
+   containers, py-16 sm:py-20 rhythm, gray-* + dark: pairs, ecs-green / ecs-blue-600
+   accents driven ENTIRELY by the Appearance panel's CSS vars, rounded-xl cards with a
+   hover-lift when linked, pill buttons, prose measure on body copy, Tabler icons.
+
+   The previous note here claimed "golden-test parity with the old home.html". That is
+   no longer true and was already historical: home.html was removed at the sections
+   conversion and no test asserts literal public markup (verified 2026-08-21).
 
    In edit mode, sections/blocks carry data-sid / data-bid / data-btype /
    data-editable annotations the site editor's overlay targets. Server only
@@ -97,7 +102,7 @@
     4: 'text-lg font-semibold'
 }.get(lvl, 'text-3xl sm:text-4xl font-bold') %}
 {% set align = {'left': '', 'center': 'text-center', 'right': 'text-right'}.get(block.align, '') %}
-<h{{ lvl }} class="{{ size }} tracking-tight {{ _heading_color(section) }} {{ align }} {{ _hide_mobile(block) }} {{ 'drop-shadow-xs' if section.type == 'hero' }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</h{{ lvl }}>
+<h{{ lvl }} class="{{ size }} tracking-tight text-balance break-words {{ _heading_color(section) }} {{ align }} {{ _hide_mobile(block) }} {{ 'drop-shadow-xs' if section.type == 'hero' }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</h{{ lvl }}>
 {% endmacro %}
 
 
@@ -112,7 +117,7 @@
             {{ '[&_h2]:text-white [&_h3]:text-white' if _on_color(section) else '[&_h2]:text-gray-900 dark:[&_h2]:text-white [&_h3]:text-gray-900 dark:[&_h3]:text-white' }}
             [&_dl]:mt-4 [&_dt]:mt-4 [&_dt]:font-semibold {{ '[&_dt]:text-white' if _on_color(section) else '[&_dt]:text-gray-900 dark:[&_dt]:text-white' }} [&_dd]:mt-0.5 [&_dd]:text-base
             [&_a]:font-medium {{ '[&_a]:text-white [&_a]:underline' if _on_color(section) else '[&_a]:text-ecs-green dark:[&_a]:text-ecs-blue-400' }}
-            {{ 'drop-shadow-sm' if section.type == 'hero' }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</div>
+            {{ 'drop-shadow-sm' if section.type == 'hero' else 'max-w-prose' }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</div>
 {% endmacro %}
 
 
@@ -123,7 +128,7 @@
 {% set aspects = {'natural': '', '16:9': 'aspect-video', '4:3': 'aspect-4/3', '1:1': 'aspect-square'} %}
 {% set asp = aspects.get(block.aspect, '') %}
 <figure class="{{ widths.get(block.size, 'max-w-3xl') }} {{ aligns.get(block.align, 'mx-auto') }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
-    {% set inner %}{{ _img_tag(block.image, ctx, class='w-full rounded-2xl shadow-xs object-cover ' + asp, sizes='(min-width: 1024px) 768px, 100vw') }}{% endset %}
+    {% set inner %}{{ _img_tag(block.image, ctx, class='w-full rounded-xl shadow-xs object-cover ' + asp, sizes='(min-width: 1024px) 768px, 100vw') }}{% endset %}
     {% set href = ctx.resolve_link(block.link) if block.link else none %}
     {% if href %}<a href="{{ href }}">{{ inner }}</a>{% else %}{{ inner }}{% endif %}
     {% if block.caption %}<figcaption class="mt-2 text-center text-sm {{ 'text-white/70' if _on_color(section) else 'text-gray-500 dark:text-gray-400' }}">{{ block.caption }}</figcaption>{% endif %}
@@ -132,11 +137,18 @@
 {% endmacro %}
 
 
+{#- Focus ring, ground-aware: a green ring disappears on a brand/dark section,
+    so colored grounds get a white ring instead. Never animated (rings must appear
+    instantly on focus). -#}
+{%- macro _ring(section) -%}
+focus-visible:outline-hidden focus-visible:ring-2 {{ 'focus-visible:ring-white/70' if _on_color(section) else 'focus-visible:ring-ecs-green/50' }}
+{%- endmacro -%}
+
 {%- macro _button_classes(style, on_color) -%}
 {%- if style == 'primary' -%}
 bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {%- elif style == 'secondary' -%}
-{%- if on_color %}bg-white/15 text-white ring-1 ring-inset ring-white/30 hover:bg-white/25 backdrop-blur-sm{% else %}bg-ecs-green text-white hover:bg-ecs-green-dark{% endif -%}
+{%- if on_color %}bg-white/15 text-white ring-1 ring-inset ring-white/40 hover:bg-white/25{% else %}bg-ecs-green text-white hover:bg-ecs-green-dark{% endif -%}
 {%- else -%}
 {%- if on_color %}bg-white/10 text-white ring-1 ring-inset ring-white/25 hover:bg-white/20{% else %}ring-1 ring-inset ring-gray-300 dark:ring-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-800{% endif -%}
 {%- endif -%}
@@ -146,7 +158,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% set aligns = {'left': '', 'center': 'text-center', 'right': 'text-right'} %}
 <div class="{{ aligns.get(block.align, '') }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     <a href="{{ ctx.resolve_link(block.link) or '#' }}"
-       class="inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-semibold transition {{ _button_classes(block.style, _on_color(section)) }}">
+       class="inline-flex items-center justify-center gap-2 rounded-full px-6.5 py-3 text-base font-semibold transition duration-150 ease-out hover:-translate-y-px hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 motion-reduce:transform-none motion-reduce:transition-none {{ _button_classes(block.style, _on_color(section)) }}">
         {{ block.label }}
     </a>
 </div>
@@ -169,7 +181,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 {% macro block_card(block, ctx, section, edit_mode) %}
 {% set href = ctx.resolve_link(block.link) if block.link else none %}
-<div class="flex flex-col overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-xs {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+<div class="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs dark:border-gray-800 dark:bg-gray-950 {{ 'transition duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none' if href }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     {% if block.image %}
     <div class="aspect-video w-full overflow-hidden bg-gray-100 dark:bg-gray-900">
         {{ _img_tag(block.image, ctx, class='h-full w-full object-cover', sizes='(min-width: 1024px) 640px, 100vw') }}
@@ -184,8 +196,9 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
         {% if block.title %}<h3 class="{{ 'mt-4' if block.icon }} text-lg lg:text-2xl font-semibold lg:font-bold text-gray-900 dark:text-white">{{ block.title }}</h3>{% endif %}
         {% if block.html %}<div class="mt-2 flex-1 text-sm lg:text-base text-gray-600 dark:text-gray-300 [&_p]:mt-3 [&_p]:first:mt-0">{{ block.html | safe }}</div>{% endif %}
         {% if href %}
-        <a href="{{ href }}" class="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-ecs-green dark:text-ecs-blue-400">
-            {{ block.link_label or 'Learn more' }} <i class="ti ti-arrow-right"></i>
+        <a href="{{ href }}" class="mt-5 inline-flex items-center gap-1.5 rounded text-sm font-semibold text-ecs-green transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-ecs-blue-400">
+            {{ block.link_label or 'Learn more' }}
+            <i class="ti ti-arrow-right transition-transform duration-150 ease-out group-hover:translate-x-0.5 motion-reduce:transform-none"></i>
         </a>
         {% endif %}
     </div>
@@ -226,7 +239,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% macro block_video(block, ctx, section, edit_mode) %}
 {% if not block.embed_src %}{{ _placeholder(edit_mode, block, 'Add a YouTube or Vimeo link') }}{% else %}
 <figure class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
-    <div class="aspect-video w-full overflow-hidden rounded-2xl bg-gray-950 shadow-xs">
+    <div class="aspect-video w-full overflow-hidden rounded-xl bg-gray-950 shadow-xs">
         <iframe src="{{ block.embed_src }}" class="h-full w-full" title="Video"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>
@@ -240,7 +253,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% macro block_map(block, ctx, section, edit_mode) %}
 {% if not block.embed_src %}{{ _placeholder(edit_mode, block, 'Add a Google Maps embed link') }}{% else %}
 <figure class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
-    <div class="aspect-video w-full overflow-hidden rounded-2xl shadow-xs">
+    <div class="aspect-video w-full overflow-hidden rounded-xl shadow-xs">
         <iframe src="{{ block.embed_src }}" class="h-full w-full border-0" title="Map"
                 loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
     </div>
@@ -256,7 +269,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
     <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {% for post in posts %}
         <a href="{{ post.url }}"
-           class="group rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 overflow-hidden shadow-xs hover:shadow-md transition">
+           class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs transition duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none dark:border-gray-800 dark:bg-gray-950 {{ _ring(section) }}">
             {% if post.img %}
             {# Media-library asset: responsive variants + WebP. #}
             <picture>
@@ -279,7 +292,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
         {% endfor %}
     </div>
     <div class="mt-6 text-right">
-        <a href="{{ ctx.news_index_url }}" class="text-sm font-semibold {{ _link_color(section) }} hover:underline">All news →</a>
+        <a href="{{ ctx.news_index_url }}" class="rounded text-sm font-semibold {{ _link_color(section) }} hover:underline {{ _ring(section) }}">All news →</a>
     </div>
 </div>
 {% endmacro %}
@@ -289,8 +302,8 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% set faqs = ctx.dyn(block.id) %}
 <div class="space-y-3 {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="faq_list">
     {% for f in faqs %}
-    <details class="group rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-5 py-4">
-        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold text-gray-900 dark:text-white">
+    <details class="group rounded-xl border border-gray-200 bg-white px-5 py-4 transition-colors hover:border-ecs-green/40 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-ecs-green/40">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded font-semibold text-gray-900 dark:text-white {{ _ring(section) }}">
             {{ f.question }}
             <i class="ti ti-chevron-down transition group-open:rotate-180 text-gray-400"></i>
         </summary>
@@ -304,7 +317,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% macro block_registration_status(block, ctx, section, edit_mode) %}
 {% set d = ctx.dyn(block.id) %}
 <div class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="registration_status">
-    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset {{ 'bg-white/15 text-white ring-white/25 backdrop-blur-sm' if _on_color(section) else 'bg-ecs-green/10 text-ecs-green ring-ecs-green/30 dark:text-ecs-blue-400' }}">
+    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset {{ 'bg-white/20 text-white ring-white/40' if _on_color(section) else 'bg-ecs-green/10 text-ecs-green ring-ecs-green/30 dark:text-ecs-blue-400' }}">
         <i class="ti ti-calendar-event"></i>
         {% if d.season_name %}{{ d.season_name }} · {% endif %}{{ d.status_label }}
     </span>
@@ -315,7 +328,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% macro block_calendar_teaser(block, ctx, section, edit_mode) %}
 {% set events = ctx.dyn(block.id) %}
 <div class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="calendar_teaser">
-    <ul class="divide-y divide-gray-200 dark:divide-gray-800 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+    <ul class="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-950">
         {% for e in events %}
         <li class="flex items-center gap-4 px-5 py-4">
             <div class="flex h-12 w-12 flex-col items-center justify-center rounded-xl bg-ecs-green/10 text-ecs-green dark:text-ecs-blue-400">
@@ -332,7 +345,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
         {% endfor %}
     </ul>
     <div class="mt-4">
-        <a href="{{ ctx.calendar_url }}" class="text-sm font-semibold {{ _link_color(section) }} hover:underline">Full calendar →</a>
+        <a href="{{ ctx.calendar_url }}" class="rounded text-sm font-semibold {{ _link_color(section) }} hover:underline {{ _ring(section) }}">Full calendar →</a>
     </div>
 </div>
 {% endmacro %}
@@ -370,7 +383,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
         <div class="cf-turnstile" data-sitekey="{{ f.turnstile_sitekey }}"></div>
         {% endif %}
         <button type="submit"
-                class="inline-flex items-center gap-2 rounded-lg bg-ecs-green px-6 py-3 text-base font-semibold text-white hover:bg-ecs-green-dark transition">
+                class="inline-flex items-center gap-2 rounded-full bg-ecs-green px-6.5 py-3 text-base font-semibold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none {{ _ring(section) }}">
             <i class="ti ti-send"></i> {{ f.submit_label or 'Send' }}
         </button>
     </form>
@@ -382,7 +395,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 
 {% macro block_quote(block, ctx, section, edit_mode) %}
-<blockquote class="border-l-4 border-ecs-green pl-5 text-xl italic {{ _body_color(section) }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+<blockquote class="border-l-4 border-ecs-green pl-6 text-xl font-medium leading-relaxed {{ _body_color(section) }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     <div>{{ block.html | safe }}</div>
     {% if block.attribution %}<footer class="mt-2 text-sm not-italic font-semibold {{ _heading_color(section) }}">— {{ block.attribution }}</footer>{% endif %}
 </blockquote>
@@ -390,7 +403,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 
 {% macro block_divider(block, ctx, section, edit_mode) %}
-<hr class="border-gray-200 dark:border-gray-800 {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+<hr class="border-ecs-green/20 dark:border-ecs-green/25 {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
 {% endmacro %}
 
 
@@ -407,7 +420,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 <dl class="grid grid-cols-2 gap-6 {{ colcls.get(ncols, 'sm:grid-cols-4') }} text-center {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     {% for it in block['items'] %}
     <div>
-        <dd class="text-4xl font-extrabold {{ 'text-white' if _on_color(section) else 'text-ecs-green dark:text-ecs-blue-400' }}">{{ it.value }}</dd>
+        <dd class="text-4xl font-extrabold tabular-nums tracking-tight {{ 'text-white' if _on_color(section) else 'text-ecs-green dark:text-ecs-blue-400' }}">{{ it.value }}</dd>
         <dt class="mt-1 text-sm font-medium {{ _body_color(section) }}">{{ it.label }}</dt>
     </div>
     {% endfor %}
@@ -424,7 +437,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 <div class="flex items-center gap-3 {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     {% for it in block['items'] %}
     <a href="{{ it.url }}" target="_blank" rel="noopener noreferrer"
-       class="flex h-10 w-10 items-center justify-center rounded-full transition {{ 'bg-white/15 text-white hover:bg-white/25' if _on_color(section) else 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-ecs-green' }}">
+       class="flex h-10 w-10 items-center justify-center rounded-full transition duration-150 ease-out hover:-translate-y-0.5 motion-reduce:transform-none {{ 'bg-white/20 text-white hover:bg-white/30' if _on_color(section) else 'bg-ecs-green/10 text-gray-600 hover:bg-ecs-green/20 hover:text-ecs-green dark:bg-ecs-green/15 dark:text-gray-300 dark:hover:text-white' }} {{ _ring(section) }}">
         <i class="ti {{ icons.get(it.kind, 'ti-link') }} text-xl"></i>
     </a>
     {% endfor %}
@@ -519,10 +532,14 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 {% macro section_columns(section, ctx, edit_mode) %}
 {% set s = section.settings %}
-{% set layouts = {'50-50': 'grid gap-6 lg:grid-cols-2',
-                  '33-67': 'grid gap-6 lg:grid-cols-[1fr_2fr]',
-                  '67-33': 'grid gap-6 lg:grid-cols-[2fr_1fr]',
-                  '3col': 'grid gap-8 sm:grid-cols-2 lg:grid-cols-3'} %}
+{# Split Studio gutter discipline: two-column sections read as a diptych — a clear,
+   generous gutter between halves and no rule. Column ORDER is deliberately left alone;
+   the volunteer chose which blocks sit in which column, and silently reversing that
+   would override an authoring decision they cannot undo. #}
+{% set layouts = {'50-50': 'grid gap-10 lg:grid-cols-2 lg:gap-14',
+                  '33-67': 'grid gap-10 lg:grid-cols-[1fr_2fr] lg:gap-14',
+                  '67-33': 'grid gap-10 lg:grid-cols-[2fr_1fr] lg:gap-14',
+                  '3col': 'grid gap-8 sm:grid-cols-2 lg:grid-cols-3 lg:gap-10'} %}
 {% set ncols = 3 if s.layout == '3col' else 2 %}
 <section class="{{ THEME_SECTION.get(section.theme, '') }} {{ PAD.get(s.padding, PAD['md']) }}"
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="columns"{% endif %}>

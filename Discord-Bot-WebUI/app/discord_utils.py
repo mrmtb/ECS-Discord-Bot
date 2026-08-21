@@ -1892,7 +1892,13 @@ async def create_match_thread(session: Session, match: MLSMatch) -> Optional[str
                 espn_match_id = match.match_id
                 comp_code = resolve_league_code(match.competition)
 
-                competitors = espn.get_event_competitors(espn_match_id, comp_code)
+                # ESPN's scoreboard is same-day only unless given a date, and
+                # that date is its US Eastern day, not UTC.
+                from app.utils.sync_espn_client import espn_scoreboard_date
+                competitors = espn.get_event_competitors(
+                    espn_match_id, comp_code,
+                    match_date=espn_scoreboard_date(utc_time),
+                )
                 if competitors:
                     home_info = espn.get_team_info(competitors['home_team_id'], comp_code)
                     away_info = espn.get_team_info(competitors['away_team_id'], comp_code)

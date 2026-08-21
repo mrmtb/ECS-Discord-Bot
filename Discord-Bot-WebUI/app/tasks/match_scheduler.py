@@ -17,6 +17,7 @@ from app.services.match_scheduler_service import MatchSchedulerService
 from app.utils.task_session_manager import task_session
 from app.models import ScheduledTask, TaskType, TaskState
 from app.models.live_reporting_session import LiveReportingSession
+from app.utils.sync_espn_client import espn_scoreboard_date
 
 logger = logging.getLogger(__name__)
 
@@ -587,23 +588,28 @@ def _build_espn_description(
     away_team: str,
     competition: str,
     match_date: Optional[str] = None,
-) -> str:
+) -> Optional[str]:
     """
     Build a factual match thread description from ESPN data.
 
     Fetches team records, standings positions, and h2h from ESPN.
-    Returns a formatted string or a simple fallback if ESPN data is unavailable.
+
+    Returns None whenever ESPN gave us nothing usable. It deliberately does NOT
+    fall back to a bare "Home vs Away" string: callers pass this value to the AI
+    as ``espn_info``, and a non-empty-but-statless string selects the "rewrite
+    these real stats" prompt branch. With no stats in it the model invents
+    league positions -- that is how a thread came to claim "Austin 11th" when
+    ESPN had them 14th. No data has to look like no data.
 
     Args:
         espn_match_id: ESPN event id
-        home_team / away_team: display names used in the fallback
+        home_team / away_team: display names
         competition: display name or ESPN league code
-        match_date: optional YYYYMMDD string. Required for future fixtures
-            since ESPN's default scoreboard only returns today's matches.
+        match_date: optional YYYYMMDD string in ESPN's US Eastern calendar (see
+            ``espn_scoreboard_date``). Required for any fixture that is not
+            happening today, since ESPN's default scoreboard is same-day only.
     """
     from app.utils.sync_espn_client import get_sync_espn_client
-
-    fallback = f"{home_team} vs {away_team}"
 
     try:
         from app.utils.competition_mappings import resolve_league_code
@@ -623,14 +629,30 @@ def _build_espn_description(
             _log_event(
                 stage="espn_event", outcome="fallback",
                 match_id=str(espn_match_id),
-                message=f"Thread ESPN lookup: no competitors for {comp_code} date={match_date}; using bare fallback",
+                message=f"Thread ESPN lookup: no competitors for {comp_code} date={match_date}; no description",
                 context={"league": comp_code, "date": match_date},
             )
-            return fallback
+            return None
 
         # Fetch team info for both sides
         home_info = espn.get_team_info(competitors['home_team_id'], comp_code)
         away_info = espn.get_team_info(competitors['away_team_id'], comp_code)
+
+        if not home_info and not away_info:
+            # We resolved the fixture but have no records/standings for either
+            # side, so the description would just be "Home\nvs\nAway" -- the
+            # statless string the AI hallucinates around. Say nothing instead.
+            logger.warning(
+                f"No ESPN team info for either side of match {espn_match_id} "
+                f"(league={comp_code})"
+            )
+            _log_event(
+                stage="espn_event", outcome="fallback",
+                match_id=str(espn_match_id),
+                message=f"Thread ESPN lookup: no team records for {comp_code}; no description",
+                context={"league": comp_code, "date": match_date},
+            )
+            return None
 
         # Build description lines
         lines = []
@@ -685,7 +707,7 @@ def _build_espn_description(
             match_id=str(espn_match_id),
             message=f"Thread ESPN description error: {e}",
         )
-        return fallback
+        return None
 
 
 @celery_task(
@@ -754,17 +776,17 @@ def create_mls_match_thread_task(self, session, match_id: int) -> Dict[str, Any]
                 'home_team': home_team,
                 'away_team': away_team,
                 'date': pst_time.strftime('%Y-%m-%d'),
-                'time': pst_time.strftime('%-I:%M %p PST'),
+                'time': pst_time.strftime('%-I:%M %p %Z'),
                 'venue': match.venue or 'TBD',
                 'competition': match.competition or 'MLS',
                 'is_home_game': match.is_home_game
             }
 
-            # Fetch factual ESPN data for thread description. Pass match_date
-            # in ESPN's YYYYMMDD format so the scoreboard query actually
-            # includes this future fixture (ESPN's default scoreboard only
-            # returns same-day matches).
-            match_date_str = utc_time.strftime('%Y%m%d')
+            # Fetch factual ESPN data for thread description. The date must be
+            # ESPN's US Eastern calendar day, NOT the UTC day: a 6:30 PM PT
+            # kickoff is 01:30 UTC tomorrow, and asking ESPN for tomorrow
+            # returned an empty slate for every home fixture.
+            match_date_str = espn_scoreboard_date(utc_time)
             espn_description = _build_espn_description(
                 match.match_id, home_team, away_team,
                 match.competition or 'usa.1',
@@ -776,7 +798,7 @@ def create_mls_match_thread_task(self, session, match_id: int) -> Dict[str, Any]
             # through the commentary_validator anti-AI-tone gate. If the AI
             # returns nothing or validation rejects the output, we fall back
             # to the raw ESPN description — never a generic boilerplate line.
-            thread_description = espn_description
+            thread_description = espn_description or f"{home_team} vs {away_team}"
             try:
                 from app.utils.sync_ai_client import get_sync_ai_client
                 ai_context = {
@@ -784,8 +806,14 @@ def create_mls_match_thread_task(self, session, match_id: int) -> Dict[str, Any]
                     'away_team': away_team,
                     'competition': match.competition or 'MLS',
                     'venue': match.venue or '',
-                    'espn_info': espn_description,
+                    'is_home_game': match.is_home_game,
+                    'opponent': match.opponent,
                 }
+                # Only hand over espn_info when it actually carries stats.
+                # An empty key routes the prompt to the no-stats branch, which
+                # does not invite the model to state a league position.
+                if espn_description:
+                    ai_context['espn_info'] = espn_description
                 ai_client = get_sync_ai_client()
                 ai_rewrite = ai_client.generate_match_thread_context(ai_context)
                 if ai_rewrite and ai_rewrite.strip():
@@ -1095,7 +1123,6 @@ def post_match_buildup_task(self, session, match_id: int) -> Dict[str, Any]:
     from celery.exceptions import Retry
     try:
         from datetime import timezone
-        from zoneinfo import ZoneInfo
         from app.models.external import MLSMatch, MlsPostMarker
         from app.utils.espn_api_client import ESPNAPIClient
         from app.utils.competition_mappings import resolve_league_code
@@ -1130,12 +1157,13 @@ def post_match_buildup_task(self, session, match_id: int) -> Dict[str, Any]:
             match_dt = match.date_time
             if match_dt and match_dt.tzinfo is None:
                 match_dt = match_dt.replace(tzinfo=timezone.utc)
-            match_date_str = match_dt.astimezone(ZoneInfo('UTC')).strftime('%Y%m%d') if match_dt else None
+            # US Eastern day, not UTC -- see espn_scoreboard_date.
+            match_date_str = espn_scoreboard_date(match_dt)
 
             # Records / standing / H2H (reuses the thread-description builder)
             espn_description = _build_espn_description(
                 match.match_id, home_team, away_team, competition, match_date=match_date_str
-            )
+            ) or f"{home_team} vs {away_team}"
 
             # Recent form + venue (best-effort; don't fail the post if unavailable)
             home_form = away_form = ''

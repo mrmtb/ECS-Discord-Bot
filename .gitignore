@@ -118,3 +118,10 @@ Discord-Bot-WebUI/flask_session/
 /.planning/intel/classifications
 /.planning/intel
 /.planning
+
+# Agent tooling scratch — not project source.
+# NOTE: .gsd/dispatch-isolation-sentinel.json is ALREADY TRACKED (it slipped into
+# commit 5dedfe49). This ignore rule does not untrack it. To drop it:
+#   git rm --cached .gsd/dispatch-isolation-sentinel.json
+.gsd/
+.hallmark/

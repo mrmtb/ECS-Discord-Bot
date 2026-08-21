@@ -170,6 +170,8 @@ def _appearance():
     primary_hex = get('public_primary_hex', DEFAULT_PRIMARY)
     accent_hex = get('public_accent_hex', DEFAULT_ACCENT)
     font_pair = get('public_font_pair', 'modern')
+    from app.services.public_theme import (DEFAULT_SECTION_RHYTHM,
+                                          section_rhythm_classes)
     theme = theme_vars(primary_hex, accent_hex, font_pair)
     return {
         'title': get('public_site_title', 'ECS Pub League'),
@@ -185,6 +187,11 @@ def _appearance():
         # Hero banner controls (editable on Website -> Home Page)
         'hero_focal': get('public_hero_focal', '50% 50%'),   # object-position
         'hero_overlay': get('public_hero_overlay', 'medium'),  # light|medium|heavy
+        # Section rhythm (Website -> Appearance). Resolved to Tailwind utilities
+        # here so the template never has to know the vocabulary.
+        'section_rhythm': get('public_section_rhythm', DEFAULT_SECTION_RHYTHM),
+        'section_rhythm_classes': section_rhythm_classes(
+            get('public_section_rhythm', DEFAULT_SECTION_RHYTHM)),
     }
 
 

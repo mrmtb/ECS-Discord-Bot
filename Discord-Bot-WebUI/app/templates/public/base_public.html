@@ -16,7 +16,7 @@
    (96px), sized for the public header alone; with the bar the sticky stack is
    112px, and scroll-padding stacks with scroll-margin to make up the gap. #}
 {% set _admin_chrome = is_site_admin and not edit_mode|default(false) %}
-<html lang="en" class="{{ 'dark' if session.get('theme', 'light') == 'dark' else '' }} {{ 'scroll-pt-4' if _admin_chrome else '' }}">
+<html lang="en" class="overflow-x-clip {{ 'dark' if session.get('theme', 'light') == 'dark' else '' }} {{ 'scroll-pt-4' if _admin_chrome else '' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -117,15 +117,15 @@
 {# Admin bar shows when a site admin is viewing the live page, but NOT while
    editing inside the site-editor iframe (?edit=1) — the editor's own toolbar
    replaces it, and a second bar just steals canvas + confuses. #}
-<body class="bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200 antialiased min-h-screen flex flex-col {{ 'pt-12' if _admin_chrome else '' }}">
+<body class="overflow-x-clip bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200 antialiased min-h-screen flex flex-col {{ 'pt-12' if _admin_chrome else '' }}">
 
     {% if _admin_chrome %}{% include 'public/_admin_bar.html' %}{% endif %}
 
     {# =================== NAV =================== #}
-    <header class="sticky {{ 'top-12' if _admin_chrome else 'top-0' }} z-40 w-full border-b border-gray-200 dark:border-gray-800 bg-white/90 dark:bg-gray-950/90 backdrop-blur-sm">
-        <nav class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <header class="sticky {{ 'top-12' if _admin_chrome else 'top-0' }} z-40 w-full border-b border-ecs-green/20 dark:border-ecs-green/25 bg-white dark:bg-gray-950 shadow-xs">
+        <nav class="mx-auto flex h-16 sm:h-[4.5rem] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
             <a href="{{ url_for('public.home') }}" class="flex items-center gap-2.5 font-bold text-lg text-gray-900 dark:text-white">
-                <img src="{{ appearance.logo_url or imgs.logo }}" alt="{{ appearance.title }}" class="h-10 w-10 object-contain">
+                <img src="{{ appearance.logo_url or imgs.logo }}" alt="{{ appearance.title }}" class="h-10 w-10 shrink-0 rounded-full object-contain ring-1 ring-ecs-green/25">
                 <span class="hidden sm:inline">{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }}</span>
             </a>
 
@@ -135,13 +135,13 @@
                 {% for item in nav_items %}
                 {% if item.children %}
                 <div class="relative group">
-                  <button type="button" class="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 group-hover:text-ecs-green dark:group-hover:text-white hover:bg-gray-50 dark:hover:bg-gray-900 transition">
+                  <button type="button" class="inline-flex items-center gap-1 rounded-full px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors group-hover:bg-ecs-green/10 group-hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-gray-300 dark:group-hover:bg-ecs-green/15 dark:group-hover:text-white">
                     {{ item.label }} <i class="ti ti-chevron-down text-xs"></i>
                   </button>
                   {# Reveal on hover (mouse) AND focus-within (tap/keyboard focuses the
                      button) so the submenu opens on touch at md width and via Tab. #}
                   <div class="absolute left-0 top-full pt-1 hidden group-hover:block group-focus-within:block min-w-[180px] z-50">
-                    <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg py-1">
+                    <div class="rounded-xl border border-ecs-green/15 bg-white py-1.5 shadow-lg shadow-ecs-green/5 dark:border-ecs-green/20 dark:bg-gray-950 dark:shadow-black/40">
                       <a href="{{ item.url }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-ecs-green dark:hover:text-white">{{ item.label }}</a>
                       {% for child in item.children %}
                       <a href="{{ child.url }}" class="block px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-ecs-green dark:hover:text-white">{{ child.label }}</a>
@@ -151,25 +151,25 @@
                 </div>
                 {% else %}
                 <a href="{{ item.url }}"
-                   class="px-3 py-2 text-sm font-medium rounded-lg transition
-                          {{ 'text-ecs-green dark:text-ecs-blue-400' if nav_active == item.key
-                             else 'text-gray-600 dark:text-gray-300 hover:text-ecs-green dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-900' }}">
+                   class="rounded-full px-3.5 py-2 text-sm transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50
+                          {{ 'bg-ecs-green/12 font-semibold text-ecs-green dark:bg-ecs-green/20 dark:text-ecs-blue-400' if nav_active == item.key
+                             else 'font-medium text-gray-600 hover:bg-ecs-green/10 hover:text-ecs-green dark:text-gray-300 dark:hover:bg-ecs-green/15 dark:hover:text-white' }}">
                     {{ item.label }}
                 </a>
                 {% endif %}
                 {% endfor %}
                 {% if current_user.is_authenticated %}
                 <a href="{{ portal_url('main.index') }}"
-                   class="ml-1 inline-flex items-center gap-1.5 rounded-lg bg-ecs-green px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-ecs-green-dark transition">
+                   class="ml-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-ecs-green px-4.5 py-2 text-sm font-semibold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 motion-reduce:transform-none motion-reduce:transition-none">
                     <i class="ti ti-layout-dashboard text-base"></i> Go to Portal
                 </a>
                 {% else %}
                 <a href="{{ portal_url('auth.login') }}"
-                   class="px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:text-ecs-green dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-900 transition">
+                   class="rounded-full px-3.5 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-gray-300 dark:hover:bg-ecs-green/15 dark:hover:text-white">
                     Log in
                 </a>
                 <a href="{{ cta.url }}"
-                   class="ml-1 inline-flex items-center gap-1.5 rounded-lg bg-ecs-green px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-ecs-green-dark focus:outline-hidden focus:ring-2 focus:ring-ecs-green/50 transition">
+                   class="ml-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-ecs-green px-4.5 py-2 text-sm font-semibold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 motion-reduce:transform-none motion-reduce:transition-none">
                     <i class="ti ti-user-plus text-base"></i>{{ cta.label }}
                 </a>
                 {% endif %}
@@ -212,52 +212,66 @@
     </header>
 
     {# =================== MAIN =================== #}
-    <main class="flex-1">
+    {# section_rhythm_classes comes from Website -> Appearance -> Page rhythm and is
+       resolved server-side from an allow-list (public_theme.SECTION_RHYTHM), never
+       from raw form input. Applied HERE rather than inside the section macros so it
+       is CSS-positional: render_single_section() renders a one-section document for
+       the editor's swap payload, so a Jinja index would always be 0 and a swapped
+       section would flip appearance on edit. CSS re-evaluates against real DOM
+       position and stays correct. #}
+    <main class="flex-1 {{ appearance.section_rhythm_classes if appearance and appearance.section_rhythm_classes else '' }}">
         {% block content %}{% endblock %}
     </main>
 
     {# =================== FOOTER =================== #}
-    <footer class="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="sm:col-span-2 lg:col-span-1">
-                <div class="flex items-center gap-2.5 font-bold text-lg text-gray-900 dark:text-white">
-                    <img src="{{ appearance.logo_url or imgs.logo }}" alt="{{ appearance.title }}" class="h-9 w-9 object-contain"> {{ appearance.title }}
-                </div>
-                <p class="mt-3 text-sm text-gray-500 dark:text-gray-400 max-w-xs">
+    <footer class="border-t border-ecs-green/20 bg-ecs-green/5 dark:border-ecs-green/25 dark:bg-gray-900">
+        {# Ft5 Statement — the tagline leads, set at display size in the Appearance
+           heading face, instead of four columns of grey links (the Ft3 "docs index"
+           shape). Every link from the previous footer is preserved below; only the
+           hierarchy changed — the club says who it is first, then where to go. #}
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-14 pb-10">
+            <div class="flex items-start gap-4">
+                <img src="{{ appearance.logo_url or imgs.logo }}" alt="" aria-hidden="true"
+                     class="h-12 w-12 shrink-0 rounded-full object-contain ring-1 ring-ecs-green/25">
+                <h2 class="max-w-2xl text-balance text-2xl font-semibold leading-snug text-gray-900 sm:text-3xl dark:text-white">
                     {{ appearance.tagline if appearance and appearance.tagline else 'Radically inclusive, beginner-friendly adult soccer in Seattle.' }}
-                </p>
+                </h2>
             </div>
-            <div>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Explore</h3>
-                <ul class="mt-3 space-y-2 text-sm text-gray-500 dark:text-gray-400">
-                    {% for item in nav_items %}
-                    <li><a href="{{ item.url }}" class="hover:text-ecs-green dark:hover:text-white">{{ item.label }}</a></li>
-                    {% endfor %}
-                </ul>
-            </div>
-            <div>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Get involved</h3>
-                <ul class="mt-3 space-y-2 text-sm text-gray-500 dark:text-gray-400">
-                    <li><a href="{{ cta.url }}" class="hover:text-ecs-green dark:hover:text-white">{{ cta.label }}</a></li>
-                    <li><a href="{{ url_for('public.register') }}" class="hover:text-ecs-green dark:hover:text-white">How to join</a></li>
-                    <li><a href="{{ portal_url('auth.login') }}" class="hover:text-ecs-green dark:hover:text-white">Member log in</a></li>
-                    <li><a href="{{ url_for('public.contact') }}" class="hover:text-ecs-green dark:hover:text-white">Contact us</a></li>
-                </ul>
-            </div>
-            <div>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Connect</h3>
-                <ul class="mt-3 space-y-2 text-sm text-gray-500 dark:text-gray-400">
-                    <li><a href="mailto:ecspubleague@gmail.com" class="hover:text-ecs-green dark:hover:text-white inline-flex items-center gap-1.5"><i class="ti ti-mail"></i> Email</a></li>
-                    <li><a href="{{ discord_invite_url | default('#') }}" class="hover:text-ecs-green dark:hover:text-white inline-flex items-center gap-1.5"><i class="ti ti-brand-discord"></i> Discord</a></li>
-                </ul>
+
+            <div class="mt-10 grid gap-8 border-t border-ecs-green/15 pt-9 sm:grid-cols-3 dark:border-ecs-green/20">
+                <div>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-ecs-green dark:text-ecs-blue-400">Explore</h3>
+                    <ul class="mt-3.5 space-y-2.5 text-sm text-gray-600 dark:text-gray-300">
+                        {% for item in nav_items %}
+                        <li><a href="{{ item.url }}" class="rounded transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">{{ item.label }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-ecs-green dark:text-ecs-blue-400">Get involved</h3>
+                    <ul class="mt-3.5 space-y-2.5 text-sm text-gray-600 dark:text-gray-300">
+                        <li><a href="{{ cta.url }}" class="rounded font-medium text-ecs-green transition-colors hover:text-ecs-green-dark focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-ecs-blue-400 dark:hover:text-white">{{ cta.label }}</a></li>
+                        <li><a href="{{ url_for('public.register') }}" class="rounded transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">How to join</a></li>
+                        <li><a href="{{ portal_url('auth.login') }}" class="rounded transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">Member log in</a></li>
+                        <li><a href="{{ url_for('public.contact') }}" class="rounded transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">Contact us</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-ecs-green dark:text-ecs-blue-400">Connect</h3>
+                    <ul class="mt-3.5 space-y-2.5 text-sm text-gray-600 dark:text-gray-300">
+                        <li><a href="mailto:ecspubleague@gmail.com" class="inline-flex items-center gap-2 rounded transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white"><i class="ti ti-mail text-base text-ecs-green/70"></i> Email</a></li>
+                        <li><a href="{{ discord_invite_url | default('#') }}" class="inline-flex items-center gap-2 rounded transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white"><i class="ti ti-brand-discord text-base text-ecs-green/70"></i> Discord</a></li>
+                    </ul>
+                </div>
             </div>
         </div>
-        <div class="border-t border-gray-200 dark:border-gray-800">
-            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-400">
+
+        <div class="border-t border-ecs-green/15 dark:border-ecs-green/20">
+            <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-6 text-xs text-gray-500 sm:flex-row sm:px-6 lg:px-8 dark:text-gray-400">
                 <span>&copy; {{ current_year }} Emerald City Supporters Pub League. All rights reserved.</span>
-                <span class="flex items-center gap-3">
-                    <a href="{{ url_for('legal.privacy_policy') }}" class="hover:text-ecs-green dark:hover:text-white">Privacy</a>
-                    <a href="{{ url_for('legal.terms_of_service') }}" class="hover:text-ecs-green dark:hover:text-white">Terms</a>
+                <span class="flex items-center gap-4">
+                    <a href="{{ url_for('legal.privacy_policy') }}" class="rounded transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">Privacy</a>
+                    <a href="{{ url_for('legal.terms_of_service') }}" class="rounded transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">Terms</a>
                 </span>
             </div>
         </div>

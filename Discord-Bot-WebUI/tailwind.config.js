@@ -28,6 +28,12 @@ export default {
     // class used ONLY there was silently purged out of the stylesheet — no error,
     // just an unstyled element.
     resolve(__dirname, 'app/static/custom_js/**/*.js'),
+    // Python that emits Tailwind class strings. public_theme.SECTION_RHYTHM holds
+    // the Appearance panel's "Page rhythm" utilities as the SINGLE source of truth
+    // (the same dict validates the saved value), so the classes exist only here —
+    // and without this glob they are purged exactly like the custom_js case above:
+    // the setting saves, the class renders, and nothing changes on the page.
+    resolve(__dirname, 'app/services/public_theme.py'),
     resolve(__dirname, 'node_modules/flowbite/**/*.js'),
   ],
   theme: {
