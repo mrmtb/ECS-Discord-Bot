@@ -48,11 +48,76 @@ _BLOCK_SLUGS = ('home_hero', 'home_intro', 'home_justforfun',
                 'home_division_classic', 'home_division_premier', 'home_body')
 
 # Slugs whose permalink can never be renamed (block slugs + fixed top-level
-# routes). Shared by apply_page_settings's server-side guard and the editor
-# panel's slug_locked flag (site_editor.py) so the client-side read-only lock
-# is decoration over this one rule, never a second copy of it.
+# routes). Read only through _slug_locked() below — never test membership in
+# this set inline, or the rule grows a second copy again (WR-02).
 _RESERVED_SLUGS = set(_BLOCK_SLUGS) | {'about', 'guide', 'guests', 'home', 'news',
                                        'faqs', 'calendar', 'register', 'contact'}
+
+
+def _slug_locked(slug):
+    """True when a page's permalink can NEVER be renamed. The ONE rule, with
+    exactly three consumers:
+
+      1. this file's own rename guard inside apply_page_settings — the real
+         control, the only one that can actually refuse a write;
+      2. the editor panel's read-only permalink field (site_editor.py imports
+         this very function, so the flag is decoration over this rule);
+      3. the Pages-list Quick Edit permalink input, which is disabled from the
+         reserved set this module hands the template.
+
+    Exact membership is COMPLETE — no prefix test is needed on top of it, and
+    adding one would widen a rule that guards content deletion. slugify()
+    (app/models/public_site.py) rewrites every character outside [a-z0-9] to a
+    hyphen, so no slug the application can produce contains an underscore.
+    Both the page-create path and the rename path below run their input
+    through slugify(), so every `home_*` row in the table is necessarily one
+    of the seeded content blocks — and every one of those is in _BLOCK_SLUGS,
+    which is a subset of _RESERVED_SLUGS. The prefix clause the editor and the
+    Pages template each used to carry was therefore redundant, not protective.
+    tests/test_ph_pages_list.py pins that slugify property so a future change
+    to the separator surfaces there rather than silently unlocking a block.
+
+    Tolerates a None slug (e.g. a not-yet-persisted row) without raising.
+    """
+    return slug is not None and slug in _RESERVED_SLUGS
+
+
+def _is_block_slug(candidate):
+    """True when `candidate` is one of the home-page content-block rows
+    (_BLOCK_SLUGS) rather than an independently manageable page. Exact
+    membership only — never a prefix or length test, and never a restated
+    copy of the tuple's members. Tolerates a None value (e.g. a not-yet-
+    persisted row) without raising."""
+    return candidate is not None and candidate in _BLOCK_SLUGS
+
+
+def _get_real_page(page_id):
+    """Fetch a SitePage by a client-supplied id, EXCEPT a home-page content
+    block (_is_block_slug) is treated as not found.
+
+    Those rows are home-page content blocks, not independently manageable
+    pages — the Pages list, its counts and the Trash view all filter them out
+    already, so a block mutated by id would vanish from the home page with no
+    admin-facing way to notice or recover it. The id arrives from the client,
+    so this refusal is enforced server-side and never merely by the UI
+    omitting a control. This generalizes the guard the bulk and quick-edit
+    endpoints already carried (CR-01) so a route added later inherits it by
+    construction instead of needing its own copy.
+
+    Deliberately does NOT filter on the trashed-at column — the Trash view's
+    restore and permanent-delete routes legitimately act on trashed rows.
+    The two callers that must reject trashed rows (quick-edit) keep their own
+    explicit trashed-row check on top of this.
+
+    Returns None for both "row does not exist" and "row is a content block"
+    so a Site Editor learns nothing from the response about which case
+    applies, and every existing caller's `if not page: abort(404)` already
+    does the right thing with either.
+    """
+    page = g.db_session.query(SitePage).get(page_id)
+    if page is not None and _is_block_slug(page.slug):
+        return None
+    return page
 
 # Default public nav menu + the built-in destinations an admin can pick.
 _DEFAULT_MENU = [
@@ -715,8 +780,12 @@ def public_site_pages():
         pages = base.filter(SitePage.deleted_at.is_(None)).order_by(SitePage.title.asc()).all()
     live_count = base.filter(SitePage.deleted_at.is_(None)).count()
     trash_count = base.filter(SitePage.deleted_at.isnot(None)).count()
+    # reserved_slugs is handed to the template so the Quick Edit permalink
+    # lock reads the SERVER's rule (_slug_locked) instead of restating it as a
+    # Jinja literal that has already drifted from it once (WR-02).
     return render_template('admin_panel/public_site/pages_list_flowbite.html',
-                           pages=pages, view=view, live_count=live_count, trash_count=trash_count)
+                           pages=pages, view=view, live_count=live_count,
+                           trash_count=trash_count, reserved_slugs=_RESERVED_SLUGS)
 
 
 @admin_panel_bp.route('/public-site/pages/<int:page_id>/trash', methods=['POST'])
@@ -724,7 +793,7 @@ def public_site_pages():
 @role_required(_ROLES)
 @transactional
 def public_site_page_trash(page_id):
-    page = g.db_session.query(SitePage).get(page_id)
+    page = _get_real_page(page_id)
     if not page:
         abort(404)
     page.deleted_at = datetime.utcnow()
@@ -738,7 +807,7 @@ def public_site_page_trash(page_id):
 @role_required(_ROLES)
 @transactional
 def public_site_page_restore(page_id):
-    page = g.db_session.query(SitePage).get(page_id)
+    page = _get_real_page(page_id)
     if not page:
         abort(404)
     page.deleted_at = None
@@ -752,7 +821,7 @@ def public_site_page_restore(page_id):
 @role_required(_ROLES)
 @transactional
 def public_site_page_delete(page_id):
-    page = g.db_session.query(SitePage).get(page_id)
+    page = _get_real_page(page_id)
     if not page:
         abort(404)
     g.db_session.delete(page)
@@ -784,11 +853,12 @@ def public_site_page_create():
     if not title:
         flash('Enter a page title.', 'error')
         return redirect(url_for('admin_panel.public_site_page_new'))
-    reserved = set(_BLOCK_SLUGS) | {'about', 'guide', 'guests', 'home', 'news',
-                                    'faqs', 'calendar', 'register', 'contact'}
     base = slugify(request.form.get('slug') or title)
     slug, n = base, 2
-    while slug in reserved or g.db_session.query(SitePage).filter_by(slug=slug).first():
+    # _slug_locked, not a restated literal set — a new page must never be
+    # created ON a reserved slug, and that is the same one rule as the rename
+    # guard's (WR-02).
+    while _slug_locked(slug) or g.db_session.query(SitePage).filter_by(slug=slug).first():
         slug = f'{base}-{n}'
         n += 1
     from app.services.section_converter import build_page_template
@@ -819,7 +889,7 @@ def public_site_page_publish(page_id):
     toggle and the bulk 'publish' verb can never diverge on the empty-page
     refusal or the draft->published section copy — one implementation, two
     callers, exactly like apply_page_settings' own docstring promises."""
-    page = g.db_session.query(SitePage).get(page_id)
+    page = _get_real_page(page_id)
     if not page:
         abort(404)
     if page.status == 'published':
@@ -877,14 +947,11 @@ def public_site_pages_bulk():
             skipped.append(raw_id)
             continue
         page = g.db_session.query(SitePage).get(page_id)
-        # Block slugs (home_hero, home_intro, ...) are home-page CONTENT BLOCKS,
-        # not pages. The Pages list, its counts and the Trash view all exclude
-        # them (see the ~SitePage.slug.in_(_BLOCK_SLUGS) filters above), so a
-        # block trashed here would vanish from the home page with NO admin
-        # recovery path — Trash cannot show it either. The id arrives from the
-        # client, so this must be enforced server-side, not by the UI omitting
-        # the checkbox.
-        if page is not None and page.slug in _BLOCK_SLUGS:
+        # A block row (see _get_real_page's docstring for why) is skipped here
+        # rather than 404ed — bulk's contract is skip-not-fail for anything it
+        # can't act on, so it shares the RULE with _get_real_page without
+        # sharing the RESPONSE shape.
+        if page is not None and _is_block_slug(page.slug):
             skipped.append(page_id)
             continue
         if not page or page.deleted_at is not None:
@@ -915,7 +982,9 @@ def public_site_pages_bulk():
 @role_required(_ROLES)
 def public_site_page_revisions(page_id):
     """WordPress-style revision history for a page."""
-    page = SitePage.query.get_or_404(page_id)
+    page = _get_real_page(page_id)
+    if not page:
+        abort(404)
     revs = (SitePageRevision.query.filter_by(page_id=page_id)
             .order_by(SitePageRevision.created_at.desc()).all())
     return render_template('admin_panel/public_site/revisions_flowbite.html',
@@ -927,7 +996,7 @@ def public_site_page_revisions(page_id):
 @role_required(_ROLES)
 @transactional
 def public_site_page_revision_restore(page_id, rev_id):
-    page = g.db_session.query(SitePage).get(page_id)
+    page = _get_real_page(page_id)
     rev = g.db_session.query(SitePageRevision).get(rev_id)
     if not page or not rev or rev.page_id != page.id:
         abort(404)
@@ -959,7 +1028,7 @@ def public_site_page_revision_restore(page_id, rev_id):
 @transactional
 def public_site_page_duplicate(page_id):
     """Clone a page into a new Draft (WordPress 'Duplicate')."""
-    src = g.db_session.query(SitePage).get(page_id)
+    src = _get_real_page(page_id)
     if not src:
         abort(404)
     base = _unique_slug(f'{src.slug}-copy', model=SitePage)
@@ -973,7 +1042,7 @@ def public_site_page_duplicate(page_id):
     return redirect(url_for('admin_panel.site_editor', page_id=copy.id))
 
 
-def apply_page_settings(page, data, allow_publish_copy=True):
+def apply_page_settings(page, data):
     """The ONE implementation of every page-metadata write: title, permalink,
     excerpt, featured image, SEO and draft/published status. Called both by
     the retired standalone settings form (public_site_page_save, below, which
@@ -992,13 +1061,16 @@ def apply_page_settings(page, data, allow_publish_copy=True):
     a partial-payload caller didn't send — wiping titles, excerpts and SEO
     the moment someone bulk-publishes a set of pages.
 
-    `allow_publish_copy` lets a caller refuse the draft -> published copy
-    specifically (used by the page-settings endpoint's stale_rev gate) without
-    touching any other field in the same payload.
+    The compare-and-swap protection for the draft -> published section copy
+    is NOT here: it lives in the editor's page-settings endpoint
+    (site_editor.py's POST /page-settings), which compares the client's
+    base_rev against the page's current draft_rev and returns 409 BEFORE
+    calling this helper — so this helper holds exactly one implementation of
+    the copy and that endpoint holds exactly one implementation of the check.
 
     Returns (True, None) on success, or (False, <short machine error string>)
-    on failure — 'empty_page' or 'stale_rev'. Never flash()es and never
-    redirect()s; the JSON caller can use neither.
+    on failure — 'empty_page' is the only failure it can produce. Never
+    flash()es and never redirect()s; the JSON caller can use neither.
     """
     from app.models import SitePageSlugHistory
     from app.services.public_cache import bump_public_cache_after_commit as bump_public_cache
@@ -1030,14 +1102,15 @@ def apply_page_settings(page, data, allow_publish_copy=True):
             page.featured_image_url = None
 
     # Permalink rename (WordPress-style). Reserved/block slugs can never be
-    # renamed — this is the server-side rule the editor panel's read-only
-    # permalink field is decoration over. Renames write slug history (auto-301)
-    # and bust the old slug's cache entry.
+    # renamed — _slug_locked() is that rule, and this is the only place it is
+    # ENFORCED (the editor's read-only field and the Pages-list disabled input
+    # are decoration over it). Renames write slug history (auto-301) and bust
+    # the old slug's cache entry.
     if 'slug' in data:
         new_slug = (data.get('slug') or '').strip()
-        if new_slug and page.slug not in _RESERVED_SLUGS:
+        if new_slug and not _slug_locked(page.slug):
             s = slugify(new_slug)
-            if s and s != page.slug and s not in _RESERVED_SLUGS:
+            if s and s != page.slug and not _slug_locked(s):
                 old = page.slug
                 page.slug = _unique_slug(s, exclude_id=page.id, model=SitePage)
                 try:
@@ -1050,14 +1123,13 @@ def apply_page_settings(page, data, allow_publish_copy=True):
     # Publish state. Flipping draft -> published copies sections_draft into
     # sections_published (exactly what the editor's own Publish does) so the
     # page never goes public showing draft/placeholder content — that copy is
-    # the one metadata write with a lost-update hazard, so it's the one thing
-    # allow_publish_copy can refuse.
+    # the one metadata write with a lost-update hazard, and the caller that
+    # can hit that hazard (the editor's page-settings endpoint) refuses the
+    # whole request with 409 before ever reaching here.
     if 'status' in data:
         new_status = data.get('status')
         if new_status in ('draft', 'published'):
             if new_status == 'published' and page.status != 'published':
-                if not allow_publish_copy:
-                    return False, 'stale_rev'
                 if not (page.sections_draft or {}).get('sections') \
                         and not (page.sections_published or {}).get('sections'):
                     return False, 'empty_page'
@@ -1083,7 +1155,9 @@ def public_site_page_edit(page_id):
     settings panel, not on a separate screen. This route survives only so an
     old link/bookmark/the Pages-list gear icon lands somewhere useful instead
     of a 404 — it 302s straight into the editor with the panel pre-opened."""
-    page = SitePage.query.get_or_404(page_id)
+    page = _get_real_page(page_id)
+    if not page:
+        abort(404)
     return redirect(url_for('admin_panel.site_editor', page_id=page.id, panel='page'))
 
 
@@ -1101,12 +1175,7 @@ def public_site_page_quick_edit(page_id):
     contract). Echoes back what the server settled on — in particular the
     slug _unique_slug may have suffixed — rather than what the client asked
     for."""
-    page = g.db_session.query(SitePage).get(page_id)
-    # Same guard as the bulk endpoint: block slugs are home-page content blocks,
-    # excluded from the Pages list and from Trash, so they must not be reachable
-    # by a client-supplied id here either.
-    if page is not None and page.slug in _BLOCK_SLUGS:
-        abort(404)
+    page = _get_real_page(page_id)
     if not page or page.deleted_at is not None:
         abort(404)
     body = request.get_json(silent=True) or {}
@@ -1129,7 +1198,11 @@ def public_site_page_save():
     of these writes. Builds `data` from request.form and keeps this route's
     original flash()+redirect() behaviour based on the returned tuple."""
     page_id = request.form.get('id', type=int)
-    page = g.db_session.query(SitePage).get(page_id) if page_id else None
+    # The id arrives in the FORM BODY, not the URL, so it is invisible to any
+    # audit that walks the route table for a page_id URL converter — a future
+    # audit must not conclude this route is safe just because it isn't in the
+    # URL map's <int:page_id> list.
+    page = _get_real_page(page_id) if page_id else None
     if not page:
         flash('Page not found.', 'error')
         return redirect(url_for('admin_panel.public_site_pages'))
@@ -1227,9 +1300,13 @@ def public_site_redirects_delete(rule_id):
 # Form submissions (from the public Form widget)
 # --------------------------------------------------------------------------- #
 
+# Submissions is FULL-ADMIN ONLY (D-01): it holds public contact-form PII —
+# names, email addresses and message bodies supplied by visitors — so it
+# sits in the same sensitivity class as Appearance and redirects, not with
+# authored content a Site Editor is trusted to manage.
 @admin_panel_bp.route('/public-site/submissions')
 @login_required
-@role_required(_ROLES)
+@role_required(_ADMIN_ROLES)
 def public_site_submissions():
     subs = (FormSubmission.query
             .order_by(FormSubmission.created_at.desc()).limit(500).all())
@@ -1248,7 +1325,7 @@ def public_site_submissions():
 
 @admin_panel_bp.route('/public-site/submissions/<int:sub_id>/read', methods=['POST'])
 @login_required
-@role_required(_ROLES)
+@role_required(_ADMIN_ROLES)
 @transactional
 def public_site_submission_read(sub_id):
     s = g.db_session.query(FormSubmission).get(sub_id)
@@ -1259,7 +1336,7 @@ def public_site_submission_read(sub_id):
 
 @admin_panel_bp.route('/public-site/submissions/<int:sub_id>/delete', methods=['POST'])
 @login_required
-@role_required(_ROLES)
+@role_required(_ADMIN_ROLES)
 @transactional
 def public_site_submission_delete(sub_id):
     s = g.db_session.query(FormSubmission).get(sub_id)

@@ -279,3 +279,96 @@ class TestPublicSEOFields:
         head = _head(r.get_data(as_text=True))
         assert 'Explicit meta description wins' in head
         assert 'Should not appear in the head' not in head
+
+
+# --------------------------------------------------------------------------- #
+# Plan 04-04 / WR-01: ONE compare-and-swap check, and a docstring that is true
+#
+# `apply_page_settings` used to take a third parameter (`allow_publish_copy`)
+# whose only effect was an early `return False, 'stale_rev'`. No call site ever
+# passed anything but the default, and the real compare-and-swap check lives
+# OUTSIDE the helper — in site_editor_page_settings, which compares the
+# client's base_rev against the page's draft_rev and returns 409 BEFORE the
+# helper runs. The branch was dead code and the docstring described it as the
+# mechanism the editor uses, which was false.
+#
+# These four tests lock the removal AND lock that the protection the removed
+# branch appeared to provide is still enforced from its real home.
+# --------------------------------------------------------------------------- #
+
+class TestApplyPageSettingsHasOneCheck:
+    def test_helper_takes_only_page_and_data(self, app):
+        """The dead parameter is gone.
+
+        Asserted through `inspect.signature`, deliberately NOT through a source
+        grep: a text search would be satisfied by a comment mentioning the old
+        name (this module's own header does) and would break the moment someone
+        writes the word in prose. The signature is the thing that matters.
+        """
+        import inspect
+        from app.admin_panel.routes.public_site import apply_page_settings
+        params = list(inspect.signature(apply_page_settings).parameters)
+        assert params == ['page', 'data'], (
+            'apply_page_settings must take exactly (page, data) — a third '
+            'parameter means the publish-copy refusal has grown a second '
+            f'implementation again. Got: {params}')
+
+    def test_stale_revision_publish_is_still_refused_with_409(self, app, db, gadmin_client):
+        """The protection did not leave with the dead branch.
+
+        Seeds a REAL draft revision (7) and sends a base_rev one behind it, so
+        the comparison is meaningful rather than a None-vs-0 accident. The
+        refusal must come from site_editor_page_settings' own check, and the
+        published sections must be untouched — that copy is the whole reason
+        this transition is compare-and-swap protected at all.
+        """
+        p = _make_page(db, 'wr01-stale-publish', status='draft',
+                       sections_published=None, draft_rev=7)
+        r = gadmin_client.post(f'/admin-panel/site-editor/{p.id}/page-settings',
+                               json={'status': 'published', 'base_rev': 6})
+        assert r.status_code == 409, r.get_data(as_text=True)
+        data = r.get_json()
+        assert data['success'] is False
+        assert data['error'] == 'stale_rev'
+        assert data['draft_rev'] == 7, 'the client is told which revision to reload'
+        db.session.expire_all()
+        fresh = db.session.query(SitePage).get(p.id)
+        assert fresh.status == 'draft', 'a stale publish must not flip status'
+        assert fresh.sections_published is None, \
+            'a stale publish copied draft sections into the LIVE column'
+
+    def test_matching_revision_publish_still_copies_sections(self, app, db, gadmin_client):
+        """The happy path still copies. Same seeded revision, correct base_rev."""
+        p = _make_page(db, 'wr01-fresh-publish', status='draft',
+                       sections_published=None, draft_rev=7)
+        r = gadmin_client.post(f'/admin-panel/site-editor/{p.id}/page-settings',
+                               json={'status': 'published', 'base_rev': 7})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert r.get_json()['success'] is True
+        db.session.expire_all()
+        fresh = db.session.query(SitePage).get(p.id)
+        assert fresh.status == 'published'
+        assert fresh.sections_published == _DOC
+        assert fresh.published_at is not None
+
+    def test_bulk_publish_caller_is_unaffected_by_the_removal(self, app, db, gadmin_client):
+        """The call site that never passed the parameter, proven untouched.
+
+        Bulk publish reaches apply_page_settings with only {'status': ...} and
+        no revision of any kind. It must still publish an ordinary page and
+        must still refuse a page with no content in either column — the empty
+        -page refusal is the helper's ONLY surviving failure mode.
+        """
+        good = _make_page(db, 'wr01-bulk-good')
+        empty = _make_page(db, 'wr01-bulk-empty', sections_draft=None,
+                           sections_published=None)
+        r = gadmin_client.post('/admin-panel/public-site/pages/bulk',
+                               json={'action': 'publish',
+                                     'page_ids': [good.id, empty.id]})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        data = r.get_json()
+        assert data['updated'] == 1
+        assert empty.id in data['skipped']
+        db.session.expire_all()
+        assert db.session.query(SitePage).get(good.id).status == 'published'
+        assert db.session.query(SitePage).get(empty.id).status == 'draft'

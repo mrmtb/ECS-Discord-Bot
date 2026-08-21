@@ -623,9 +623,16 @@
                         {% if endpoint_exists('admin_panel.public_site_news') %}<a href="{{ url_for('admin_panel.public_site_news') }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><i class="ti ti-news text-gray-400"></i>News</a>{% endif %}
                         {% if endpoint_exists('admin_panel.public_site_faqs') %}<a href="{{ url_for('admin_panel.public_site_faqs') }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><i class="ti ti-help text-gray-400"></i>FAQs</a>{% endif %}
                         {% if endpoint_exists('admin_panel.site_editor_home') %}<a href="{{ url_for('admin_panel.site_editor_home') }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><i class="ti ti-edit text-gray-400"></i>Edit Home Page</a>{% endif %}
+                        {# NAVIGATION UX, NOT A SECURITY BOUNDARY: Submissions and Appearance are
+                           hidden from a Site Editor so the surfaces they are refused aren't dangled
+                           as dead links. endpoint_exists() only proves the ROUTE registered — it says
+                           nothing about who may reach it — so the role flag is required alongside it.
+                           The @role_required decorator on each route is the real gate. #}
+                        {% if cms_is_full_admin %}
                         <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
                         {% if endpoint_exists('admin_panel.public_site_submissions') %}<a href="{{ url_for('admin_panel.public_site_submissions') }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><i class="ti ti-inbox text-gray-400"></i>Form Submissions</a>{% endif %}
                         {% if endpoint_exists('admin_panel.public_site_appearance') %}<a href="{{ url_for('admin_panel.public_site_appearance') }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><i class="ti ti-palette text-gray-400"></i>Appearance</a>{% endif %}
+                        {% endif %}
                     </div>
                 </div>
             </li>

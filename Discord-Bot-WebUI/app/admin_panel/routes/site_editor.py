@@ -30,6 +30,15 @@ from app.decorators import role_required
 from app.models import SitePage, SitePageRevision, MediaUsage
 from app.utils.db_utils import transactional
 
+# The slug-lock rule is IMPORTED, never re-implemented here. This file used to
+# carry a second copy that added a `home_*` prefix clause the server's rename
+# guard never had — the two disagreed, and the looser one was the one the UI
+# showed (WR-02). Bound at module scope on purpose: `site_editor._slug_locked`
+# must BE `public_site._slug_locked`, not merely behave like it. Safe against
+# circular import — public_site does not import this module, and routes/
+# __init__.py loads public_site first regardless.
+from app.admin_panel.routes.public_site import _slug_locked
+
 logger = logging.getLogger(__name__)
 
 # Site Editor is the least-privilege authoring role; admins keep everything.
@@ -49,20 +58,18 @@ def _is_full_admin():
 
 
 def _get_page(page_id):
-    page = g.db_session.query(SitePage).get(page_id)
+    """The shared fetch for every editor route below. Delegates the block-
+    slug refusal to public_site._get_real_page rather than re-deriving the
+    rule here — a second copy in this file is exactly the drift (CR-01) that
+    let a home-page content block stay reachable through the editor surface
+    after the Pages-list guard was fixed. Keeps this function's existing
+    contract of raising a 404 itself (its callers rely on that rather than
+    checking a return value) and its existing trashed-row rejection."""
+    from app.admin_panel.routes.public_site import _get_real_page
+    page = _get_real_page(page_id)
     if not page or page.deleted_at is not None:
         abort(404)
     return page
-
-
-def _slug_locked(slug):
-    """True when a page's permalink can never be renamed (block slug, fixed
-    top-level route, or a home_* content block). Single source shared with
-    apply_page_settings's server-side guard (public_site.py) so the editor
-    panel's read-only permalink field is decoration over that one rule, never
-    a second copy of it."""
-    from app.admin_panel.routes.public_site import _RESERVED_SLUGS
-    return slug in _RESERVED_SLUGS or slug.startswith('home_')
 
 
 def _page_settings_dict(page):
@@ -120,7 +127,7 @@ def site_editor_home():
 @role_required(_ROLES)
 def site_editor(page_id):
     """Editor shell: top bar + same-origin iframe of the page's draft render."""
-    page = SitePage.query.get_or_404(page_id)
+    page = _get_page(page_id)
     pages = (SitePage.query
              .filter(SitePage.deleted_at.is_(None),
                      ~SitePage.slug.like('home\\_%'))
@@ -325,11 +332,14 @@ def site_editor_page_settings(page_id):
 
     old_slug = page.slug
     from app.admin_panel.routes.public_site import apply_page_settings
-    ok, error = apply_page_settings(page, data, allow_publish_copy=True)
+    ok, error = apply_page_settings(page, data)
     if not ok:
-        code = 409 if error == 'stale_rev' else 400
+        # Always 400: the stale-revision 409 is returned EARLIER in this same
+        # function by the base_rev check above (the one implementation of that
+        # check), so by the time control reaches here the only refusal
+        # apply_page_settings can produce is its content refusal.
         return jsonify({'success': False, 'error': error,
-                        'draft_rev': page.draft_rev or 0}), code
+                        'draft_rev': page.draft_rev or 0}), 400
 
     return jsonify({'success': True, 'page': _page_settings_dict(page),
                     'slug_changed': page.slug != old_slug})
@@ -381,6 +391,15 @@ def site_editor_lock(page_id):
 @login_required
 @role_required(_ROLES)
 def site_editor_unlock(page_id):
+    # Closes the one page-id route that reached the lock layer without first
+    # resolving the row (reported by 04-03, closed 2026-08-20). The exposure was
+    # never large — release_edit_lock only deletes a key whose holder matches the
+    # caller, so a Site Editor could not release someone else's lock, and this
+    # route never read or wrote the SitePage row. But it was the single hole in
+    # "every route taking a client-supplied page id goes through the shared
+    # fetch", and that invariant is worth more than the individual exposure: it
+    # is what stops the NEXT route from re-opening CR-01.
+    _get_page(page_id)
     from app.services.public_cache import release_edit_lock
     release_edit_lock(page_id, getattr(current_user, 'id', 0))
     return jsonify({'success': True})

@@ -56,7 +56,6 @@
 {% if not pages %}
   {{ empty_state("ti-file-text", ("Trash is empty" if view == 'trash' else "No pages yet"), ("" if view == 'trash' else "Add your first page above.")) }}
 {% else %}
-{% set _reserved = ['about', 'guide', 'guests', 'home', 'news', 'faqs', 'calendar', 'register', 'contact'] %}
 <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
   <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
     <thead class="bg-gray-50 dark:bg-gray-900/50">
@@ -73,7 +72,13 @@
     <tbody class="divide-y divide-gray-100 dark:divide-gray-700/50">
       {% for page in pages %}
       {% set view_url = url_for('public.about') if page.slug == 'about' else url_for('public.guide') if page.slug == 'guide' else url_for('public.guests') if page.slug == 'guests' else url_for('public.dynamic_page', slug=page.slug) %}
-      {% set _slug_locked = page.slug in _reserved or page.slug.startswith('home_') %}
+      {# The permalink lock is DECORATION over the server's rule: `reserved_slugs`
+         is public_site._RESERVED_SLUGS, handed down by the view, and
+         apply_page_settings refuses the rename via _slug_locked() regardless of
+         what this input says. A stale template can therefore never GRANT a
+         rename the server would reject — it can only fail to advertise one.
+         No `home_*` prefix clause: see _slug_locked's docstring (WR-02). #}
+      {% set _slug_locked = page.slug in reserved_slugs %}
       <tr id="pages-row-{{ page.id }}" class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
         {% if view != 'trash' %}
         <td class="px-4 py-3 align-top"><input type="checkbox" class="pages-row-checkbox w-4 h-4 text-ecs-green bg-gray-100 border-gray-300 rounded-sm focus:ring-ecs-green dark:bg-gray-700 dark:border-gray-600" value="{{ page.id }}" aria-label="Select {{ page.title or page.slug }}"></td>
@@ -310,7 +315,16 @@ document.addEventListener('DOMContentLoaded', function () {
           var displayRow = document.getElementById('pages-row-' + id);
           if (displayRow) displayRow.classList.remove('hidden');
         } else {
-          var msg = (result.data && result.data.error) || 'Save failed';
+          // Same condition, same sentence as the editor panel's Page settings
+          // save (app/static/js/site-editor/shell.js, the `empty_page` branch
+          // of its !data.success handler) — the wording is duplicated there and
+          // here on purpose, because sharing a string between a Vite-bundled
+          // module and this inline script would force a rebuild for a sentence.
+          // If you reword one, reword the other.
+          var err = (result.data && result.data.error) || '';
+          var msg = err === 'empty_page'
+            ? 'Add some content before publishing this page.'
+            : (err || 'Save failed');
           if (errEl) { errEl.textContent = msg; errEl.classList.remove('hidden'); }
         }
       })

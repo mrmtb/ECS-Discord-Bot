@@ -100,6 +100,39 @@ def inject_report_scope_pills():
     return {'report_scope_pills': pills}
 
 
+@admin_panel_bp.app_context_processor
+def inject_cms_is_full_admin():
+    """Expose a single boolean, `cms_is_full_admin`, to the THREE shared
+    Website (public-site CMS) nav surfaces — the tab strip, the hub card grid,
+    and the admin shell's own Website dropdown in _navigation_flowbite.html —
+    so they can drop Appearance/Redirects/Submissions for anyone who is not a
+    full admin.
+
+    Registered with app_context_processor, NOT context_processor: the shell
+    nav is included by admin_panel/base_flowbite.html, which 228 templates
+    extend — including ones served by OTHER blueprints (admin/wallet_config,
+    help/admin, draft_predictions, ai_prompts, publeague). A blueprint-scoped
+    processor would leave the flag undefined on those pages, and undefined is
+    falsy, so a full admin would silently lose the links there. App scope
+    keeps one definition covering every surface. Computed from the file's existing
+    _effective_roles_cached() helper so role impersonation is honoured
+    exactly as the admin search index already honours it — never a second
+    role lookup, never current_user.roles read directly.
+
+    NAVIGATION UX, NOT A SECURITY BOUNDARY — matching this module's own
+    _safe_url comment above: hiding a link here never substitutes for the
+    route decorator, which is the only real enforcement point. Wrapped so a
+    failure returns False (fail CLOSED) — a False here only hides three
+    links from a full admin; True on failure would advertise doors that 403.
+    """
+    try:
+        roles = _effective_roles_cached()
+        is_full_admin = any(r in ('Global Admin', 'Pub League Admin') for r in roles)
+    except Exception:
+        is_full_admin = False
+    return {'cms_is_full_admin': is_full_admin}
+
+
 @admin_panel_bp.context_processor
 def inject_admin_search_index():
     """Build a searchable index of all admin panel pages for universal search."""

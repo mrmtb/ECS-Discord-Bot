@@ -1,6 +1,10 @@
 {# Shared CMS sub-navigation — included at the top of every Website (CMS) screen
    so a non-technical admin always has one consistent menu and can always get
-   back or jump to the live site. Set `cms_active` (e.g. 'pages') before include. #}
+   back or jump to the live site. Set `cms_active` (e.g. 'pages') before include.
+   NAVIGATION UX, NOT A SECURITY BOUNDARY: the three admin-only tabs below are
+   hidden from a Site Editor so they aren't dangled as dead links, but the
+   route decorator (@role_required) is the real gate — hiding a tab here is
+   never itself the control. #}
 <div class="mb-6 -mx-1 flex flex-wrap items-center gap-0.5 border-b border-gray-200 dark:border-gray-700">
   {% set _cms_tabs = [
     ('pages', 'Pages', 'ti-file-text', 'admin_panel.public_site_pages'),
@@ -9,10 +13,14 @@
     ('faqs', 'FAQs', 'ti-help', 'admin_panel.public_site_faqs'),
     ('menus', 'Menus', 'ti-menu-2', 'admin_panel.public_site_menu'),
     ('media', 'Media', 'ti-photo', 'admin_panel.public_site_media'),
-    ('appearance', 'Appearance', 'ti-palette', 'admin_panel.public_site_appearance'),
-    ('redirects', 'Redirects', 'ti-arrow-guide', 'admin_panel.public_site_redirects'),
-    ('submissions', 'Submissions', 'ti-inbox', 'admin_panel.public_site_submissions'),
   ] %}
+  {% if cms_is_full_admin %}
+    {% set _cms_tabs = _cms_tabs + [
+      ('appearance', 'Appearance', 'ti-palette', 'admin_panel.public_site_appearance'),
+      ('redirects', 'Redirects', 'ti-arrow-guide', 'admin_panel.public_site_redirects'),
+      ('submissions', 'Submissions', 'ti-inbox', 'admin_panel.public_site_submissions'),
+    ] %}
+  {% endif %}
   {% for key, label, icon, endpoint in _cms_tabs %}
   <a href="{{ url_for(endpoint) }}"
      class="inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition

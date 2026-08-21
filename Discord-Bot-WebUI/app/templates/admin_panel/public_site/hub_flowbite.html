@@ -45,7 +45,11 @@
 })();
 </script>
 
-<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+<div id="cms-hub-cards" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  {# NAVIGATION UX, NOT A SECURITY BOUNDARY: the three admin-only cards below
+     are hidden from a Site Editor so they aren't dangled as dead links, but
+     the route decorator (@role_required) is the real gate — hiding a card
+     here is never itself the control. #}
   {% set cards = [
     ('Pages', 'ti-file-text', 'Edit the words & images on a page, redesign a layout, or add a new page', 'admin_panel.public_site_pages', counts.get('pages')),
     ('Home Page', 'ti-home', 'Edit the front page — headline, photo, sections', 'admin_panel.site_editor_home', None),
@@ -53,11 +57,15 @@
     ('FAQs', 'ti-help', 'Manage the frequently-asked questions', 'admin_panel.public_site_faqs', counts.get('faqs')),
     ('Menus', 'ti-menu-2', 'Edit the site navigation menu', 'admin_panel.public_site_menu', None),
     ('Media', 'ti-photo', 'Uploaded images library', 'admin_panel.public_site_media', None),
-    ('Appearance', 'ti-palette', 'Logo, favicon, title and colors', 'admin_panel.public_site_appearance', None),
-    ('Redirects', 'ti-arrow-guide', '301s for renamed or old pages', 'admin_panel.public_site_redirects', None),
-    ('Submissions', 'ti-inbox', 'Entries from forms on your pages', 'admin_panel.public_site_submissions', None),
     ('Calendar', 'ti-calendar', 'Events (mark which show publicly)', 'calendar.calendar_view', None),
   ] %}
+  {% if cms_is_full_admin %}
+    {% set cards = cards + [
+      ('Appearance', 'ti-palette', 'Logo, favicon, title and colors', 'admin_panel.public_site_appearance', None),
+      ('Redirects', 'ti-arrow-guide', '301s for renamed or old pages', 'admin_panel.public_site_redirects', None),
+      ('Submissions', 'ti-inbox', 'Entries from forms on your pages', 'admin_panel.public_site_submissions', None),
+    ] %}
+  {% endif %}
   {% for title, icon, desc, endpoint, count in cards %}
   <a href="{{ url_for(endpoint) }}" class="group rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 hover:border-ecs-green hover:shadow-xs transition">
     <div class="flex items-center justify-between">
