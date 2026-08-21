@@ -73,7 +73,7 @@ SECTION_RHYTHM = {
                    'dark:[&>section:nth-of-type(even):not([class*=bg-])]:bg-white/[0.02]',
     },
 }
-DEFAULT_SECTION_RHYTHM = 'none'
+DEFAULT_SECTION_RHYTHM = 'hairline'
 
 
 def section_rhythm_classes(key):

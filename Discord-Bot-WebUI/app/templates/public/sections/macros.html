@@ -27,7 +27,7 @@
 
 {% set THEME_SECTION = {
     'inherit': '',
-    'light':   'bg-gray-50 dark:bg-gray-900',
+    'light':   'bg-ecs-green/[0.06] dark:bg-gray-900',
     'dark':    'bg-gray-900',
     'brand':   'bg-ecs-green'
 } %}
@@ -96,13 +96,13 @@
 {% macro block_heading(block, ctx, section, edit_mode) %}
 {% set lvl = block.level or 2 %}
 {% set size = {
-    1: 'text-4xl sm:text-5xl lg:text-6xl font-extrabold',
-    2: 'text-3xl sm:text-4xl font-bold',
-    3: 'text-2xl font-bold',
+    1: 'text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-extrabold',
+    2: 'text-3xl sm:text-4xl lg:text-5xl font-extrabold',
+    3: 'text-2xl sm:text-3xl font-bold',
     4: 'text-lg font-semibold'
 }.get(lvl, 'text-3xl sm:text-4xl font-bold') %}
 {% set align = {'left': '', 'center': 'text-center', 'right': 'text-right'}.get(block.align, '') %}
-<h{{ lvl }} class="{{ size }} tracking-tight text-balance break-words {{ _heading_color(section) }} {{ align }} {{ _hide_mobile(block) }} {{ 'drop-shadow-xs' if section.type == 'hero' }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</h{{ lvl }}>
+<h{{ lvl }} class="{{ size }} tracking-[-0.03em] text-balance break-words {{ _heading_color(section) }} {{ align }} {{ _hide_mobile(block) }} {{ 'drop-shadow-xs' if section.type == 'hero' }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</h{{ lvl }}>
 {% endmacro %}
 
 
@@ -483,7 +483,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 {% macro section_hero(section, ctx, edit_mode) %}
 {% set s = section.settings %}
-{% set pads = {'sm': 'py-16 sm:py-20', 'md': 'py-20 sm:py-28', 'lg': 'py-24 sm:py-32 lg:py-40', 'xl': 'py-28 sm:py-40 lg:py-48'} %}
+{% set pads = {'sm': 'py-20 sm:py-24', 'md': 'py-24 sm:py-32 lg:py-36', 'lg': 'py-28 sm:py-40 lg:py-48', 'xl': 'py-32 sm:py-48 lg:py-60'} %}
 {% set grads = {'none': '', 'light': 'from-ecs-green-dark/70 via-ecs-green/35 to-transparent',
                 'medium': 'from-ecs-green-dark/90 via-ecs-green/60 to-ecs-green/20',
                 'heavy': 'from-ecs-green-dark/95 via-ecs-green/85 to-ecs-green/55'} %}
@@ -566,8 +566,8 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 <section class="{{ THEME_SECTION.get(theme, THEME_SECTION['brand']) }}"
          {% if _fill %}style="{{ _fill }}"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="band"{% endif %}>
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">
-        <div class="space-y-4 {{ 'max-w-xl mx-auto' if s.align == 'center' else '' }}">
+    <div class="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">
+        <div class="space-y-6 {{ 'max-w-2xl mx-auto' if s.align == 'center' else 'max-w-3xl' }}">
             {% for block in section.blocks %}{{ render_block(block, ctx, section, edit_mode) }}{% endfor %}
         </div>
     </div>

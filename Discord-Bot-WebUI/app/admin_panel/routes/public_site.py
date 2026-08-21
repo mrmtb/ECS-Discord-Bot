@@ -632,7 +632,7 @@ def public_site_appearance():
             return d
     from app.services.public_theme import (FONT_PAIRS, DEFAULT_PRIMARY,
                                           DEFAULT_ACCENT, contrast_ratio,
-                                          SECTION_RHYTHM)
+                                          SECTION_RHYTHM, DEFAULT_SECTION_RHYTHM)
     primary = g_('public_primary_hex', DEFAULT_PRIMARY)
     accent = g_('public_accent_hex', DEFAULT_ACCENT)
     settings = {
@@ -653,7 +653,7 @@ def public_site_appearance():
         # exactly what the site is doing when a key was never saved.
         'hero_overlay': g_('public_hero_overlay', 'medium'),
         'hero_focal': g_('public_hero_focal', '50% 50%'),
-        'section_rhythm': g_('public_section_rhythm', 'none'),
+        'section_rhythm': g_('public_section_rhythm', DEFAULT_SECTION_RHYTHM),
         'news_discord_channel_id': g_('public_news_discord_channel_id', None),
         'ecs_member_login_url': g_('ecs_member_login_url',
                                    '{shop}/wp-login.php?redirect_to={redirect}'),
@@ -699,9 +699,10 @@ def public_site_appearance_save():
     # Section rhythm: allow-list validated, same as font_pair/overlay. An
     # unknown value silently becomes 'none' rather than emitting an
     # unvalidated string into a class attribute on every public page.
-    from app.services.public_theme import SECTION_RHYTHM
-    rhythm = (request.form.get('section_rhythm') or 'none').strip()
-    set_('public_section_rhythm', rhythm if rhythm in SECTION_RHYTHM else 'none')
+    from app.services.public_theme import SECTION_RHYTHM, DEFAULT_SECTION_RHYTHM
+    rhythm = (request.form.get('section_rhythm') or DEFAULT_SECTION_RHYTHM).strip()
+    set_('public_section_rhythm',
+         rhythm if rhythm in SECTION_RHYTHM else DEFAULT_SECTION_RHYTHM)
     set_('discord_invite_url', (request.form.get('discord_invite_url') or '').strip() or None)
     set_('ga4_measurement_id', (request.form.get('ga4_measurement_id') or '').strip() or None)
 

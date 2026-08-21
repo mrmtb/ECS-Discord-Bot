@@ -8,10 +8,10 @@
 {% macro hero(title, subtitle=None, size='md', bg_color=None, text_color=None,
               image=None, overlay='medium', align='left') %}
 {% set _pad = {
-    'sm': 'py-16 sm:py-20',
-    'md': 'py-20 sm:py-28',
-    'lg': 'py-24 sm:py-32 lg:py-40',
-    'xl': 'py-28 sm:py-40 lg:py-48'
+    'sm': 'py-20 sm:py-24',
+    'md': 'py-24 sm:py-32 lg:py-36',
+    'lg': 'py-28 sm:py-40 lg:py-48',
+    'xl': 'py-32 sm:py-48 lg:py-60'
   }.get(size, 'py-20 sm:py-28') %}
 {% set _grad = {
     'light':  'from-ecs-green-dark/70 via-ecs-green/35 to-transparent',
@@ -29,10 +29,10 @@
   {% endif %}
   <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ _pad }}">
     <div class="max-w-2xl space-y-6 {{ 'mx-auto text-center' if align == 'center' else '' }}">
-      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-balance break-words drop-shadow-xs"
+      <h1 class="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-extrabold tracking-[-0.03em] text-balance break-words drop-shadow-xs"
           style="color: {{ text_color or '#ffffff' }};">{{ title }}</h1>
       {% if subtitle %}
-      <p class="text-lg opacity-90 drop-shadow-sm {{ 'mx-auto' if align == 'center' else '' }}"
+      <p class="text-lg sm:text-xl opacity-90 drop-shadow-sm {{ 'mx-auto' if align == 'center' else '' }}"
          style="color: {{ text_color or '#ffffff' }};">{{ subtitle }}</p>
       {% endif %}
     </div>

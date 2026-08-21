@@ -130,6 +130,21 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
+      // Ft8 marquee footer (public site). Declared here rather than as a custom
+      // <style> block so it stays inside Tailwind — the project rule is Tailwind
+      // + Flowbite utilities only. Translating -50% pairs with two identical
+      // duplicated tracks to give a seamless loop. The consumer MUST also carry
+      // motion-reduce:animate-none; the animation is decorative and the text is
+      // duplicated aria-hidden with a visually-hidden real copy for screen readers.
+      keyframes: {
+        'marquee-x': {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(-50%)' },
+        },
+      },
+      animation: {
+        'marquee-x': 'marquee-x 40s linear infinite',
+      },
     },
   },
   plugins: [
