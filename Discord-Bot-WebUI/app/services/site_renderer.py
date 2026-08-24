@@ -15,6 +15,7 @@ this module, so module-level imports would be circular.
 """
 
 import logging
+import os
 from datetime import datetime
 
 from flask import render_template, url_for
@@ -32,6 +33,58 @@ def get_doc(page, mode='published'):
     return None
 
 
+_STATIC_SIZE_CACHE = {}
+
+
+def _static_image_size(url):
+    """Intrinsic (width, height) for an image served from our own /static tree,
+    or (None, None) for anything we cannot vouch for.
+
+    WHY THIS EXISTS. `_img_tag` has always emitted width/height when it had
+    them, but it never had them for the marketing photography: those images are
+    plain files under app/static/img/publeague, referenced by URL, not
+    MediaAsset rows with stored dimensions. So every photo on the public site
+    shipped without dimensions and reserved no space, which is a layout shift on
+    every page load and the one real Core Web Vitals defect the audit found.
+
+    Reading the size off the file closes that without a database migration and
+    without touching the authoring flow. It is a header read, not a decode, and
+    the result is memoised for the life of the process — the marketing image set
+    is a few dozen files that change when someone uploads, not per request.
+
+    Deliberately refuses anything that is not a relative /static/ path: an
+    absolute or off-site URL is not ours to open, and letting a URL from the
+    database steer a filesystem read is how a template becomes a file-disclosure
+    bug. `safe_join` enforces the rest.
+    """
+    if url in _STATIC_SIZE_CACHE:
+        return _STATIC_SIZE_CACHE[url]
+    # The key is a URL out of the database. The marketing image set is a few
+    # dozen files, so a cap this high is never reached in practice — it is here
+    # so a page full of one-off refs cannot grow this dict without bound for the
+    # life of the worker.
+    if len(_STATIC_SIZE_CACHE) >= 512:
+        _STATIC_SIZE_CACHE.clear()
+    size = (None, None)
+    try:
+        if url.startswith('/static/'):
+            from flask import current_app
+            from werkzeug.utils import safe_join
+            rel = url.split('?', 1)[0][len('/static/'):]
+            path = safe_join(current_app.static_folder, rel)
+            if path and os.path.isfile(path):
+                from PIL import Image
+                with Image.open(path) as im:
+                    size = im.size
+    except Exception:
+        # A missing, corrupt or unreadable file must degrade to "no dimensions",
+        # exactly as before this helper existed — never to a broken page.
+        logger.debug('could not size static image %r', url, exc_info=True)
+        size = (None, None)
+    _STATIC_SIZE_CACHE[url] = size
+    return size
+
+
 class RenderContext:
     """Prefetched lookups for one render pass. Macros call image(),
     resolve_link(), and dyn() — never the database."""
@@ -45,6 +98,7 @@ class RenderContext:
         self._page_urls = {}
         self._news_urls = {}
         self._dyn = {}
+        self._cta_cache = {}
         self.news_index_url = url_for('public.news_list')
         self.calendar_url = url_for('public.calendar')
         self._prefetch(doc)
@@ -125,6 +179,8 @@ class RenderContext:
             return self._dyn_calendar(block)
         if btype == 'form':
             return self._dyn_form(block)
+        if btype == 'facts':
+            return self._dyn_facts(block)
         return None
 
     @staticmethod
@@ -136,7 +192,31 @@ class RenderContext:
             return {'season_name': None, 'mode': 'open', 'status_label': ''}
         if block['type'] in ('news_latest', 'faq_list', 'calendar_teaser'):
             return []
+        if block['type'] == 'facts':
+            return {'season_name': None, 'counts': [], 'plop': None}
         return None
+
+    def cta(self, kind):
+        """The live CTA for a `kind`, for blocks that are not themselves dynamic.
+
+        `cta_live` is a dynamic block: `_prefetch` resolves it per block id.
+        A CARD is not — it renders optimistically in the editor and has no
+        prefetch entry — yet a lead card needs a real, live action inside it
+        (the two division blocks on the home page). Parking that action outside
+        the card as a loose sibling button is design.md DO-NOT 18, and is what
+        made the divisions look broken.
+
+        Safe to call from a macro despite the "macros never query" rule: the
+        underlying `_cta_state()` reads admin flags and the season phase, both
+        request-cached, and the result is memoised per kind for this render.
+
+        Editor caveat, deliberately accepted: because a card is not a dynamic
+        block, changing a card's `cta_kind` in the editor needs a save before the
+        new label appears. Authors set it once when a page is built.
+        """
+        if kind not in self._cta_cache:
+            self._cta_cache[kind] = self._dyn_cta({'kind': kind})
+        return self._cta_cache[kind]
 
     def _dyn_cta(self, block):
         from app.public_site import _cta_state
@@ -246,6 +326,100 @@ class RenderContext:
                         'location': e.location})
         return out
 
+    def _dyn_facts(self, block):
+        """The live season band: how many teams, how many players, and when the
+        next PLOP is. Everything here is already in the portal's database; the
+        public site simply never showed any of it, which is why the home page
+        could have been any organisation's home page.
+
+        Three things this deliberately does NOT do:
+
+        * It does not use ``Season.is_current`` on its own. That flag is true for
+          Pub League, ECS FC and Summer Sprint simultaneously, so an unqualified
+          lookup returns an arbitrary season. ``current_program_season_ids`` is
+          the season-context helper that resolves the pub-league-shaped programs
+          properly.
+        * It does not use ``Player.is_current_player`` for the player count. That
+          column is unindexed, is not season-scoped, and is the authenticated
+          portal's paid-this-season eligibility gate — a different question from
+          "how many people are on a roster right now". The roster join is both
+          cheaper and correct.
+        * It does not call ``Team.to_dict()`` or read ``Team.recent_form``; both
+          fan out into per-team queries.
+
+        On failure it sets ``g.public_render_degraded``. That matters more here
+        than for most blocks: ``_prefetch`` catches resolver errors and falls
+        back silently, and unlike a degraded PAGE render, a degraded BLOCK would
+        otherwise be baked into the 5-minute HTML cache. Flagging it makes the
+        cache serve the previous good copy instead of memoising an empty band.
+        """
+        from flask import g
+        from sqlalchemy import func
+        from app.models import Team, League
+        from app.models.players import player_teams
+        from app.models.calendar import LeagueEvent
+        from app.utils.season_context import current_program_season_ids
+        from app.public_site import _current_season_name
+
+        out = {'season_name': None, 'counts': [], 'plop': None}
+        try:
+            out['season_name'] = _current_season_name()
+
+            if block.get('show_counts', True):
+                sids = current_program_season_ids(self._session)
+                if sids:
+                    teams = (self._session.query(func.count(Team.id))
+                             .join(League, Team.league_id == League.id)
+                             .filter(League.season_id.in_(sids),
+                                     Team.is_active.is_(True))
+                             .scalar()) or 0
+                    players = (self._session.query(
+                                   func.count(func.distinct(player_teams.c.player_id)))
+                               .select_from(player_teams)
+                               .join(Team, Team.id == player_teams.c.team_id)
+                               .join(League, League.id == Team.league_id)
+                               .filter(League.season_id.in_(sids))
+                               .scalar()) or 0
+                    # Only surface a number that is actually true. A zero here
+                    # means the rosters are not built yet (preseason, or a fresh
+                    # program), and "0 teams" on a recruiting page is worse than
+                    # no number at all.
+                    if teams:
+                        out['counts'].append({'value': str(teams),
+                                              'label': 'Teams' if teams != 1 else 'Team'})
+                    if players:
+                        out['counts'].append({'value': str(players),
+                                              'label': 'Players'})
+
+            if block.get('show_plop', True):
+                now = datetime.utcnow()
+                ev = (self._session.query(LeagueEvent)
+                      .filter(LeagueEvent.is_active.is_(True),
+                              LeagueEvent.is_public.is_(True),
+                              LeagueEvent.event_type == 'plop',
+                              LeagueEvent.start_datetime >= now)
+                      .order_by(LeagueEvent.start_datetime.asc())
+                      .first())
+                if ev:
+                    out['plop'] = {
+                        'date': ev.start_datetime.strftime('%a, %b %-d'),
+                        'time': (ev.start_datetime.strftime('%-I:%M %p') if not ev.is_all_day else 'All day'),
+                        'end': (ev.end_datetime.strftime('%-I:%M %p')
+                                if ev.end_datetime and not ev.is_all_day else None),
+                        'location': ev.location,
+                        'datetime_attr': ev.start_datetime.strftime('%Y-%m-%dT%H:%M:%S'),
+                    }
+                    out['ics_url'] = url_for('public.calendar_ics')
+                    out['calendar_url'] = url_for('public.calendar')
+        except Exception:
+            logger.exception('facts block: live league data unavailable')
+            try:
+                g.public_render_degraded = True
+            except Exception:
+                pass
+            return {'season_name': None, 'counts': [], 'plop': None}
+        return out
+
     def _dyn_form(self, block):
         import os
         from app.models import FormDefinition
@@ -284,10 +458,11 @@ class RenderContext:
             }
         if isinstance(ref.get('url'), str):
             fx, fy = focal if focal else (0.5, 0.5)
+            w, h = _static_image_size(ref['url'])
             return {'url': ref['url'], 'srcset': None,
                     'alt': ref.get('alt') or '',
                     'focal_css': f'{round(fx * 100)}% {round(fy * 100)}%',
-                    'width': None, 'height': None}
+                    'width': w, 'height': h}
         return None
 
     @staticmethod

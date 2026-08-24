@@ -47,6 +47,17 @@ WIDTHS = ('narrow', 'normal', 'wide')
 IMAGE_SIZES = ('s', 'm', 'l', 'full')
 ASPECTS = ('natural', '16:9', '4:3', '1:1')
 COLUMN_ALIGNS = ('start', 'center')
+# Photographic treatment (design.md § 4.5). 'duotone' is the house style and the
+# default: every photo is mapped between the same two brand tones so a decade of
+# mixed-quality phone photos reads as one set. 'full-colour' is the opt-out, and
+# a page should carry AT MOST ONE — the break only reads as a break while
+# everything around it is duotoned.
+TREATMENTS = ('duotone', 'full-colour')
+# block_steps renders a rule-separated list instead of a row of cards.
+# 'numbered' is the step ladder (ordinals supplied by the renderer, never by
+# authored copy); 'plain' is the same list without ordinals, title left and body
+# right. See block_steps in macros.html for why this block exists at all.
+STEP_STYLES = ('numbered', 'plain')
 COLUMN_LAYOUTS = ('50-50', '33-67', '67-33', '3col')
 GALLERY_LAYOUTS = ('grid-2', 'grid-3', 'grid-4', 'carousel')
 BUTTON_STYLES = ('primary', 'secondary', 'outline')
@@ -70,14 +81,15 @@ VOLUNTEER_BLOCK_TYPES = (
     'heading', 'richtext', 'image', 'button', 'cta_live', 'card', 'gallery',
     'video', 'map', 'news_latest', 'faq_list', 'registration_status',
     'calendar_teaser', 'form', 'quote', 'divider', 'spacer', 'stats',
-    'social_links',
+    'social_links', 'steps', 'facts',
 )
 ADMIN_BLOCK_TYPES = VOLUNTEER_BLOCK_TYPES + ('embed_raw',)
 
 # Blocks whose output depends on live portal data — the editor renders these
 # via a server round-trip (no optimistic client render).
 DYNAMIC_BLOCK_TYPES = ('cta_live', 'news_latest', 'faq_list',
-                       'registration_status', 'calendar_teaser', 'form')
+                       'registration_status', 'calendar_teaser', 'form',
+                       'facts')
 
 
 # ---- primitive coercers --------------------------------------------------- #
@@ -199,7 +211,8 @@ def _v_image(b, notes, w):
     out = {'image': img,
            'size': _enum(b.get('size'), IMAGE_SIZES, 'l'),
            'align': _enum(b.get('align'), ALIGNS, 'center'),
-           'aspect': _enum(b.get('aspect'), ASPECTS, 'natural')}
+           'aspect': _enum(b.get('aspect'), ASPECTS, 'natural'),
+           'treatment': _enum(b.get('treatment'), TREATMENTS, 'duotone')}
     caption = _text(b.get('caption'), 300)
     if caption:
         out['caption'] = caption
@@ -227,7 +240,17 @@ def _v_cta_live(b, notes, w):
 
 def _v_card(b, notes, w, is_admin):
     out = {'title': _text(b.get('title'), 120),
-           'html': _html(b.get('html'), notes, w)}
+           'html': _html(b.get('html'), notes, w),
+           # 'lead' is the same card carrying a whole section (the two division
+           # blocks on the home page): D2 title, 4:3 media, and a real button
+           # instead of a stretched title link. See block_card in macros.html.
+           'prominence': _enum(b.get('prominence'), PROMINENCES, 'default'),
+           'treatment': _enum(b.get('treatment'), TREATMENTS, 'duotone')}
+    # A lead card may carry a LIVE call to action inside itself instead of a
+    # static link — see block_card. Ignored on a 'default' card.
+    kind = _enum(b.get('cta_kind'), CTA_KINDS, None)
+    if kind:
+        out['cta_kind'] = kind
     img = _image_ref(b.get('image'), notes, w)
     if img:
         out['image'] = img
@@ -346,6 +369,29 @@ def _v_stats(b, notes, w):
     return {'items': items}
 
 
+def _v_steps(b, notes, w):
+    items = []
+    for it in (b.get('items') or [])[:12]:
+        if not isinstance(it, dict):
+            continue
+        title = _text(it.get('title'), 120)
+        html = _html(it.get('html'), notes, w)
+        if title or html:
+            items.append({'title': title, 'html': html})
+    # Kept when empty so a just-added block renders its edit-mode placeholder
+    # rather than silently vanishing on the first save — same stance as _v_stats.
+    return {'items': items,
+            'style': _enum(b.get('style'), STEP_STYLES, 'numbered')}
+
+
+def _v_facts(b, notes, w):
+    """The live season/PLOP band. Authors choose WHICH facts appear; the values
+    themselves come from the portal at render time (site_renderer._dyn_facts),
+    so nothing here can go stale in the way a hand-typed stats block does."""
+    return {'show_plop': _bool(b.get('show_plop')) if 'show_plop' in b else True,
+            'show_counts': _bool(b.get('show_counts')) if 'show_counts' in b else True}
+
+
 def _v_social_links(b, notes, w):
     items = []
     for it in (b.get('items') or [])[:10]:
@@ -385,6 +431,8 @@ _BLOCK_VALIDATORS = {
     'spacer': _v_spacer,
     'stats': _v_stats,
     'social_links': _v_social_links,
+    'steps': _v_steps,
+    'facts': _v_facts,
     'embed_raw': _v_embed_raw,
 }
 
@@ -427,6 +475,7 @@ def _section_settings(stype, raw, notes, where):
         out['size'] = _enum(s.get('size'), SIZES, 'md')
         out['align'] = _enum(s.get('align'), ALIGNS, 'center')
         out['overlay'] = _enum(s.get('overlay'), OVERLAYS, 'medium')
+        out['treatment'] = _enum(s.get('treatment'), TREATMENTS, 'duotone')
         img = _image_ref(s.get('image'), notes, where)
         if img:
             out['image'] = img
@@ -444,7 +493,7 @@ def _section_settings(stype, raw, notes, where):
         # the middle of the photo; 'start' is the opt-out for columns of very
         # uneven length. (Three-column layouts always top-align; the macro
         # enforces that and ignores this setting.)
-        out['align'] = _enum(s.get('align'), COLUMN_ALIGNS, 'center')
+        out['align'] = _enum(s.get('align'), COLUMN_ALIGNS, 'start')
     elif stype == 'band':
         out['align'] = _enum(s.get('align'), ALIGNS, 'center')
     # Common knobs

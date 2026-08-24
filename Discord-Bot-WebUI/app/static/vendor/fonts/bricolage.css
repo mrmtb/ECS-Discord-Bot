@@ -1,30 +1,51 @@
-/* Bricolage Grotesque — self-hosted variable display face (weights 400–800,
-   latin + latin-ext). Downloaded from Google Fonts (Bricolage Grotesque v9)
-   2026-08. Self-hosted for the SAME reason as Inter: the public site's CSP
-   blocks external font CDNs, so a <link> to fonts.googleapis.com would render
-   the whole type system as a silent fallback to system-ui.
+/* Bricolage Grotesque — self-hosted variable display face.
+   Axes: weight 400–800 AND width 75–100 (latin + latin-ext).
+   Downloaded from Google Fonts (Bricolage Grotesque v9) 2026-08. Self-hosted
+   for the SAME reason as Inter: the public site's CSP blocks external font
+   CDNs, so a <link> to fonts.googleapis.com would render the whole type system
+   as a silent fallback to system-ui.
 
    Role: HEADINGS ONLY. Bricolage is a warm, slightly irregular grotesk — it
    gives the public site a display voice that Inter (a UI face) cannot, without
    drifting away from the ECS brand. Body copy stays Inter. Never set this on
    body text: its quirks are designed for large sizes.
 
-   One variable woff2 per subset covers the whole 400–800 weight axis, so one
-   @font-face per subset suffices (same shape as inter.css). */
+   THE WIDTH AXIS IS THE POINT (design.md § 2). The previous file carried
+   weight only, so every heading on the site rendered at one width and the
+   display voice had a single register. The condensed end (wdth 75) now carries
+   the D1 tier — hero headlines, division names, the marquee — against
+   normal-width section heads, which is the type tension the design depends on.
+   Reach for it with font-stretch (Tailwind: font-stretch-75), NOT by faking a
+   transform: scaleX().
+
+   SUBSET, DELIBERATELY. Google's full three-axis file is 131KB for latin. The
+   optical-size axis is instanced out at opsz=96 and the weight axis trimmed to
+   400–800, which lands at 74KB. opsz=96 is exactly what the previous
+   weight-only file baked in, so existing headings render byte-identically —
+   this change adds a width axis and changes nothing else. Regenerate with
+   fontTools instancer if the subset ever needs revisiting; do not hand-edit.
+
+   FILENAMES ARE VERSIONED (-vf). The <link rel="preload"> in base_public.html
+   deliberately carries no ?v= cache-buster, because its href must byte-match
+   the url() below or the browser fetches the font twice. A new filename is
+   therefore the only way to bust a cached woff2, and preload + @font-face must
+   always be changed together. */
 
 @font-face {
   font-family: 'Bricolage Grotesque';
   font-style: normal;
   font-weight: 400 800;
+  font-stretch: 75% 100%;
   font-display: swap;
-  src: url(bricolage/bricolage-latin.woff2) format('woff2');
+  src: url(bricolage/bricolage-latin-vf.woff2) format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
   font-family: 'Bricolage Grotesque';
   font-style: normal;
   font-weight: 400 800;
+  font-stretch: 75% 100%;
   font-display: swap;
-  src: url(bricolage/bricolage-latin-ext.woff2) format('woff2');
+  src: url(bricolage/bricolage-latin-ext-vf.woff2) format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }

@@ -321,6 +321,7 @@ function initEditor(rootEl) {
       { key: 'size', label: 'Height', type: 'select', options: ['sm', 'md', 'lg', 'xl'] },
       { key: 'align', label: 'Text alignment', type: 'select', options: ['left', 'center', 'right'] },
       { key: 'overlay', label: 'Image overlay', type: 'select', options: ['none', 'light', 'medium', 'heavy'] },
+      { key: 'treatment', label: 'Photo treatment', type: 'select', options: ['duotone', 'full-colour'] },
       { key: 'image', label: 'Background image', type: 'image' },
     ],
     content: [
@@ -353,6 +354,9 @@ function initEditor(rootEl) {
       { key: 'size', label: 'Size', type: 'select', options: ['s', 'm', 'l', 'full'] },
       { key: 'align', label: 'Alignment', type: 'select', options: ['left', 'center', 'right'] },
       { key: 'aspect', label: 'Crop', type: 'select', options: ['natural', '16:9', '4:3', '1:1'] },
+      // The house treatment is duotone. 'full-colour' is the break, and a page
+      // should carry at most one — see block_image in macros.html.
+      { key: 'treatment', label: 'Photo treatment', type: 'select', options: ['duotone', 'full-colour'] },
       { key: 'caption', label: 'Caption', type: 'text' },
     ],
     button: [
@@ -375,8 +379,17 @@ function initEditor(rootEl) {
       { key: 'html', label: 'Text', type: 'textarea' },
       { key: 'icon', label: 'Icon (tabler name, optional)', type: 'text' },
       { key: 'image', label: 'Image (optional)', type: 'image' },
+      { key: 'treatment', label: 'Photo treatment', type: 'select', options: ['duotone', 'full-colour'] },
       { key: 'link', label: 'Link (optional)', type: 'link' },
       { key: 'link_label', label: 'Link label', type: 'text' },
+      // A 'lead' card carries a whole section: bigger title, 4:3 media, and a
+      // real button inside the card instead of a stretched title link.
+      { key: 'prominence', label: 'Prominence', type: 'select', options: ['default', 'lead'] },
+      // Lead cards only. Puts a LIVE Register/Waitlist button inside the card,
+      // which is how the two division blocks work. Changing it needs a save
+      // before the new label shows — a card is not a dynamic block.
+      { key: 'cta_kind', label: 'Live button inside card (lead only)', type: 'select',
+        options: ['', 'waitlist_or_register', 'division_classic', 'division_premier', 'how_to_join', 'contact'] },
     ],
     video: [{ key: 'url', label: 'YouTube / Vimeo URL', type: 'text' },
             { key: 'caption', label: 'Caption', type: 'text' }],
@@ -403,6 +416,16 @@ function initEditor(rootEl) {
       { key: 'items', label: 'Stats', type: 'items', addLabel: 'Add stat',
         item: [{ key: 'value', label: 'Value (e.g. 100+)', type: 'text' },
                { key: 'label', label: 'Label (e.g. Players)', type: 'text' }] },
+    ],
+    steps: [
+      { key: 'style', label: 'Style', type: 'select', options: ['numbered', 'plain'] },
+      { key: 'items', label: 'Items', type: 'items', addLabel: 'Add item',
+        item: [{ key: 'title', label: 'Title', type: 'text' },
+               { key: 'html', label: 'Text', type: 'textarea' }] },
+    ],
+    facts: [
+      { key: 'show_counts', label: 'Show team and player counts', type: 'toggle' },
+      { key: 'show_plop', label: 'Show the next PLOP', type: 'toggle' },
     ],
     social_links: [
       { key: 'items', label: 'Links', type: 'items', addLabel: 'Add link',
@@ -794,6 +817,8 @@ function initEditor(rootEl) {
     calendar_teaser: { count: 4 }, form: { form: 'contact' },
     quote: { html: '<p>Quote…</p>' }, divider: {}, spacer: { size: 'md' },
     stats: { items: [{ value: '100+', label: 'Players' }] },
+    steps: { style: 'numbered', items: [{ title: 'First step', html: '<p>What happens.</p>' }] },
+    facts: { show_counts: true, show_plop: true },
     social_links: { items: [{ kind: 'discord', url: 'https://discord.gg/weareecs' }] },
   };
 
@@ -810,6 +835,7 @@ function initEditor(rootEl) {
     ] },
     { group: 'Layout', items: [
       { t: 'card', label: 'Card', icon: 'ti-cards' },
+      { t: 'steps', label: 'Numbered steps / list', icon: 'ti-list-numbers' },
       { t: 'divider', label: 'Divider', icon: 'ti-separator-horizontal' },
       { t: 'spacer', label: 'Spacer', icon: 'ti-arrows-vertical' },
     ] },
@@ -818,6 +844,7 @@ function initEditor(rootEl) {
       { t: 'calendar_teaser', label: 'Upcoming events', icon: 'ti-calendar' },
       { t: 'faq_list', label: 'FAQ list', icon: 'ti-help' },
       { t: 'registration_status', label: 'Registration status', icon: 'ti-user-check' },
+      { t: 'facts', label: 'Live season facts (teams, players, next PLOP)', icon: 'ti-ballpen' },
       { t: 'form', label: 'Form', icon: 'ti-forms' },
       { t: 'stats', label: 'Stats', icon: 'ti-chart-bar' },
       { t: 'social_links', label: 'Social links', icon: 'ti-brand-instagram' },

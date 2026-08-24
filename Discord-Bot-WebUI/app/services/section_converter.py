@@ -93,15 +93,22 @@ _D = {
 
 # The ONE icon-above-heading card grid the home page is allowed (design.md
 # § 6.2 — two on a page is the named auto-fail).
+# The three value propositions. They used to be a row of three cards, each with
+# a 40px tinted icon chip above a three-word title — design.md DO-NOT 16, and
+# the most recognisable AI-generated layout on the web. They are now a
+# rule-separated list (`steps`, style 'plain'): no container, no icon, no
+# shadow. Three equal-weight claims have no hierarchy for a card to express, so
+# hairlines and space group them instead. The icons went with the cards.
 _VALUE_CARDS = [
-    ('heart-handshake', 'Radically inclusive', '<p>All skill levels, all backgrounds, all bodies. We mean it.</p>'),
-    ('friends', 'Real community', '<p>A Discord full of teammates who become friends off the pitch too.</p>'),
-    ('run', 'Beginner-friendly', '<p>Never played? Perfect. Coaches and teammates have your back.</p>'),
+    ('Radically inclusive', '<p>All skill levels, all backgrounds, all bodies. We mean it.</p>'),
+    ('Real community', '<p>A Discord full of teammates who become friends off the pitch too.</p>'),
+    ('Beginner-friendly', '<p>Never played? Perfect. Coaches and teammates have your back.</p>'),
 ]
 
-# Ordinal content -> a numbered step ladder, NOT cards (design.md § 6.2). Kept
-# as (title, body) prose pairs because that is what `_steps_ol` needs; the
-# icons went with the card grid this replaced.
+# Ordinal content -> a numbered step ladder, NOT cards (design.md § 6.2).
+# (title, body) pairs feed the `steps` block, which supplies the ordinals
+# itself so nobody ships "Step 1 / Step 2" as literal copy and nobody has to
+# renumber after a reorder. The icons went with the card grid this replaced.
 _JOIN_STEPS = [
     ('Come to a PLOP',
      f'Turn up to one {_PLOP} — a drop-in kickabout — to meet the community and '
@@ -180,15 +187,6 @@ def _callout_blocks(tone, title, html):
     return [_b('heading', level=3, html=title), _b('richtext', html=html)]
 
 
-def _steps_ol(steps):
-    """A numbered step ladder as real ordered-list markup (design.md § 6.2).
-    Kept as ONE richtext block so a volunteer edits the whole ladder in one
-    place, and so the numerals come from <ol> rather than from copy."""
-    items = ''.join(f'<li><strong>{title}.</strong> {body}</li>'
-                    for title, body in steps)
-    return f'<ol>{items}</ol>'
-
-
 _HEADING_RE = re.compile(r'<(h[34])(?![^>]*\sid=)([^>]*)>(.*?)</\1>', re.S | re.I)
 _TAG_RE = re.compile(r'<[^>]+>')
 
@@ -245,6 +243,25 @@ def build_home_doc(session):
         pg = blocks.get(slug)
         return (getattr(pg, attr, None) or default) if pg else default
 
+    # THE H1 IS LENGTH-GATED, and that is deliberate.
+    #
+    # D1 steps its own size down as the headline gets longer (design.md § 2.5),
+    # so a long hero title does not overflow — it just renders small. The stored
+    # title is 62 characters ("Radically inclusive, beginner-friendly adult
+    # soccer in Seattle."), which drops it two buckets and wraps it over four
+    # lines at 1440px, with the right half of the hero empty beside it. A hero
+    # headline that needs four lines is a copy length problem, not a type
+    # problem.
+    #
+    # So: use the stored title when it fits the top bucket, and fall back to the
+    # short line otherwise rather than silently rendering a weak hero. Both
+    # strings are the league's own words. Once this page is rebuilt the headline
+    # lives in the section document and is editable in the site editor like any
+    # other block, so this gate only ever decides what the page is BORN with.
+    _stored_title = _block('home_hero', 'title', None)
+    hero_title = _stored_title if (_stored_title and len(_stored_title) <= 55) \
+        else _D['hero_title']
+
     hero_img = _block('home_hero', 'og_image_url', None) or _static_img('hero')
     focal = _focal_pair(AdminConfig.get_setting('public_hero_focal', '50% 50%'))
     overlay = AdminConfig.get_setting('public_hero_overlay', 'medium')
@@ -264,7 +281,7 @@ def build_home_doc(session):
         #     stacking two equally-weighted centred buttons.
         _s('hero', [
             _b('registration_status'),
-            _b('heading', level=1, html=_block('home_hero', 'title', _D['hero_title'])),
+            _b('heading', level=1, html=hero_title),
             _b('richtext', html=_block('home_hero', 'body_html', _D['hero_body'])),
             _b('cta_live', kind='waitlist_or_register', style='primary'),
             _b('button', label='See the schedule',
@@ -273,65 +290,87 @@ def build_home_doc(session):
            image={'url': hero_img, 'focal': focal,
                   'alt': 'ECS Pub League players on the pitch in Seattle'}),
 
-        # 2 · VALUE PROP — the page's one icon-card grid, with its heading in
-        #     the head slot rather than in a section of its own.
-        _s('columns', [
-            _head(_b('heading', level=2, prominence='lead',
-                     html=_block('home_intro', 'title', _D['intro_title']))),
-            _head(_b('richtext', html=_block('home_intro', 'body_html', _D['intro_body']))),
-            _b('card', col=0, icon=_VALUE_CARDS[0][0], title=_VALUE_CARDS[0][1], html=_VALUE_CARDS[0][2]),
-            _b('card', col=1, icon=_VALUE_CARDS[1][0], title=_VALUE_CARDS[1][1], html=_VALUE_CARDS[1][2]),
-            _b('card', col=2, icon=_VALUE_CARDS[2][0], title=_VALUE_CARDS[2][1], html=_VALUE_CARDS[2][2]),
-        ], layout='3col', padding='lg'),
+        # 2 · WHO WE ARE — the claim, then the three value propositions as a
+        #     rule-separated list. The heading rides in the head slot rather
+        #     than standing as its own centred section (design.md § 6.4).
+        _s('content', [
+            _b('heading', level=2, prominence='lead',
+               html=_block('home_intro', 'title', _D['intro_title'])),
+            _b('richtext', html=_block('home_intro', 'body_html', _D['intro_body'])),
+            _b('steps', style='plain',
+               items=[{'title': t, 'html': h} for t, h in _VALUE_CARDS]),
+        ], width='normal', align='left', padding='lg'),
 
-        # 3 · DIVISIONS — head slot + a two-up diptych. The division CTAs are
-        #     `secondary` (the brand action) so they read as a choice, not as
-        #     two more copies of the page's primary ask.
+        # 3 · THE LIVE BAND — on the ink ground, the page's one dark anchor.
+        #     Teams, players and the next PLOP, read from the portal at render
+        #     time. Nothing else on this page proves a league is actually
+        #     running; without it the home page could belong to anyone.
+        _s('content', [
+            _b('facts', show_counts=True, show_plop=True),
+        ], theme='dark', width='wide', align='left', padding='lg'),
+
+        # 4 · DIVISIONS — head slot + a two-up diptych of LEAD cards.
+        #     Each division owns its own live CTA INSIDE the block. They used to
+        #     be a card with a loose `cta_live` sibling floating underneath it,
+        #     which is design.md DO-NOT 18 (a page-level CTA parked in a grid
+        #     cell) and, combined with the old centred column alignment, is what
+        #     made Classic and Premier fail to line up with each other.
+        #     No `align` here: plain grid stretch tops the photos out together
+        #     and drops both buttons onto one baseline.
         _s('columns', [
             _head(_b('heading', level=2, prominence='lead',
                      html='Two divisions, one community')),
             _head(_b('richtext', html='<p>Pick the pace that fits you — and move '
                                       'between them season to season.</p>')),
-            _b('card', col=0, image={'url': classic_img,
-                                     'alt': 'ECS Pub League Classic division team'},
+            _b('card', col=0, prominence='lead', cta_kind='division_classic',
+               image={'url': classic_img,
+                      'alt': 'ECS Pub League Classic division team'},
                title=_block('home_division_classic', 'title', _D['classic_title']),
                html=_block('home_division_classic', 'body_html', _D['classic_body'])),
-            _b('cta_live', col=0, kind='division_classic', style='secondary'),
-            _b('card', col=1, image={'url': premier_img,
-                                     'alt': 'ECS Pub League Premier division team'},
+            _b('card', col=1, prominence='lead', cta_kind='division_premier',
+               image={'url': premier_img,
+                      'alt': 'ECS Pub League Premier division team'},
                title=_block('home_division_premier', 'title', _D['premier_title']),
                html=_block('home_division_premier', 'body_html', _D['premier_body'])),
-            _b('cta_live', col=1, kind='division_premier', style='secondary'),
-        ], theme='light', layout='50-50', align='center', padding='lg'),
+        ], theme='light', layout='50-50', padding='lg'),
 
-        # 4 · JUST FOR FUN — the reassurance diptych.
+        # 5 · JUST FOR FUN — the reassurance diptych, and the page's ONE
+        #     full-colour photograph. Every other image on the site is duotoned
+        #     into the brand two tones; this one is left alone. That is the
+        #     point of the break — it only reads as a break while everything
+        #     around it is treated, so a page gets exactly one.
         _s('columns', [
-            _b('image', col=0, image={'url': jff_img,
-                                      'alt': 'ECS Pub League players celebrating after a match'},
+            _b('image', col=0, treatment='full-colour',
+               image={'url': jff_img,
+                      'alt': 'ECS Pub League players celebrating after a match'},
                size='full', aspect='4:3'),
             _b('heading', col=1, level=2, html='Just for fun. Genuinely.'),
             _b('richtext', col=1,
                html=_block('home_justforfun', 'body_html', _D['justforfun_body'])),
         ], layout='50-50', align='center', padding='md'),
 
-        # 5 · HOW TO JOIN — a numbered step ladder, not a second icon three-up
-        #     (design.md § 6.2), with the FAQ link as its OWN full-width row
+        # 6 · HOW TO JOIN — a real numbered step ladder (design.md § 6.2), not
+        #     a second icon three-up and no longer an <ol> buried in a richtext
+        #     block: `steps` sets the ordinals in the condensed display cut and
+        #     rules the rows apart. The FAQ link is its OWN full-width row
         #     rather than parked in a grid cell (§ 6.3).
         _s('content', [
             _b('heading', level=2, prominence='lead', html='Three steps and you’re in.'),
             _b('richtext', html='<p>New players are always welcome. Here’s the '
-                                'path in.</p>' + _steps_ol(_JOIN_STEPS)),
+                                'path in.</p>'),
+            _b('steps', style='numbered',
+               items=[{'title': t, 'html': f'<p>{body}</p>'} for t, body in _JOIN_STEPS]),
             _b('button', label='Read the full FAQ',
                link={'kind': 'builtin', 'value': 'faqs'}, style='outline'),
-        ], width='narrow', align='left', padding='lg'),
+        ], width='normal', align='left', padding='lg'),
 
-        # 6 · LATEST NEWS (dynamic)
+        # 7 · LATEST NEWS (dynamic)
         _s('content', [
             _b('heading', level=2, html='Latest news'),
             _b('news_latest', count=3),
         ], theme='light', width='wide', align='left', padding='md'),
 
-        # 7 · CLOSING BAND — the top of the CTA escalation (§ 10): the label
+        # 8 · CLOSING BAND — the top of the CTA escalation (§ 10): the label
         #     rises, the destination does not change.
         _s('band', [
             _b('heading', level=2, html='Come play with us.'),
@@ -938,12 +977,18 @@ def build_register_doc():
     The closing band repeats the LIVE CTA instead of routing to two other
     pages."""
     return {'v': 1, 'sections': [
+        # A PHOTOLESS HERO SITS ON THE INK GROUND, NOT ON BRAND GREEN.
+        # Flat ecs-green-ink used to be the ground of every image-less hero AND
+        # the scrim over every photographic one AND every closing band, so the
+        # same green rectangle appeared four or five times on every page and the
+        # brand colour stopped meaning anything. Green is now spent once per
+        # page, on the closing band; the ink ground carries the openings.
         _s('hero', [
             _b('heading', level=1, html='Join the league'),
             _b('richtext', html='<p>New players are always welcome — including people '
                                 'who have never played. Here’s exactly how to get on '
                                 'the pitch.</p>'),
-        ], size='md', align='left'),
+        ], theme='dark', size='md', align='left'),
 
         # 1 · Where the season actually stands, before anything is asked of you.
         _s('content', [
@@ -951,13 +996,19 @@ def build_register_doc():
             _b('richtext', html='<p>Registration opens twice a year, for the Spring and '
                                 'Fall seasons. When a season is full, the waitlist is '
                                 'the way in — and it moves.</p>'),
-        ], width='narrow', align='left', padding='md'),
+        # Every section on this page shares `normal`, so the page has ONE left
+        # edge. Mixing widths made the status block, the ladder and the division
+        # choice each start at a different x, which reads as three unrelated
+        # pages stacked rather than one argument.
+        ], width='normal', align='left', padding='md'),
 
-        # 2 · The prerequisite, as a numbered ladder rather than a card three-up.
+        # 2 · The prerequisite, as a real numbered ladder rather than a card
+        #     three-up or an <ol> buried inside a richtext block.
         _s('content', [
             _b('heading', level=2, prominence='lead', html='Three steps and you’re in.'),
-            _b('richtext', html=_steps_ol(_JOIN_STEPS)),
-        ], width='narrow', align='left', padding='lg'),
+            _b('steps', style='numbered',
+               items=[{'title': t, 'html': f'<p>{body}</p>'} for t, body in _JOIN_STEPS]),
+        ], width='normal', align='left', padding='lg'),
 
         # 3 · The choice.
         _s('content', [
@@ -967,7 +1018,7 @@ def build_register_doc():
                                 'can always move later.</p>'),
             _b('cta_live', kind='division_classic', style='secondary', align='left'),
             _b('cta_live', kind='division_premier', style='secondary', align='left'),
-        ], theme='light', width='narrow', align='left', padding='lg'),
+        ], theme='light', width='normal', align='left', padding='lg'),
 
         # 4 · The ask, last.
         _s('band', [
@@ -1139,6 +1190,80 @@ def convert_all(session):
         converted += 1
 
     return converted
+
+
+# --------------------------------------------------------------------------- #
+# Force rebuild
+# --------------------------------------------------------------------------- #
+
+# The nine real pages, in the order a rebuild reports them. `home_*` block rows
+# are migration artifacts, not pages, and are never rebuilt.
+REBUILDABLE_SLUGS = ('home', 'about', 'guide', 'guests', 'faqs',
+                     'register', 'contact')
+
+
+def rebuild_pages(session, slugs=None, dry_run=False):
+    """Re-derive stored section documents from the builders in this module,
+    OVERWRITING what is currently published.
+
+    THIS IS THE LEVER `convert_all` DELIBERATELY IS NOT, and the reason the last
+    redesign did not reach the site. `convert_all` skips any page that already
+    has sections — correct for a boot hook, since it must never clobber an
+    admin's edits — but all nine live pages have had sections since the first
+    conversion. The consequence was that a whole redesign could land in the
+    rendering vocabulary and in these builders, be verified, ship, and change
+    nothing at all on the live site, because every page was still rendering the
+    section JSON it was converted with. Restyling reached the pages; RESHAPING
+    them never could.
+
+    So this exists, it is explicit, and it is never automatic: no boot hook, no
+    request path, no scheduled task. Someone types the command.
+
+    Reversible in two ways, on purpose. This writes a `pre-rebuild` revision of
+    the page's CURRENT sections before touching anything, and `_finalize` then
+    writes its own revision of the new document — so the admin Revisions screen
+    shows both the state before and the state after, per page, and either can be
+    restored without a database edit.
+
+    Returns a list of (slug, n_sections, n_blocks) for what was (or would be)
+    written.
+    """
+    from app.models import SitePage, SitePageRevision
+
+    wanted = tuple(slugs) if slugs else REBUILDABLE_SLUGS
+    unknown = [s for s in wanted if s not in REBUILDABLE_SLUGS]
+    if unknown:
+        raise ValueError(f'not rebuildable: {", ".join(unknown)} '
+                         f'(known: {", ".join(REBUILDABLE_SLUGS)})')
+
+    results = []
+    for slug in wanted:
+        page = (session.query(SitePage)
+                .filter(SitePage.slug == slug, SitePage.deleted_at.is_(None))
+                .first())
+        if not page:
+            logger.warning('rebuild: no page %r — skipped', slug)
+            continue
+
+        doc = build_doc_for_page(session, page)
+        sections = doc.get('sections', [])
+        n_blocks = sum(len(sec.get('blocks') or []) for sec in sections)
+        results.append((slug, len(sections), n_blocks))
+        if dry_run:
+            continue
+
+        # Snapshot what is there NOW, before it is replaced. Skipped when the
+        # page has no sections yet: an empty "before" revision is a restore
+        # point to a blank page, which is worse than no restore point.
+        current = page.sections_published or page.sections_draft
+        if current:
+            session.add(SitePageRevision(
+                page_id=page.id, title=page.title, sections=current,
+                kind='publish', label='pre-rebuild',
+                created_at=datetime.utcnow()))
+        _finalize(session, page, doc, 'rebuild')
+
+    return results
 
 
 def sanitize_legacy_content(session):

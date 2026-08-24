@@ -49,7 +49,7 @@ constraint wins and the reference is noted as waived.
 
 | # | Constraint | Consequence for this system |
 |---|---|---|
-| **C1** | `section_converter.py` cannot restyle an existing page (all 9 live pages already have stored sections). | Every "make page X read as Y" change in § 12 must be reachable through `sections/macros.html` + section settings authored in the editor. |
+| **C1** | ~~`section_converter.py` cannot restyle an existing page.~~ **AMENDED 2026-08-23** — it can now, explicitly and manually, through `rebuild_pages()` and `flask rebuild-public-pages`. | The old wording was true of `convert_all` (which skips any page that already has sections) and it cost this project an entire redesign. § 12's per-page shapes landed in the vocabulary and in the builders, were verified, shipped — and changed nothing live, because every page was still rendering the JSON it was converted with. Restyling reached the pages; **reshaping could not.** A structural change must now be made in the builders AND applied with the rebuild command, which snapshots each page to a `pre-rebuild` revision first. |
 | **C2** | All colour must stay CSS-var-backed so the Appearance picker still re-skins the site. | **No literal hex, no arbitrary colour, and no frozen Tailwind palette stop in any public template.** The var-backed allowlist is § 3.1. |
 | **C3** | Tailwind + Flowbite utilities only. No new `.css` files. Dynamic values only via `public_theme.theme_vars()` → a `<style>` block of custom properties. | New utilities go in `tailwind.config.js` — **O1 only**. |
 | **C4** | Tailwind purge scans `app/templates/**/*.html`, `app/static/js/**`, `app/static/custom_js/**`, `app/services/public_theme.py` only. | A Tailwind class emitted from any other Python file is silently purged. |
@@ -78,6 +78,34 @@ constraint wins and the reference is noted as waived.
 **Two faces. Bricolage Grotesque displays. Inter reads.** That is the whole rule.
 A third family is banned (2+1 rule; the outlier slot is deliberately unused —
 this site has no place that needs a third register).
+
+**TWO WIDTHS FROM ONE FAMILY (added 2026-08-23).** The self-hosted Bricolage
+file used to carry a weight axis only, so every heading on the site rendered at
+one width and the display voice had a single register. The family also ships a
+**width axis (75–100)**, and it is now hosted: `bricolage-latin-vf.woff2`,
+instanced at `opsz=96` with `wght` trimmed to 400–800, 74KB (Google's full
+three-axis file is 131KB). `opsz=96` is exactly what the previous weight-only
+file baked in, so existing headings render unchanged — this adds a width and
+alters nothing else.
+
+The narrow end is spent deliberately, not everywhere:
+
+| Register | Where | Utility |
+|---|---|---|
+| **Condensed** (`wdth` 75) | D1 hero headlines, lead-card titles (the division names), the step-ladder ordinals, the footer marquee | `font-stretch-condensed` |
+| Normal | D2–D5 section heads, everything else | *(default)* |
+
+Two widths is what gives the type a voice; one width is only a font choice.
+D1's tracking loosened to `-0.02em` (from `-0.035em`) at the same time — a
+condensed cut already carries tighter sidebearings, and the old value on top of
+the narrow width collided the letterforms at 96px.
+
+**The filenames are versioned (`-vf`) on purpose.** The `<link rel="preload">`
+in `base_public.html` carries no `?v=` cache-buster, because its href must
+byte-match the `url()` in the `@font-face` or the browser fetches the font
+twice. A new filename is therefore the only way to bust a cached woff2, and the
+preload and the `@font-face` must always change together. Six templates preload
+it: both shells and the four error pages.
 
 ### 2.1 Wiring (O1 + O2 — nothing below is true until this lands)
 
@@ -205,7 +233,7 @@ finding in the audits: the green stops being asked to do a job it cannot do at
 | `ecs-blue-700` | `--color-blue-dark-rgb` | `#1a2776` | Primary action hover/active. |
 | **`ecs-blue-300`** *(re-bound)* | **`--color-blue-on-dark-rgb`** | **`#7983bc`** | Accent ink in dark mode. 5.6:1 on `paper-dark`. |
 | `ecs-blue-400` | `--color-blue-light-rgb` | `#2e46d1` | **RETIRED from the public site.** 2.79:1 on dark. Every `dark:text-ecs-blue-400` becomes `dark:text-ecs-green-300` (brand roles) or `dark:text-ecs-blue-300` (action roles). |
-| **`paper`** *(new)* | **`--color-paper-rgb`** | **`#f9fdfa`** | Page ground, light. Primary mixed 97% toward white — a trace of the anchor hue, never `#fff`. |
+| **`paper`** *(new)* | **`--color-paper-rgb`** | **`#fbf8ec`** | Page ground, light. **WARM CREAM (amended 2026-08-23).** It was the primary mixed 97% toward white, which lands on a pale mint — and a mint ground under a green tint band under white cards made the whole page three near-whites of a single hue, with nothing on it carrying any weight. Now it is the cream in `PAPER_WARM_BASE` nudged `PAPER_WARM_MIX` toward the primary: an admin re-skin still tints the ground, and the green goes back to being the brand instead of the background. Never `#fff`. |
 | **`paper-dark`** *(new)* | **`--color-paper-dark-rgb`** | **`#09140c`** | Page ground, dark. Never `#000`, never flat `gray-950`. |
 
 **Nothing else is legal in a public template.** Frozen stops
@@ -243,9 +271,15 @@ def _on_dark(rgb, ground='#09140c', min_ratio=5.0, start=0.25):
         t = round(t + 0.05, 2); out = _mix_white(rgb, t)
     return out
 
-_paper      = _mix_white(primary, 0.97)     # #f9fdfa
+_paper      = _mix_toward(primary, (254,249,238), 0.015)  # #fbf8ec  warm cream
 _paper_dark = _mix_toward(primary, (6,10,8), 0.06)   # #09140c
 ```
+
+Every ink is measured against `paper`, so warming the ground re-derives them
+automatically: the brand ink moved `#2c7836` -> `#2a7435` to keep 4.6:1 against
+the slightly darker tint floor. Nothing was hand-tuned. Verified after the
+change — green-ink 5.41:1 on paper and 5.76:1 under white text, green-300
+8.84:1 on paper-dark, blue-300 5.18:1, gray-700 body 9.69:1.
 
 `theme_vars()` already computes `primary_contrast` and throws it away. It must
 now **also return `primary_ink_contrast` and gate the Appearance save**: if the
@@ -258,7 +292,7 @@ chosen primary cannot reach 4.6:1 even at f=0.30, warn on the Appearance screen.
 | `bg-paper` / `bg-white` | `text-gray-900 dark:text-white` | `text-gray-700 dark:text-gray-200` | `text-ecs-green-ink dark:text-ecs-green-300` + underline | `ring-gray-400/70 dark:ring-white/20` |
 | `bg-ecs-green/[0.06]` tint | same as above | same | same | `ring-ecs-green-ink/20 dark:ring-white/10` |
 | **`bg-ecs-green-ink`** (brand band) | `text-white` | `text-white` (**never `text-white/90`** — 4.8 → 4.2, fails) | `text-white underline decoration-white/60` | `ring-white/70` |
-| dark section `bg-gray-900 dark:bg-white/[0.05]` | `text-white` | `text-gray-200` | `text-ecs-green-300` | `ring-white/20` |
+| dark section **`bg-paper-dark`** (amended 2026-08-23; was `bg-gray-900`, a frozen Tailwind stop that quietly broke C2) | `text-white` | `text-gray-200` | `text-ecs-green-300` | `ring-white/20` |
 | photo hero | `text-white` + real legibility treatment (§ 4.5) | `text-white` | `text-white underline` | `ring-white/80` |
 
 **`bg-ecs-green` never carries text.** Every text-bearing green surface —
@@ -337,12 +371,31 @@ is fine only where it is `rounded-full` or `rounded-lg`.
 ```jinja
 'inherit': '',
 'light':   'bg-ecs-green/[0.06] dark:bg-white/[0.03]',
-'dark':    'bg-gray-900 dark:bg-black/40 dark:ring-1 dark:ring-inset dark:ring-white/5',
+'dark':    'bg-paper-dark dark:bg-black/40 dark:ring-1 dark:ring-inset dark:ring-white/5',
 'brand':   'bg-ecs-green-ink'
 ```
 
 A card on a light page is **white on tinted paper** — that is where light-mode
 surface hierarchy comes from. `bg-white` on `bg-white` is banned.
+
+**THE INK GROUND IS A FIRST-CLASS LIGHT-MODE SURFACE (added 2026-08-23).** The
+`dark` theme used to resolve to `bg-gray-900`, a frozen Tailwind stop that
+quietly broke C2, and in practice no page used it — so the light palette was
+three near-whites and one green band, and over 5,500px of home page nothing had
+enough weight for the eye to land on. `bg-paper-dark` is var-backed, carries the
+brand's green cast, and gives every page one heavyweight section.
+
+**Grounds are now a ladder, and green is rationed.** Flat `ecs-green-ink` used
+to be the ground of every photoless hero AND the scrim over every photographic
+one AND every closing band — the same rectangle four or five times a page, on
+nine pages, until the brand colour meant nothing.
+
+| Ground | Budget per page |
+|---|---|
+| `bg-paper` (cream) | the default |
+| `bg-ecs-green/[0.06]` (tint) | one or two quiet bands |
+| **`bg-paper-dark` (ink)** | one heavyweight section, plus every photoless hero |
+| **`bg-ecs-green-ink` (brand)** | **exactly one — the closing band** |
 
 ### 4.3 Elevation and hover-lift
 
@@ -355,6 +408,27 @@ surface hierarchy comes from. `bg-white` on `bg-white` is banned.
   the feedback vocabulary. § 7 assigns one signal per element class.
 
 ### 4.4 Card contract (block_card, news card, calendar event card — one shape)
+
+**A CARD IS NOT THE DEFAULT CONTAINER (added 2026-08-23).** This one shape used
+to wrap value-prop tiles, division blocks, step tiles and news tiles
+identically — four jobs, one container — which is what made the site read as
+templated. A card earns its container only when elevation communicates real
+hierarchy. Three equal-weight value propositions have no hierarchy for a card to
+express, so they are a rule-separated list (`block_steps`, style `plain`) with
+no container, no shadow and no icon chip. The 2026 field has moved hard away
+from "corporate soft UI"; a uniform 16px radius on everything is a named AI-slop
+signature.
+
+**Two prominences.** `default` is the tile above. `lead` is the same card asked
+to carry a whole section — the two division blocks — and differs in exactly
+three ways: the title steps up to D2 in the condensed cut, the media is 4:3
+rather than 16:9, and the call to action is a **real button inside the card**
+(`cta_kind`, live) rather than a stretched title link. The division CTAs used to
+be loose `cta_live` siblings floating below their cards, which is DO-NOT 18 and,
+with the old centred column alignment, is why Classic and Premier never lined
+up. The two link treatments are mutually exclusive: a stretched `::after` link
+behind a real button would swallow the button's clicks.
+
 
 ```
 group relative flex flex-col overflow-hidden rounded-xl
@@ -375,6 +449,36 @@ title carrying `after:absolute after:inset-0 after:content-['']`; the image gets
 same URL per card is banned.
 
 ### 4.5 Images
+
+**DUOTONE IS THE HOUSE TREATMENT (added 2026-08-23).** The photography comes
+from many phones over many seasons in every kind of Seattle light; shown raw it
+reads as a shoebox rather than as one club. Every photo is flattened to
+greyscale and mapped between the same two brand tones, so a blurry 2019 team
+photo and a sharp 2026 one belong to the same set.
+
+The mechanism is `grayscale contrast-110` on the `<img>`, then
+`bg-ecs-green-ink mix-blend-color` (brand hue and saturation over the photo's
+own luminance) and `bg-paper mix-blend-multiply` (highlights land on the page's
+paper, not on white). The wrapper must carry `isolate`, or the blends reach past
+the photo and blend with the page.
+
+`mix-blend-lighten` was the first attempt and is subtly wrong: lighten is a
+per-channel max, so it only reaches pixels already darker than the green and
+leaves every midtone stubbornly grey — a muddy photo rather than a treated one.
+
+**Identical in both themes.** § 3.5 forbids the brand hue changing between light
+and dark, and the duotone *is* the brand hue applied to an image, so it gets no
+`dark:` pair. Only the scrim above it changes.
+
+**`treatment: 'full-colour'` is the opt-out, and a page gets AT MOST ONE** —
+normally the celebration shot. The break only reads as a break while everything
+around it is treated.
+
+**The scrim over a photo is BLACK, never brand green.** A green wash does not
+read as a scrim; it stains the picture. Black darkens without tinting, so the
+duotone is the only thing colouring the image and the two treatments stop
+fighting.
+
 
 - Hero image goes through `_img_tag` so it inherits `srcset` + `width`/`height`,
   plus `fetchpriority="high" decoding="async"` and no `loading="lazy"` — it is
@@ -795,7 +899,18 @@ sticky stack that is already mis-measured, so the strip is fixed and scrolls awa
 6. **Skip link** as the first child of `<body>`; `<main id="main" tabindex="-1">`.
 7. `<nav aria-label="Main">` / `aria-label="Mobile">`.
 
-### 9.2 Footer — **Ft8 Marquee + Ft5 Statement.** Ft3 is deleted.
+### 9.2 Footer — **Ft8 Marquee + colophon.** Ft3 is deleted. ~~Ft5 Statement~~ is deleted too (2026-08-23).
+
+**Why the statement went.** "No experience needed. Seriously." plus a lone
+Waitlist button sat byte-identical on all nine pages, directly beneath the
+marquee, directly beneath each page's own closing CTA band. The tail of every
+page was therefore a four-part sequence — page CTA, marquee, statement,
+colophon — of which three parts never changed, so the last screenful of the site
+was the same everywhere and each page's real closing argument was only the
+third-loudest thing on it. **One closer per page now:** the page's own CTA band,
+then the marquee, then the colophon. The footer keeps no call to action of its
+own; the header's Join button is sticky at every scroll position, so nothing is
+lost by not repeating it a fourth time. The marquee takes the condensed cut.
 
 *The current footer stapled a marquee on top of the Ft3 index columns it claimed
 to replace — "Explore" mirrors the nav 1:1, so six of twelve footer links are
@@ -880,18 +995,33 @@ enough. **State the welcome before the ask.**
 
 ## 12 · Per-page macrostructure assignment
 
-One system, nine shapes. **Every change below is reachable through the rendering
-vocabulary and section settings (C1).** No page may adopt another page's
-macrostructure.
+One system, nine shapes. No page may adopt another page's macrostructure.
+
+**HOW THESE REACH THE SITE (amended 2026-08-23).** The original note here said
+every change below was "reachable through the rendering vocabulary and section
+settings (C1)". That was the whole mistake. The vocabulary can restyle a stored
+document; it cannot *reshape* one, and the changes in this table are reshapes —
+moving a heading into a head slot, replacing a card grid with a ladder, deleting
+a section. They live in the builders in `section_converter.py`, and they only
+reach a live page when someone runs:
+
+```
+flask rebuild-public-pages --dry-run      # read the plan for all pages
+flask rebuild-public-pages                # apply; snapshots each page first
+```
+
+Editing a builder without running that command changes nothing a visitor sees.
+Editing the vocabulary without touching the builders changes how the *old* shape
+is painted. Both halves, every time.
 
 | Page | Macrostructure | The one structural change that gets it there |
 |---|---|---|
-| **Home** | **03 · Marquee Hero** | Collapse ten sections to five by moving each orphan heading `content` section into the `columns` section it labels via the new `slot: 'head'` (§ 6.4). The hero becomes the page above the fold — capped D1, one CTA row, primary above the fold — and the two icon-tile three-ups become one card grid + one numbered step ladder. |
+| **Home** | **03 · Marquee Hero** | **SHIPPED 2026-08-23 (8 sections, 25 blocks).** Orphan heading sections fold into what they label via `slot: 'head'` (§ 6.4). **Both** icon-tile three-ups are gone: the value propositions are a card-less `steps` list (style `plain`) and the join sequence is a real numbered `steps` ladder. The divisions are `lead` cards owning their own live CTA. A `facts` band on the ink ground carries the season, the team and player counts and the next PLOP — the only thing on the page that proves a league is running. One full-colour photograph; everything else duotoned. Brand green spent once, on the closing band. |
 | **About** | **15 · Split Studio** | Keep the alternating diptychs (they already are the shape) and give them `lg:items-center`. Replace the headingless two-photo `columns` section with **one `block_gallery`** with real captions, and promote the four-clause *"come out anyway"* run to a full-width **`block_quote` at D2** in its own section — the page's single Marquee moment and its emotional payload. |
 | **Guide** | **02 · Long Document** | One editorial grid: a **server-rendered TOC side-rail** in the currently-dead right gutter at `lg:` (the toolbar stops being client-injected above the hero and stops shifting the document 48px on every load), body at BL with em-rhythm, `size='sm'` hero carrying chapter count + reading time + "jump to the lexicon". |
 | **Guests** | **06 · Conversational FAQ** | The page already *is* four questions (TL;DR / Why we're cautious / But exceptions? / So what should I do?) trapped inside one richtext `<div>`. Split it into four Q-headed `content` sections at D3/D4 and **add a closing band with a real action** — today `<main>` contains zero focusable elements on a page whose message is "just reach out." |
 | **FAQs** | **13 · Index-First** | The list IS the page. Hero absorbs a category jump-strip (the `Faq.category` column already exists and is unused); questions group under sticky category heads; every `<details>` gets a slug `id`; the hero stops being a 208px green slab with one word in it. |
-| **Register** | **14 · Narrative Workflow** | **Reorder so the ask lands after the prerequisite**: live registration state (loud, § 12.1) → the three numbered steps as a step ladder (§ 6.2) → the CTA. The closing band repeats the live CTA instead of routing to two other pages. |
+| **Register** | **14 · Narrative Workflow** | **SHIPPED 2026-08-23 (5 sections, 12 blocks).** The ask lands after the prerequisite: live registration state (loud, § 12.1) → the three steps as a real `steps` ladder (§ 6.2) → the division choice → the CTA. The hero is the ink ground, not a green slab. Every section shares `width: normal`, so the page has one left edge instead of three. |
 | **Contact** | **12 · Letter** | Lead with a short first-person lede in the site's voice, then the form as the page's single object on the inset surface, filling its column. "Other ways to reach us" demotes to a colophon-weight footnote, and the page gains a closing band back to the waitlist. |
 | **News** | **20 · Ecosystem Index** | A **lead card** (`sm:col-span-2`, taller media, title at D3) breaks the twelve identical tiles, and posts group by a derived axis (year, or a title-prefix series) so the archive has structure even before anyone tags a post. Article detail gains a hero band so list and detail open the same way. |
 | **Calendar** | **04 · Stat-Led** | The hero becomes the **next PLOP** — date, time and venue as the giant fact, with the register CTA under it — computed from data already in the template. The subscribe cluster demotes to outline pills inside a proper `<section>`; the month grid restructures to a day-grouped list below `sm:` instead of scrolling a 640px table sideways. |
@@ -917,6 +1047,24 @@ At **`text-sm sm:text-base`**, `min-h-8`, with a real sentence beside it on
 ## 13 · DO-NOT — the AI tells found in these audits
 
 Every item below was **found live on this site** and must not survive.
+
+**Status note, 2026-08-23.** A live re-audit found that items **16** (two icon
+three-ups on one page), **17** (a heading authored as its own section, a full
+section's padding and a rule away from what it labels), **18** (a page-level CTA
+parked in a grid cell) and **21** (a centred hero with everything on one axis)
+were all still shipping — not because the rules were wrong but because they were
+never applied to the stored documents. See the amended C1 and § 12. They are
+fixed now, and `tests/test_public_site_builder.py::TestRebuiltDocuments` asserts
+several of them so they cannot come back silently.
+
+Two to add, from the 2026 field rather than from this site:
+
+45. **A uniform 16px radius plus a soft shadow on every container.** "Corporate
+    soft UI" is the look the field has moved hard away from, and a single radius
+    applied to everything is a named AI-slop signature. A card must earn its
+    container (§ 4.4).
+46. **A flat colour wash over a photograph** in place of a real duotone,
+    gradient scrim or vignette (§ 4.5).
 
 **Typography**
 1. Inter as the display face. Any `font-extrabold` on an Inter element.

@@ -26,6 +26,7 @@ def init_cli_commands(app):
         sync_program_discord_roles,
         fix_ecs_fc_role_prefix, seed_summer_sprint, sync_program_discord, seed_program_automations,
         preview_discord_role_drain, backfill_order_revenue,
+        rebuild_public_pages,
     )
     app.cli.add_command(build_assets)
     app.cli.add_command(reencode_profile_pictures)
@@ -42,6 +43,7 @@ def init_cli_commands(app):
     app.cli.add_command(sync_program_discord)
     app.cli.add_command(seed_program_automations)
     app.cli.add_command(preview_discord_role_drain)
+    app.cli.add_command(rebuild_public_pages)
     app.cli.add_command(backfill_order_revenue)
 
     # Register wallet CLI commands

@@ -1497,3 +1497,78 @@ def backfill_order_revenue(batch_size, only_missing, dry_run):
     click.echo("=========================================")
     if dry_run:
         click.echo("\nDRY RUN -- everything was rolled back.")
+
+
+@click.command('rebuild-public-pages')
+@click.option('--page', 'pages', multiple=True,
+              help='Slug to rebuild. Repeatable. Omit to rebuild every page.')
+@click.option('--dry-run', is_flag=True,
+              help='Print what would be written and roll back.')
+@click.option('--yes', is_flag=True,
+              help='Skip the confirmation prompt (for non-interactive shells).')
+@with_appcontext
+def rebuild_public_pages(pages, dry_run, yes):
+    """Re-derive the public pages' section documents from their builders.
+
+    OVERWRITES what is currently published on the public marketing site. This
+    is the deliberate counterpart to the boot-time conversion, which skips any
+    page that already has sections and therefore can never reshape a live page.
+
+    Every page is snapshotted to a 'pre-rebuild' revision before it is touched,
+    and the new document is written as a revision of its own, so both the before
+    and after states are restorable from Website -> Pages -> Revisions without a
+    database edit.
+
+    Restart the public containers afterwards, or the render cache will keep
+    serving the old HTML for up to five minutes.
+    """
+    from app.services.section_converter import rebuild_pages, REBUILDABLE_SLUGS
+
+    targets = list(pages) or list(REBUILDABLE_SLUGS)
+    click.echo(f"Rebuilding: {', '.join(targets)}")
+    if dry_run:
+        click.echo("DRY RUN — nothing will be written.\n")
+    elif not yes:
+        click.confirm(
+            f"This replaces the published sections of {len(targets)} page(s). "
+            "A 'pre-rebuild' revision of each is saved first. Continue?",
+            abort=True)
+
+    try:
+        results = rebuild_pages(db.session, slugs=list(pages) or None,
+                                dry_run=dry_run)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
+    if not results:
+        click.echo("No matching pages found — nothing to do.")
+        return
+
+    click.echo(f"\n{'page':<12} {'sections':>9} {'blocks':>8}")
+    click.echo('-' * 31)
+    for slug, n_sections, n_blocks in results:
+        click.echo(f"{slug:<12} {n_sections:>9} {n_blocks:>8}")
+
+    if dry_run:
+        db.session.rollback()
+        click.echo("\nDRY RUN — rolled back. Re-run without --dry-run to apply.")
+        return
+
+    db.session.commit()
+
+    # The public container caches rendered HTML for five minutes and does not
+    # watch the pages table, so without this the rebuild is invisible until the
+    # TTL lapses.
+    try:
+        from app.services.public_cache import bump_public_cache
+        # A 'global' bump rolls the version every cached key is namespaced by,
+        # so it invalidates page renders and the news/calendar renders together.
+        bump_public_cache('global')
+        click.echo("\nPublic render cache busted.")
+    except Exception as exc:
+        click.echo(f"\nWrote pages, but could not bust the render cache: {exc}")
+        click.echo("Restart webui and publicweb to be sure.")
+
+    click.echo(f"Rebuilt {len(results)} page(s). "
+               "Restore any of them from Website -> Pages -> Revisions "
+               "('pre-rebuild') if this is not what you wanted.")

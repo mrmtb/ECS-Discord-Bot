@@ -103,7 +103,7 @@
 
     {# ---- Fonts / CSS / Icons ---- #}
     <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/inter/inter-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/bricolage/bricolage-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/bricolage/bricolage-latin-vf.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ static_v('vendor/fonts/inter.css') }}">
     <link rel="stylesheet" href="{{ static_v('vendor/fonts/bricolage.css') }}">
     <link rel="stylesheet" href="{{ static_v('vite-dist/css/tailwind.css') }}">
@@ -140,6 +140,12 @@
         @layer base {
             html { scroll-padding-top: calc(var(--sticky-stack) + 1.5rem); }
             header a, footer nav a, .nav-pill { text-decoration: none; }
+            /* Kills the ~300ms double-tap-to-zoom delay mobile browsers hold on
+               every tap target. Scoped to controls, never to the document: set
+               on the page as a whole it also disables pinch-zoom, which is an
+               accessibility regression rather than an optimisation. */
+            a, button, summary, label, [role="button"],
+            input:not([type="range"]), select, textarea { touch-action: manipulation; }
 {% include 'public/_type_cascade.html' %}
         }
     </style>
@@ -420,7 +426,7 @@
         <div class="relative overflow-hidden bg-ecs-green-ink text-white">
             <div id="footer-marquee" class="flex w-max animate-marquee-x whitespace-nowrap py-3.5 hover:[animation-play-state:paused] focus-within:[animation-play-state:paused] motion-reduce:animate-none sm:py-4" aria-hidden="true">
                 {% for _ in range(2) %}
-                <span class="flex shrink-0 items-center gap-6 pr-6 text-xs font-bold uppercase tracking-[0.14em]">
+                <span class="flex shrink-0 items-center gap-6 pr-6 font-display font-stretch-condensed text-xs font-bold uppercase tracking-[0.14em]">
                     {% for _r in range(4) %}{% for _w in _words %}<span>{{ _w }}</span><span aria-hidden="true">&middot;</span>{% endfor %}{% endfor %}
                 </span>
                 {% endfor %}
@@ -435,19 +441,20 @@
             </button>
         </div>
 
-        <div class="mx-auto max-w-7xl px-4 pt-16 pb-10 sm:px-6 sm:pt-20 lg:px-8">
-            <p class="max-w-[38ch] font-display text-3xl font-extrabold leading-[1.06] tracking-[-0.025em] text-balance break-words text-gray-900 sm:text-4xl lg:text-5xl dark:text-white">No experience needed. Seriously.</p>
-            <div class="mt-8">
-                {# Footer is the last rung of the ladder (design.md § 10): one
-                   word. As in the nav, the fuller live label is appended
-                   sr-only rather than set as an aria-label, so the accessible
-                   name always CONTAINS the visible one by construction instead
-                   of by coincidence of the two branches matching up. #}
-                <a href="{{ cta.url }}" class="{{ BTN_BASE }} {{ BTN_PRIMARY }}">{{ 'Waitlist' if cta and cta.mode == 'waitlist' else 'Register' }}<span class="sr-only"> &mdash; {{ cta.label }}</span></a>
-            </div>
-        </div>
+        {# THE Ft5 STATEMENT IS GONE, DELIBERATELY (design.md § 9.2).
+           It used to sit here — "No experience needed. Seriously." plus a lone
+           Waitlist button — byte-identical on all nine pages, directly beneath
+           the marquee, directly beneath each page's own closing CTA band. That
+           made the tail of every page a four-part sequence (page CTA, marquee,
+           statement, colophon) of which three parts never changed, so the last
+           screenful of the site was the same everywhere and each page's real
+           closing argument was only the third-loudest thing on it.
 
-        <div class="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+           One closer per page now: the page's own CTA band, then the marquee,
+           then this colophon. The footer keeps no call to action of its own —
+           the header's Join button is sticky and visible at every scroll
+           position, so nothing is lost by not repeating it a fourth time. #}
+        <div class="mx-auto max-w-7xl px-4 pt-14 pb-12 sm:px-6 lg:px-8">
             <nav aria-label="Site information"
                  class="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-black/[0.08] pt-4 text-sm text-gray-600 dark:border-white/10 dark:text-gray-300">
                 {% set _colo = 'nav-pill inline-flex min-h-11 items-center rounded-lg transition-colors duration-150 ease-out hover:text-ecs-green-ink motion-reduce:transition-none dark:hover:text-ecs-green-300 ' ~ NAV_RING %}

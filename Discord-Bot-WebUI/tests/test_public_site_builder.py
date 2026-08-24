@@ -398,3 +398,136 @@ class TestPageTemplates:
             built = build_page_template(t['key'], 'X')
             if t['key'] != 'blank':
                 assert built, f"template {t['key']} built an empty skeleton"
+
+
+# --------------------------------------------------------------------------- #
+# Rebuild — the design system reaching the pages
+# --------------------------------------------------------------------------- #
+
+class _DeadSession:
+    """A session whose every query raises, so the builders run their own
+    degradation path. That is what a deploy window looks like, and it keeps
+    these tests database-free."""
+
+    def query(self, *a, **k):
+        raise RuntimeError('no database')
+
+
+def _built(monkeypatch, slug):
+    """Build one page's document exactly as `rebuild_public_pages` would."""
+    from app.models.admin_config import AdminConfig
+    from app.services import section_converter as sc
+    monkeypatch.setattr(AdminConfig, 'get_setting',
+                        staticmethod(lambda key, default=None: default))
+    builders = {'home': lambda: sc.build_home_doc(_DeadSession()),
+                'register': sc.build_register_doc,
+                'contact': sc.build_contact_doc,
+                'faqs': sc.build_faqs_doc,
+                'guests': sc.build_guests_doc}
+    return builders[slug]()
+
+
+def _all_blocks(doc):
+    return [b for s in doc['sections'] for b in s['blocks']]
+
+
+class TestRebuiltDocuments:
+    """These guard the failure that made the previous redesign a no-op on the
+    live site: a builder emits a structural key, macros.html consumes it, and
+    section_schema drops it in between because `_validate_block` rebuilds every
+    block from an allowlist. Nothing errors — the page just quietly renders in
+    the old shape."""
+
+    SLUGS = ('home', 'register', 'contact', 'faqs', 'guests')
+
+    @pytest.mark.parametrize('slug', SLUGS)
+    def test_no_block_is_dropped_by_validation(self, monkeypatch, slug):
+        from app.services.section_schema import validate_sections
+        raw = _built(monkeypatch, slug)
+        doc, notes = validate_sections(raw, is_admin=True)
+        assert len(doc['sections']) == len(raw['sections']), notes
+        for raw_s, out_s in zip(raw['sections'], doc['sections']):
+            assert len(out_s['blocks']) == len(raw_s['blocks']), notes
+
+    def test_structural_keys_survive_validation(self, monkeypatch):
+        from app.services.section_schema import validate_sections
+        doc, _ = validate_sections(_built(monkeypatch, 'home'), is_admin=True)
+        blocks = _all_blocks(doc)
+        keys = {k for b in blocks for k in b}
+        # slot keeps a heading in the same <section> as the grid it labels;
+        # prominence is the two-h2-tier hierarchy; cta_kind puts a division's
+        # live action inside its own block; treatment is the duotone.
+        for key in ('slot', 'prominence', 'cta_kind', 'treatment'):
+            assert key in keys, f'{key} was stripped by validate_sections'
+        assert any(s['settings'].get('treatment')
+                   for s in doc['sections'] if s['type'] == 'hero')
+
+    def test_home_has_no_icon_card_grid(self, monkeypatch):
+        """design.md DO-NOT 16. Two icon-above-heading three-ups on one page was
+        the single most recognisable AI tell on the old home page; the value
+        propositions are a rule-separated list now, and the join sequence is a
+        real step ladder."""
+        from app.services.section_schema import validate_sections
+        doc, _ = validate_sections(_built(monkeypatch, 'home'), is_admin=True)
+        iconed = [b for b in _all_blocks(doc)
+                  if b['type'] == 'card' and b.get('icon')]
+        assert not iconed, f'{len(iconed)} icon cards survived on the home page'
+        assert sum(1 for b in _all_blocks(doc) if b['type'] == 'steps') == 2
+
+    def test_home_spends_brand_green_once(self, monkeypatch):
+        """Flat brand green used to ground every photoless hero, scrim every
+        photographic one and paint every closing band — the same rectangle four
+        or five times a page. It buys exactly one moment now."""
+        from app.services.section_schema import validate_sections
+        doc, _ = validate_sections(_built(monkeypatch, 'home'), is_admin=True)
+        brand = [s for s in doc['sections'] if s['theme'] == 'brand']
+        assert len(brand) == 1, f'{len(brand)} brand-green sections'
+        assert brand[0]['type'] == 'band'
+
+    @pytest.mark.parametrize('slug', ('register', 'faqs'))
+    def test_photoless_hero_is_not_brand_green(self, monkeypatch, slug):
+        from app.services.section_schema import validate_sections
+        doc, _ = validate_sections(_built(monkeypatch, slug), is_admin=True)
+        heroes = [s for s in doc['sections']
+                  if s['type'] == 'hero' and not s['settings'].get('image')]
+        assert heroes, f'{slug} has no photoless hero to check'
+        for h in heroes:
+            assert h['theme'] != 'brand', f'{slug} hero is still a green slab'
+
+    def test_divisions_own_their_call_to_action(self, monkeypatch):
+        """design.md DO-NOT 18. The division CTAs used to be loose `cta_live`
+        siblings floating under their cards, which is why Classic and Premier
+        never lined up."""
+        from app.services.section_schema import validate_sections
+        doc, _ = validate_sections(_built(monkeypatch, 'home'), is_admin=True)
+        for section in doc['sections']:
+            kinds = {b.get('kind') for b in section['blocks']
+                     if b['type'] == 'cta_live'}
+            assert not (kinds & {'division_classic', 'division_premier'}), \
+                'a division CTA is still a loose block rather than card-owned'
+        cards = [b for b in _all_blocks(doc)
+                 if b['type'] == 'card' and b.get('cta_kind')]
+        assert len(cards) == 2
+        assert all(c.get('prominence') == 'lead' for c in cards)
+
+    def test_one_full_colour_photograph_per_page(self, monkeypatch):
+        """The duotone only reads as the house treatment while the break is
+        rare. More than one full-colour image and it is just inconsistency."""
+        from app.services.section_schema import validate_sections
+        for slug in self.SLUGS:
+            doc, _ = validate_sections(_built(monkeypatch, slug), is_admin=True)
+            full = [b for b in _all_blocks(doc)
+                    if b['type'] in ('image', 'card')
+                    and b.get('treatment') == 'full-colour']
+            assert len(full) <= 1, f'{slug} has {len(full)} full-colour images'
+
+    def test_rebuildable_slugs_all_have_builders(self):
+        from app.services.section_converter import REBUILDABLE_SLUGS
+        # build_doc_for_page dispatches on slug; anything without an arm falls
+        # through to build_richtext_doc, which would silently flatten a
+        # designed page into a prose page.
+        import inspect
+        from app.services import section_converter as sc
+        src = inspect.getsource(sc.build_doc_for_page)
+        for slug in REBUILDABLE_SLUGS:
+            assert f"slug == '{slug}'" in src or slug in ('about',), slug

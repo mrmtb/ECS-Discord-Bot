@@ -157,6 +157,25 @@ DEFAULT_ACCENT = '#203090'    # ECS Pub League logo blue
 # ground that belongs to the brand (design.md 3.1).
 PAPER_DARK_BASE = (6, 10, 8)
 
+# The WARM PAPER BASE. The page ground used to be `_mix_white(primary, 0.97)` —
+# the brand green mixed 97% toward pure white, which lands on a pale mint. That
+# reads as "a tint of the brand" rather than as paper, and it is the single
+# biggest reason the public site looked templated: with a mint ground, a green
+# tint band and white cards, the whole page was three near-whites of the same
+# hue and nothing had any weight.
+#
+# Every club site worth studying grounds on a warm cream instead — Vermont Green
+# FC #fef8eb, Ballard FC #f5ead4 — which lets the green go back to being the
+# brand instead of the background. This is that cream, and `paper` is now it,
+# nudged a trace toward the primary so an admin re-skin still tints the ground.
+PAPER_WARM_BASE = (254, 249, 238)
+
+# How far `paper` is pulled from the cream toward the primary. Deliberately tiny.
+# The trace has to survive an Appearance re-skin (a red-branded site should get a
+# faintly warm-red paper, not this exact cream) without the green reasserting
+# itself as the page colour. At 0.015 the default lands near #fbf8ec.
+PAPER_WARM_MIX = 0.015
+
 # The TINT FLOOR: the darkest light-mode surface the brand ink is allowed to be
 # text on, expressed as a fraction of the primary composited over `paper`.
 #
@@ -305,7 +324,7 @@ def theme_vars(primary_hex=None, accent_hex=None, font_pair=None):
 
     # Grounds first — every ink is measured against a real page surface, so the
     # surfaces have to exist before the inks are computed.
-    paper = _mix_white(primary, 0.97)
+    paper = _mix_toward(primary, PAPER_WARM_BASE, PAPER_WARM_MIX)
     paper_dark = _mix_toward(primary, PAPER_DARK_BASE, 0.06)
     paper_dark_hex = _hex(paper_dark)
     # The darkest LIGHT-mode ground the brand ink may be text on: the primary at

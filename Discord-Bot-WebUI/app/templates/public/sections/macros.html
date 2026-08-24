@@ -61,7 +61,15 @@
 {# D1 is the only tier with a headline-length step-down (design.md § 2.5). The
    bucket is derived from the RENDERED text length, which is content-derived and
    therefore C6-safe. xl:text-8xl exists in exactly one bucket. #}
-{% set D1_BASE = 'font-display font-extrabold leading-[1.02] tracking-[-0.035em] text-balance break-words' %}
+{# D1 IS THE CONDENSED REGISTER (design.md § 2). The display face carries a
+   width axis, and this tier is the only place the narrow end is used at size:
+   hero headlines, and the lead-card titles that name the divisions. Two widths
+   from one family is what gives the type a voice; one width is a font choice.
+
+   Tracking is looser here than it used to be (-0.02em, was -0.035em) because a
+   condensed cut already carries tighter sidebearings — keeping the old value on
+   top of the narrow width collided the letterforms at 96px. #}
+{% set D1_BASE = 'font-display font-stretch-condensed font-extrabold leading-[1.02] tracking-[-0.02em] text-balance break-words' %}
 {% set D1_SIZE = {
     'xs': 'text-[2.75rem] sm:text-6xl lg:text-7xl xl:text-8xl',
     'sm': 'text-[2.75rem] sm:text-6xl lg:text-7xl',
@@ -77,7 +85,7 @@
 {% set THEME_SECTION = {
     'inherit': '',
     'light':   'bg-ecs-green/[0.06] dark:bg-white/[0.03]',
-    'dark':    'bg-gray-900 dark:bg-black/40 dark:ring-1 dark:ring-inset dark:ring-white/5',
+    'dark':    'bg-paper-dark dark:bg-black/40 dark:ring-1 dark:ring-inset dark:ring-white/5',
     'brand':   'bg-ecs-green-ink'
 } %}
 
@@ -97,11 +105,16 @@
    status badge the same distance from a 72px headline as two buttons sit from
    each other. These are sibling selectors keyed on data-btype — CSS-positional,
    so the editor's single-section swap renders identically to the full page. #}
-{% set RHYTHM = 'flex flex-col [&>*+*]:mt-6 [&>[data-btype=heading]+[data-btype=richtext]]:mt-3 [&>[data-btype=richtext]+[data-btype=heading]]:mt-10 [&>[data-btype=button]+[data-btype=button]]:mt-0 [&>[data-btype=cta\_live]+[data-btype=button]]:mt-0 [&>[data-btype=registration\_status]+*]:mt-5' %}
+{% set RHYTHM = 'flex flex-col [&>*+*]:mt-6 [&>[data-btype=heading]+[data-btype=richtext]]:mt-3 [&>[data-btype=richtext]+[data-btype=heading]]:mt-10 [&>[data-btype=button]+[data-btype=button]]:mt-0 [&>[data-btype=cta\_live]+[data-btype=button]]:mt-0 [&>[data-btype=registration\_status]+*]:mt-5 [&>[data-btype=heading]+[data-btype=steps]]:mt-10 [&>[data-btype=heading]+[data-btype=facts]]:mt-10 [&>[data-btype=richtext]+[data-btype=steps]]:mt-12' %}
 
 {# A card that is the only block in a column stretches to the column height, so
    the mt-auto CTAs line up across a grid row. CSS-positional (C6-safe). #}
-{% set COL_RHYTHM = 'min-w-0 [&>[data-btype=card]:only-child]:grow' %}
+{# `grow`, NOT `h-full`. A column IS the grid item, so plain grid stretch already
+   gives it the row's full height and h-full is redundant — worse, h-full would
+   override the `align: 'center'` opt-in and silently make lg:items-center do
+   nothing. The card growing inside the already-stretched column is what pushes a
+   lead card's CTA to a shared bottom baseline across a row. #}
+{% set COL_RHYTHM = 'min-w-0 [&>[data-btype=card]:first-child]:grow' %}
 
 {# The § 4.4 card contract — one shape for block_card, the news tile and the
    FAQ row. Elevation in dark mode is LIGHTNESS, never shadow. #}
@@ -238,6 +251,54 @@
 {%- if info.webp_srcset %}</picture>{% endif -%}
 {%- endif -%}
 {% endmacro %}
+
+
+{#- ---------- duotone (design.md § 4.5) ----------
+
+    The house treatment for photography. The site's photos come from many phones
+    over many seasons in every kind of Seattle light, and shown raw they read as
+    a shoebox rather than as one club. A duotone maps every one of them between
+    the same two brand tones, so a blurry 2019 team photo and a sharp 2026 one
+    belong to the same set.
+
+    The mechanism, and why it is `color` and not `lighten`: the image is
+    flattened to greyscale, then `mix-blend-mode: color` lays the brand hue and
+    saturation over it while KEEPING the photo's own luminance, so every tone
+    from shadow to highlight comes back green. A `lighten` pass was the first
+    attempt and it is subtly wrong — lighten is a per-channel max, so it only
+    reaches pixels already darker than the green and leaves every midtone
+    stubbornly grey, which reads as a muddy photo rather than a treated one.
+    The second overlay then multiplies the cream back in, so highlights land on
+    the page's own paper colour instead of on white.
+
+    Neither is the old flat `bg-ecs-green-ink/92` wash, which laid opaque colour
+    ON TOP of the picture and buried it.
+
+    ISOLATION IS LOAD-BEARING. mix-blend-mode blends against everything below it
+    in the stacking context, so without `isolate` on the wrapper the overlays
+    reach past the photo and blend with the page. Every caller must put `isolate`
+    on the element these are positioned against.
+
+    THE SAME IN BOTH THEMES, DELIBERATELY. design.md § 3.5 forbids the brand hue
+    changing between light and dark mode; the duotone IS the brand hue applied to
+    an image, so it does not get a dark: pair. Only the scrim above it changes.
+
+    treatment='full-colour' opts out. Each page is allowed exactly one — normally
+    the celebration shot — and the break is the point: it only reads as a break
+    while every other photo on the page is duotoned. -#}
+{%- macro _duotone(treatment) -%}
+{%- if treatment != 'full-colour' -%}
+<div class="pointer-events-none absolute inset-0 bg-ecs-green-ink mix-blend-color" aria-hidden="true"></div>
+<div class="pointer-events-none absolute inset-0 bg-paper mix-blend-multiply" aria-hidden="true"></div>
+{%- endif -%}
+{%- endmacro -%}
+
+{#- The filter half of the duotone, applied to the <img> itself. Greyscale is
+    what makes the blend a duotone rather than a tint; the contrast bump keeps
+    the midtones from collapsing once the range is squeezed between two tones. -#}
+{%- macro _duotone_filter(treatment) -%}
+{{- 'grayscale contrast-110' if treatment != 'full-colour' else '' -}}
+{%- endmacro -%}
 
 
 {#- ---------- focus ring ----------
@@ -404,7 +465,7 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
 <figure class="{{ widths.get(block.size, 'max-w-3xl') }} {{ aligns.get(block.align, 'mx-auto') }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     {# The wrapper reserves the box, so a media row with no width/height can
        never shift the layout underneath it (design.md § 4.5). #}
-    {% set inner %}<div class="overflow-hidden rounded-xl shadow-sm dark:shadow-none bg-ecs-green/[0.06] dark:bg-white/[0.04] {{ asp }}">{{ _img_tag(block.image, ctx, class='w-full ' + ('h-full object-cover' if asp else ''), sizes='(min-width: 1024px) 768px, 100vw', alt_fallback=block.caption or '') }}</div>{% endset %}
+    {% set inner %}<div class="relative isolate overflow-hidden rounded-xl shadow-sm dark:shadow-none bg-ecs-green/[0.06] dark:bg-white/[0.04] {{ asp }}">{{ _img_tag(block.image, ctx, class='w-full ' + ('h-full object-cover ' if asp else ' ') + _duotone_filter(block.treatment), sizes='(min-width: 1024px) 768px, 100vw', alt_fallback=block.caption or '') }}{{ _duotone(block.treatment) }}</div>{% endset %}
     {% set href = ctx.resolve_link(block.link) if block.link else none %}
     {% if href %}<a href="{{ href }}" class="block rounded-xl {{ _ring(section) }}">{{ inner }}</a>{% else %}{{ inner }}{% endif %}
     {% if block.caption %}<figcaption class="mt-2.5 {{ TYPE.S }} {{ _muted_color(section) }}">{{ block.caption }}</figcaption>{% endif %}
@@ -445,13 +506,29 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
    one accessible name instead of three links to the same URL.
 
    The card is a CARD_ON (opaque white, light-mode inks, brand-ink focus ring)
-   whenever the section under it is a brand/dark/hero ground — see CARD_ON. #}
+   whenever the section under it is a brand/dark/hero ground — see CARD_ON.
+
+   TWO PROMINENCES, ONE CONTRACT. 'default' is the tile above. 'lead' is the
+   same card asked to carry a whole section — the two division blocks on the
+   home page, a featured post — and it differs in exactly three ways: the title
+   steps up to D2, the media is 4:3 rather than 16:9, and the call to action is
+   a REAL BUTTON inside the card instead of a stretched title link plus an arrow.
+
+   Why the button matters: the divisions used to render as a card with a loose
+   button sitting underneath it as a sibling, which is design.md DO-NOT 18 (a
+   page-level CTA parked in a grid cell) and is what made the two columns fail
+   to line up. A lead card owns its action.
+
+   The two link treatments are mutually exclusive on purpose — a stretched
+   ::after link behind a real button would swallow the button's own clicks. #}
 {% set href = ctx.resolve_link(block.link) if block.link else none %}
 {% set on = _on_color(section) %}
-<div class="{{ CARD_ON if on else CARD }} {{ (CARD_ON_LIFT if on else CARD_LIFT) if href }} {{ _hide_mobile_flex(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+{% set lead = block.prominence == 'lead' %}
+<div class="{{ CARD_ON if on else CARD }} {{ (CARD_ON_LIFT if on else CARD_LIFT) if href and not lead }} {{ _hide_mobile_flex(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     {% if block.image %}
-    <div class="{{ CARD_MEDIA }}">
-        {{ _img_tag(block.image, ctx, class='h-full w-full object-cover', sizes='(min-width: 1024px) 640px, 100vw', alt_override='' if href else none, alt_fallback=block.title or '') }}
+    <div class="relative isolate w-full overflow-hidden bg-ecs-green/[0.06] dark:bg-white/[0.04] {{ 'aspect-4/3' if lead else 'aspect-video' }}">
+        {{ _img_tag(block.image, ctx, class='h-full w-full object-cover ' + _duotone_filter(block.treatment), sizes='(min-width: 1024px) 640px, 100vw', alt_override='' if (href and not lead) else none, alt_fallback=block.title or '') }}
+        {{ _duotone(block.treatment) }}
     </div>
     {% endif %}
     <div class="flex flex-1 flex-col p-6 lg:p-8">
@@ -461,12 +538,28 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
         </div>
         {% endif %}
         {% if block.title %}
-        <h3 class="{{ 'mt-4' if block.icon }} {{ TYPE.D4 }} {{ _card_title_ink(section) }}">
-            {% if href %}<a href="{{ href }}" class="rounded-lg after:absolute after:inset-0 after:content-[''] {{ _ring_card(section) }}">{{ block.title }}</a>{% else %}{{ block.title }}{% endif %}
+        <h3 class="{{ 'mt-4' if block.icon }} {{ (TYPE.D2 ~ ' font-stretch-condensed') if lead else TYPE.D4 }} {{ _card_title_ink(section) }}">
+            {% if href and not lead %}<a href="{{ href }}" class="rounded-lg after:absolute after:inset-0 after:content-[''] {{ _ring_card(section) }}">{{ block.title }}</a>{% else %}{{ block.title }}{% endif %}
         </h3>
         {% endif %}
         {% if block.html %}<div class="mt-3 {{ TYPE.B }} {{ _card_body_ink(section) }} break-words [&_p]:mt-[1.15em] [&_p]:first:mt-0 [&_ul]:mt-[1.15em] [&_ul]:list-disc [&_ul]:pl-6 [&_li]:mt-[0.5em] [&_a]:font-medium [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 hover:[&_a]:decoration-2 {{ _card_prose_link(section) }}">{{ block.html | safe }}</div>{% endif %}
-        {% if href %}
+        {% if lead and block.cta_kind %}
+        {# A lead card's action is a REAL button, inside the card, and live: the
+           division blocks must say "Join the Waitlist" or "Register" according
+           to the actual state of the season, not a label frozen at authoring
+           time. mt-auto pins it to the bottom so the two divisions' buttons land
+           on one baseline however unevenly their descriptions run. #}
+        {% set c = ctx.cta(block.cta_kind) %}
+        <div class="mt-auto pt-6">
+            <a href="{{ c.url }}" class="{{ _btn_base(section, 'md') }} {{ _btn_variant('primary', on) }}">
+                <i class="ti {{ c.icon or 'ti-user-plus' }} text-lg" aria-hidden="true"></i> {{ c.label }}
+            </a>
+        </div>
+        {% elif href and lead %}
+        <div class="mt-auto pt-6">
+            <a href="{{ href }}" class="{{ _btn_base(section, 'md') }} {{ _btn_variant('primary', on) }}">{{ block.link_label or 'Learn more' }}</a>
+        </div>
+        {% elif href %}
         {# Visual affordance only — the stretched title link is the real target. #}
         <span class="mt-auto pt-4 inline-flex items-center gap-1.5 text-sm font-semibold {{ _card_brand_ink(section) }}" aria-hidden="true">
             {{ block.link_label or 'Learn more' }}
@@ -475,6 +568,53 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
         {% endif %}
     </div>
 </div>
+{% endmacro %}
+
+
+{% macro block_steps(block, ctx, section, edit_mode) %}
+{# THE CARD-LESS LIST. This block exists to kill the two icon-above-heading
+   three-column card grids that used to sit on the home page — design.md
+   DO-NOT 16, and the single most recognisable AI-generated layout there is.
+
+   The replacement is a rule-separated list, per design.md § 4.4: a card earns
+   its container only when elevation communicates real hierarchy, and three
+   equal-weight value propositions have no hierarchy to communicate. Hairlines
+   and space group them instead. No container, no shadow, no 40px tinted icon
+   chip.
+
+   Two styles, one shape:
+   - 'numbered' — the step ladder. An ordinal in condensed display type in its
+     own column, rules between steps. Used for genuinely sequential things
+     (come to a PLOP, get approved, register).
+   - 'plain'    — the same list without ordinals, title left and body right, so
+     it reads as an editorial two-column list rather than a centred stack. Used
+     for the value propositions.
+
+   The ordinals come from the loop, not from authored copy, so nobody can ship
+   "Step 1 / Step 2" as literal text and nobody has to renumber after a reorder.
+   They are aria-hidden: the <ol> already conveys order to a screen reader, and
+   a decorative numeral read aloud before every heading is noise. #}
+{% if not block['items'] %}{{ _placeholder(edit_mode, block, 'Add list items') }}{% else %}
+{% set numbered = block.style != 'plain' %}
+<{{ 'ol' if numbered else 'ul' }} class="divide-y {{ 'divide-white/20' if _on_color(section) else 'divide-ecs-green-ink/15 dark:divide-white/10' }} border-t {{ 'border-white/20' if _on_color(section) else 'border-ecs-green-ink/15 dark:border-white/10' }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+    {% for it in block['items'] %}
+    <li class="grid gap-x-6 gap-y-2 py-6 sm:py-8 {{ 'sm:grid-cols-[3.5rem_minmax(0,1fr)]' if numbered else 'sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] sm:gap-x-10' }}">
+        {% if numbered %}
+        {# Condensed display cut (font-stretch-condensed) — the width axis exists for
+           exactly this kind of typographic furniture. tabular-nums so a
+           two-digit step never shifts the column. #}
+        <span class="font-display font-stretch-condensed text-4xl font-extrabold leading-none tabular-nums {{ 'text-white/45' if _on_color(section) else 'text-ecs-green-ink/40 dark:text-ecs-green-300/40' }}" aria-hidden="true">{{ '%02d' % loop.index }}</span>
+        {% endif %}
+        <div>
+            {% if it.title %}<h3 class="{{ TYPE.D4 }} {{ _heading_color(section) }}">{{ it.title }}</h3>{% endif %}
+        </div>
+        {% if it.html %}
+        <div class="{{ TYPE.B }} {{ _body_color(section) }} break-words {{ 'sm:col-start-2' if numbered }} [&_p]:mt-[1.15em] [&_p]:first:mt-0 [&_ul]:mt-[1.15em] [&_ul]:list-disc [&_ul]:pl-6 [&_li]:mt-[0.5em] [&_a]:font-medium [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 hover:[&_a]:decoration-2 {{ _link_color(section) }}">{{ it.html | safe }}</div>
+        {% endif %}
+    </li>
+    {% endfor %}
+</{{ 'ol' if numbered else 'ul' }}>
+{% endif %}
 {% endmacro %}
 
 
@@ -586,7 +726,12 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
         {% for post in posts %}{{ news_card(post, 'standard', eager=loop.index <= 3) }}{% endfor %}
     </div>
     <div class="mt-8">
-        <a href="{{ ctx.news_index_url }}" class="group/more inline-flex items-center gap-1.5 rounded-lg text-sm font-semibold underline decoration-1 underline-offset-2 hover:decoration-2 {{ _link_color(section) }} {{ 'decoration-white/60' if _on_color(section) else 'decoration-ecs-green-ink/40 dark:decoration-ecs-green-300/40' }} {{ _ring(section) }}">
+        {# min-h-11: this is a STANDALONE link, not a link inside a sentence, so
+           the 44px touch-target floor applies to it (WCAG 2.5.8 exempts inline
+           links because their size is constrained by the surrounding text; this
+           one has no surrounding text). inline-flex + items-center grows the tap
+           area without moving the underline off the words. #}
+        <a href="{{ ctx.news_index_url }}" class="group/more inline-flex min-h-11 items-center gap-1.5 rounded-lg text-sm font-semibold underline decoration-1 underline-offset-2 hover:decoration-2 {{ _link_color(section) }} {{ 'decoration-white/60' if _on_color(section) else 'decoration-ecs-green-ink/40 dark:decoration-ecs-green-300/40' }} {{ _ring(section) }}">
             Read every story
             <i class="ti ti-arrow-right transition-transform duration-150 ease-out group-hover/more:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none" aria-hidden="true"></i>
         </a>
@@ -878,6 +1023,69 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
 {% endmacro %}
 
 
+{% macro block_facts(block, ctx, section, edit_mode) %}
+{# THE LIVE BAND. The one block on the public site that proves a league is
+   actually running: how many teams, how many players, and when the next PLOP
+   is — read from the portal at render time, not typed in by hand.
+
+   Set as TYPOGRAPHY, not as cards. Big tabular numerals over a hairline, the
+   way a fixture list or a results table is set. A stat band of three round
+   numbers in three bordered boxes is the shape every marketing site ships and
+   is precisely what this block exists instead of.
+
+   It renders only what is TRUE. No rosters yet (preseason, or a brand-new
+   program) means no counts; no scheduled PLOP means no PLOP column. An honest
+   short band beats a full one padded with zeroes, and an entirely empty band
+   removes itself rather than leaving a labelled void. #}
+{% set d = ctx.dyn(block.id) or {} %}
+{% set counts = d.counts or [] %}
+{% set plop = d.plop %}
+{% if not counts and not plop %}{{ _placeholder(edit_mode, block, 'Live league facts appear here once the season has teams or a scheduled PLOP') }}{% else %}
+{% set on = _on_color(section) %}
+<div class="grid gap-x-12 gap-y-10 sm:grid-cols-2 {{ _hide_mobile_grid(block) }}"
+     data-dynamic="facts"{{ _edit_attrs(block, edit_mode) }}>
+    {% if counts %}
+    <div>
+        {% if d.season_name %}
+        <p class="{{ TYPE.E }} {{ _muted_color(section) }}">{{ d.season_name }}</p>
+        {% endif %}
+        <dl class="mt-5 flex flex-wrap gap-x-12 gap-y-6">
+            {% for c in counts %}
+            <div class="min-w-0">
+                <dd class="font-display font-stretch-condensed text-5xl sm:text-6xl font-extrabold leading-none tabular-nums {{ 'text-white' if on else 'text-ecs-green-ink dark:text-ecs-green-300' }}">{{ c.value }}</dd>
+                <dt class="mt-3 border-t pt-3 {{ 'border-white/25' if on else 'border-ecs-green-ink/20 dark:border-white/15' }} {{ TYPE.E }} {{ _muted_color(section) }}">{{ c.label }}</dt>
+            </div>
+            {% endfor %}
+        </dl>
+    </div>
+    {% endif %}
+    {% if plop %}
+    <div class="{{ '' if counts else 'sm:col-span-2' }}">
+        <p class="{{ TYPE.E }} {{ _muted_color(section) }}">Next PLOP</p>
+        {# <time> carries the machine-readable stamp; the visible string stays
+           the friendly one. #}
+        <p class="mt-5 font-display font-stretch-condensed text-4xl sm:text-5xl font-extrabold leading-none {{ _heading_color(section) }}">
+            <time datetime="{{ plop.datetime_attr }}">{{ plop.date }}</time>
+        </p>
+        <p class="mt-3 border-t pt-3 {{ 'border-white/25' if on else 'border-ecs-green-ink/20 dark:border-white/15' }} {{ TYPE.B }} {{ _body_color(section) }} tabular-nums">
+            {{ plop.time }}{% if plop.end %} &ndash; {{ plop.end }}{% endif %}
+            {%- if plop.location %}<span class="block">{{ plop.location }}</span>{% endif %}
+        </p>
+        {% if d.ics_url %}
+        <div class="mt-6">
+            <a href="{{ d.ics_url }}" class="{{ _btn_base(section, 'sm') }} {{ _btn_variant('outline', on) }}">
+                <i class="ti ti-calendar-plus" aria-hidden="true"></i>
+                Add to your calendar
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
 {% macro block_social_links(block, ctx, section, edit_mode) %}
 {% if not block['items'] %}{{ _placeholder(edit_mode, block, 'Add social links') }}{% else %}
 {% set icons = {'discord': 'ti-brand-discord', 'instagram': 'ti-brand-instagram', 'facebook': 'ti-brand-facebook',
@@ -928,6 +1136,8 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
 {%- elif block.type == 'spacer' %}{{ block_spacer(block, ctx, section, edit_mode) }}
 {%- elif block.type == 'stats' %}{{ block_stats(block, ctx, section, edit_mode) }}
 {%- elif block.type == 'social_links' %}{{ block_social_links(block, ctx, section, edit_mode) }}
+{%- elif block.type == 'steps' %}{{ block_steps(block, ctx, section, edit_mode) }}
+{%- elif block.type == 'facts' %}{{ block_facts(block, ctx, section, edit_mode) }}
 {%- elif block.type == 'embed_raw' %}{{ block_embed_raw(block, ctx, section, edit_mode) }}
 {%- endif %}
 {% endmacro %}
@@ -948,24 +1158,39 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
                'xl': 'pt-28 pb-40 sm:pt-32 sm:pb-48 lg:pt-36 lg:pb-56'} %}
 {# The overlay IS the legibility treatment — it is the ground under white text,
    so it is ecs-green-INK, not ecs-green. There is no second bottom scrim. #}
+{# The scrim is BLACK, not brand green. A green wash over a photograph does not
+   read as a scrim — it desaturates the image into mud and makes every hero on
+   the site the same flat rectangle (design.md § 3.3 "photo hero"). Black darkens
+   without staining, so the duotone below is the ONLY thing tinting the picture
+   and the two treatments stop fighting each other. #}
 {% set grads = {'none': '',
-                'light': 'from-ecs-green-ink/75 via-ecs-green-ink/40 to-transparent',
-                'medium': 'from-ecs-green-ink/92 via-ecs-green-ink/65 to-ecs-green-ink/25',
-                'heavy': 'from-ecs-green-ink/96 via-ecs-green-ink/88 to-ecs-green-ink/60'} %}
+                'light': 'from-black/70 via-black/35 to-transparent',
+                'medium': 'from-black/75 via-black/45 to-black/10',
+                'heavy': 'from-black/92 via-black/80 to-black/45'} %}
 {% set img = ctx.image(s.image) if s.image else none %}
 {# On screens wider than 1920 the hero's content-driven height stays ~fixed while
    the width grows, so object-cover zooms the image up and crops heads. Grow a
    min-height only ABOVE 1920 (1920 and below are unchanged) so ultrawide keeps a
    sensible aspect and the subject stays in frame. These stay until a >=2400px
    hero source lands (that asset is a user TODO, not a template fix). #}
-<section class="relative overflow-hidden {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if img }} {{ 'bg-ecs-green-ink' if not img and not s.bg_color }}"
+{# A PHOTOLESS HERO'S GROUND IS THE SECTION THEME, DEFAULTING TO INK.
+   This used to be a hardcoded `bg-ecs-green-ink`, which is how flat brand green
+   ended up being the ground of every image-less hero, the scrim over every
+   photographic one, and every closing band at the same time — the same
+   rectangle four or five times per page, on nine pages. Green now buys one
+   moment per page (the closing band); the openings sit on the ink ground, which
+   is the page's dark anchor. A page can still ask for green explicitly with
+   theme='brand'. #}
+{% set hero_ground = THEME_SECTION.get(section.theme if section.theme != 'inherit' else 'dark', THEME_SECTION['dark']) %}
+<section class="relative overflow-hidden {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if img }} {{ hero_ground if not img and not s.bg_color }}"
          {% if s.bg_color and not img %}style="background-color: {{ s.bg_color }};"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="hero"{% endif %}>
     {% if img %}
-    <div class="absolute inset-0">
+    <div class="absolute inset-0 isolate">
         {# LCP element: srcset + width/height + focal point + fetchpriority, and
            deliberately no loading="lazy". #}
-        {{ _img_tag(s.image, ctx, class='h-full w-full object-cover', sizes='100vw', priority=True) }}
+        {{ _img_tag(s.image, ctx, class='h-full w-full object-cover ' + _duotone_filter(s.treatment), sizes='100vw', priority=True) }}
+        {{ _duotone(s.treatment) }}
         {# Direction is RESPONSIVE. A left-to-right scrim is sized for a max-w-2xl
            text column inside a wide viewport; at 320px that column is ~90% of the
            width, so the end of every line lands on the weakest stop (1.5:1). Top-to-
@@ -974,7 +1199,13 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
     </div>
     {% endif %}
     <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ pads.get(s.size, pads['md']) }}">
-        <div class="max-w-2xl {{ 'mx-auto text-center' if s.align == 'center' else ('ml-auto text-right' if s.align == 'right' else '') }}
+        {# max-w-3xl, not 2xl: D1 is set in the CONDENSED cut now, and at 72px a
+           42-character headline needs about 760px to hold two lines. At 672px it
+           broke to four, with the right half of the hero empty beside it — which
+           is the failure the width axis was supposed to fix, not cause. The lede
+           keeps the narrower measure via the sibling rule below, so only the
+           headline gets the extra room. #}
+        <div class="max-w-3xl [&>[data-btype=richtext]]:max-w-2xl {{ 'mx-auto text-center' if s.align == 'center' else ('ml-auto text-right' if s.align == 'right' else '') }}
                     {# Whenever there IS a photo. The shadow costs nothing over a
                        heavy overlay and is the difference between 1.5:1 and legible
                        over the light/medium ones — and 'medium' is the DEFAULT. #}
@@ -1033,9 +1264,13 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
                   '67-33': 'grid gap-8 sm:grid-cols-2 sm:gap-10 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] md:gap-10 lg:gap-14',
                   '3col': 'grid gap-8 sm:grid-cols-2 lg:grid-cols-3 lg:gap-10'} %}
 {% set ncols = 3 if s.layout == '3col' else 2 %}
-{# Two-column sections centre by default so a tall photo doesn't leave a column
-   of dead air beside short copy. 'start' is the opt-out. #}
-{% set valign = 'lg:items-start' if s.align == 'start' or ncols == 3 else 'lg:items-center' %}
+{# STRETCH BY DEFAULT. Centring was the old default and it is what made the two
+   division blocks fail to line up: two columns of unequal height, vertically
+   centred, put their photos at different Y and the row reads as broken. Plain
+   grid stretch gives columns a shared TOP edge and a shared height — which is
+   also what lets a card grow and push its CTA to a common bottom baseline.
+   align:'center' stays as the opt-in for a short-copy-beside-a-tall-photo row. #}
+{% set valign = 'lg:items-center' if s.align == 'center' and ncols == 2 else '' %}
 {% set head = section.blocks | selectattr('slot', 'equalto', 'head') | list %}
 {% set body = section.blocks | rejectattr('slot', 'equalto', 'head') | list %}
 <section class="{{ THEME_SECTION.get(section.theme, '') }} {{ PAD.get(s.padding, PAD['md']) }}"
