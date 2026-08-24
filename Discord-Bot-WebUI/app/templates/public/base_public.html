@@ -103,9 +103,11 @@
 
     {# ---- Fonts / CSS / Icons ---- #}
     <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/inter/inter-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/bricolage/bricolage-latin-vf.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/big-shoulders/big-shoulders-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ static_v('vendor/fonts/inter.css') }}">
-    <link rel="stylesheet" href="{{ static_v('vendor/fonts/bricolage.css') }}">
+    <link rel="stylesheet" href="{{ static_v('vendor/fonts/big-shoulders.css') }}">
+    {# Data + label register: season strips, counts, dates, step ordinals. #}
+    <link rel="stylesheet" href="{{ static_v('vendor/fonts/jetbrains-mono.css') }}">
     <link rel="stylesheet" href="{{ static_v('vite-dist/css/tailwind.css') }}">
     <link rel="stylesheet" href="{{ static_v('vendor/fonts/tabler-icons.css') }}">
 
@@ -243,13 +245,36 @@
                which put the wordmark at 40px — the one control on the public
                site under the 44px floor (C8). The row is h-16/sm:h-20, so
                nothing moves. #}
-            <a href="{{ url_for('public.home') }}" aria-label="{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }} — home"
+            <div class="flex min-w-0 items-center gap-4 justify-self-start">
+
+                <a href="{{ url_for('public.home') }}" aria-label="{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }} — home"
                class="nav-pill flex min-h-11 min-w-0 items-center gap-2.5 justify-self-start rounded-full sm:gap-3 {{ NAV_RING }}">
                 <img src="{{ appearance.logo_url or imgs.logo }}" alt="" class="h-10 w-10 shrink-0 object-contain">
                 <span class="min-w-0 truncate font-display text-xl font-extrabold leading-none tracking-[-0.03em] text-gray-900 sm:text-2xl dark:text-white">{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }}</span>
             </a>
 
+                {# Live season state, in the bar. The most useful thing a returning
+
+                   visitor wants, and it breaks the wordmark-left / inline-links /
+
+                   button-right silhouette that reads as the default nav shape.
+
+                   It rides INSIDE grid column one: the nav's column template is
+
+                   explicit, so a fourth grid child wraps onto a second row. #}
+
+                <p class="hidden items-center gap-2 whitespace-nowrap border-l border-black/10 pl-4 font-mono text-[0.68rem] uppercase tracking-[0.14em] text-gray-600 md:flex dark:border-white/15 dark:text-gray-300">
+
+                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-ecs-pitch" aria-hidden="true"></span>
+
+                    {% if season_name %}{{ season_name }} &middot; {% endif %}{{ cta.label if cta and cta.label else 'Join us' }}
+
+                </p>
+
+            </div>
+
             {# Centre cluster (admin-editable menu via Appearance -> Menus) #}
+
             <div class="hidden items-center gap-1 justify-self-center lg:flex">
                 {% for item in nav_items %}
                 {% if item.children %}
@@ -426,7 +451,7 @@
         <div class="relative overflow-hidden bg-ecs-green-ink text-white">
             <div id="footer-marquee" class="flex w-max animate-marquee-x whitespace-nowrap py-3.5 hover:[animation-play-state:paused] focus-within:[animation-play-state:paused] motion-reduce:animate-none sm:py-4" aria-hidden="true">
                 {% for _ in range(2) %}
-                <span class="flex shrink-0 items-center gap-6 pr-6 font-display font-stretch-condensed text-xs font-bold uppercase tracking-[0.14em]">
+                <span class="flex shrink-0 items-center gap-6 pr-6 font-display text-base font-extrabold uppercase tracking-[0.05em]">
                     {% for _r in range(4) %}{% for _w in _words %}<span>{{ _w }}</span><span aria-hidden="true">&middot;</span>{% endfor %}{% endfor %}
                 </span>
                 {% endfor %}

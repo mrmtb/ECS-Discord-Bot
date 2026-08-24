@@ -45,17 +45,29 @@
 {# ---------- the type ramp (design.md § 2.3) ----------
    Complete strings. Never add tracking/leading/balance on top of a tier —
    it is already in the string. #}
+{# THE RAMP. Three registers, and each one means something:
+     display (Big Shoulders, uppercase) — statements. Hero, section heads,
+       division names, ordinals, the marquee.
+     body (Inter) — anything anybody actually reads.
+     mono (JetBrains) — data and labels. Season strips, counts, dates, eyebrows.
+       This is what makes a fixture list read as a fixture list.
+
+   Uppercase display sits at leading 1.02, never below 1.0: caps have no
+   descenders, so tighter leading collides line N+1's cap-tops with line N's
+   baseline and commas the moment a heading wraps. overflow-wrap:anywhere is on
+   every display tier because a long hyphenated word has only one break
+   opportunity and will otherwise overflow a phone. #}
 {% set TYPE = {
-    'D1': 'font-display text-[2.75rem] sm:text-6xl lg:text-7xl font-extrabold leading-[1.02] tracking-[-0.035em] text-balance break-words',
-    'D2': 'font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-[1.06] tracking-[-0.025em] text-balance break-words',
-    'D3': 'font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words',
-    'D4': 'font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words',
-    'D5': 'font-display text-lg sm:text-xl font-bold leading-snug tracking-normal break-words',
-    'L':  'text-lg sm:text-xl lg:text-2xl font-normal leading-[1.45] text-pretty',
+    'D1': 'font-display uppercase text-5xl sm:text-7xl lg:text-8xl font-extrabold leading-[1.02] tracking-[0.005em] text-balance [overflow-wrap:anywhere] min-w-0',
+    'D2': 'font-display uppercase text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-[1.02] tracking-[0.005em] text-balance [overflow-wrap:anywhere] min-w-0',
+    'D3': 'font-display uppercase text-2xl sm:text-3xl lg:text-4xl font-extrabold leading-[1.04] tracking-[0.01em] text-balance [overflow-wrap:anywhere] min-w-0',
+    'D4': 'font-display uppercase text-xl sm:text-2xl font-bold leading-[1.05] tracking-[0.01em] text-pretty [overflow-wrap:anywhere] min-w-0',
+    'D5': 'font-display uppercase text-lg sm:text-xl font-bold leading-[1.06] tracking-[0.015em] [overflow-wrap:anywhere] min-w-0',
+    'L':  'text-lg sm:text-xl lg:text-2xl font-normal leading-[1.5] text-pretty',
     'B':  'text-base sm:text-lg font-normal leading-[1.65]',
     'BL': 'text-base sm:text-lg font-normal leading-[1.7]',
     'S':  'text-sm font-normal leading-normal',
-    'E':  'text-xs font-bold uppercase tracking-[0.14em]'
+    'E':  'font-mono text-xs font-medium uppercase tracking-[0.16em]'
 } %}
 
 {# D1 is the only tier with a headline-length step-down (design.md § 2.5). The
@@ -69,12 +81,24 @@
    Tracking is looser here than it used to be (-0.02em, was -0.035em) because a
    condensed cut already carries tighter sidebearings — keeping the old value on
    top of the narrow width collided the letterforms at 96px. #}
-{% set D1_BASE = 'font-display font-stretch-condensed font-extrabold leading-[1.02] tracking-[-0.02em] text-balance break-words' %}
+{% set D1_BASE = 'font-display uppercase font-extrabold leading-[1.02] tracking-[0.005em] text-balance [overflow-wrap:anywhere] min-w-0' %}
+{# The ladder below the hero is D2 60px / D3 36px, so a 72px D1 barely cleared
+   its own section heads and the page had no top note. Every club site in the
+   reference set runs display type at 100-140px on a desktop viewport; these
+   brackets do the same for the short headlines and still step down hard for
+   long ones, because the step-down is what keeps a 90-character title from
+   wrapping into a wall. #}
+{# Sized for the SPLIT hero's copy column, which is ~58% of the container, not
+   for the full width. At lg:text-9xl a short word like EVERYONE needed more
+   room than that column has, and because gate 51 puts overflow-wrap:anywhere on
+   every display tier the overflow became a mid-word break ("EVERYO / NE") rather
+   than a clean overrun. 8xl fits the column with room to spare and is still a
+   96px statement. #}
 {% set D1_SIZE = {
-    'xs': 'text-[2.75rem] sm:text-6xl lg:text-7xl xl:text-8xl',
-    'sm': 'text-[2.75rem] sm:text-6xl lg:text-7xl',
-    'md': 'text-[2.25rem] sm:text-5xl lg:text-6xl',
-    'lg': 'text-[2rem] sm:text-4xl lg:text-5xl'
+    'xs': 'text-6xl sm:text-7xl lg:text-8xl',
+    'sm': 'text-5xl sm:text-7xl lg:text-8xl',
+    'md': 'text-5xl sm:text-6xl lg:text-7xl',
+    'lg': 'text-4xl sm:text-5xl lg:text-6xl'
 } %}
 
 {# ---------- shared lookups ---------- #}
@@ -86,7 +110,7 @@
     'inherit': '',
     'light':   'bg-ecs-green/[0.06] dark:bg-white/[0.03]',
     'dark':    'bg-paper-dark dark:bg-black/40 dark:ring-1 dark:ring-inset dark:ring-white/5',
-    'brand':   'bg-ecs-green-ink'
+    'brand':   'bg-ecs-pitch'
 } %}
 
 {# Bottom-weighted section padding (design.md § 5.1): a section's headline sits
@@ -535,14 +559,26 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
         {{ _duotone(block.treatment) }}
     </div>
     {% endif %}
-    <div class="flex flex-1 flex-col p-6 lg:p-8">
+    <div class="relative flex flex-1 flex-col p-6 lg:p-8">
+        {% if lead and block.badge %}
+        {# Positioned against the BODY's top edge, which is the photo seam. A
+           percentage offset on the card resolves against the card's full
+           height and drops the stamp into the middle of the copy. #}
+        <span class="absolute right-6 top-0 z-2 grid h-24 w-24 -translate-y-1/2 rotate-[-9deg] place-items-center rounded-full text-center ring-4 {{ 'bg-ecs-blue-600 text-white ring-white' if block.badge_tone == 'action' else 'bg-ecs-pitch text-white ring-white' }} lg:h-28 lg:w-28"
+              aria-hidden="true">
+            <span>
+                <span class="block font-display uppercase text-base font-extrabold leading-none tracking-[0.02em] lg:text-lg">{{ block.badge }}</span>
+                {% if block.badge_sub %}<span class="mt-1 block font-mono text-[0.55rem] uppercase tracking-[0.14em] opacity-90">{{ block.badge_sub }}</span>{% endif %}
+            </span>
+        </span>
+        {% endif %}
         {% if block.icon %}
         <div class="flex h-11 w-11 items-center justify-center rounded-lg {{ _card_tile(section) }}">
             <i class="ti ti-{{ block.icon }} text-2xl" aria-hidden="true"></i>
         </div>
         {% endif %}
         {% if block.title %}
-        <h3 class="{{ 'mt-4' if block.icon }} {{ (TYPE.D2 ~ ' font-stretch-condensed') if lead else TYPE.D4 }} {{ _card_title_ink(section) }}">
+        <h3 class="{{ 'mt-4' if block.icon }} {{ (TYPE.D2 ~ '') if lead else TYPE.D4 }} {{ _card_title_ink(section) }}">
             {% if href and not lead %}<a href="{{ href }}" class="rounded-lg after:absolute after:inset-0 after:content-[''] {{ _ring_card(section) }}">{{ block.title }}</a>{% else %}{{ block.title }}{% endif %}
         </h3>
         {% endif %}
@@ -604,10 +640,10 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
     {% for it in block['items'] %}
     <li class="grid gap-x-6 gap-y-2 py-6 sm:py-8 {{ 'sm:grid-cols-[3.5rem_minmax(0,1fr)]' if numbered else 'sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] sm:gap-x-10' }}">
         {% if numbered %}
-        {# Condensed display cut (font-stretch-condensed) — the width axis exists for
-           exactly this kind of typographic furniture. tabular-nums so a
-           two-digit step never shifts the column. #}
-        <span class="font-display font-stretch-condensed text-4xl font-extrabold leading-none tabular-nums {{ 'text-white/45' if _on_color(section) else 'text-ecs-green-ink/40 dark:text-ecs-green-300/40' }}" aria-hidden="true">{{ '%02d' % loop.index }}</span>
+        {# The ordinal is display type, not body type — Big Shoulders is already
+           condensed, so it holds a two-digit step in a narrow column without
+           help. tabular-nums so 01 and 11 occupy the same width. #}
+        <span class="font-display text-4xl font-extrabold leading-none tabular-nums {{ 'text-white/45' if _on_color(section) else 'text-ecs-green-ink/40 dark:text-ecs-green-300/40' }}" aria-hidden="true">{{ '%02d' % loop.index }}</span>
         {% endif %}
         <div>
             {% if it.title %}<h3 class="{{ TYPE.D4 }} {{ _heading_color(section) }}">{{ it.title }}</h3>{% endif %}
@@ -1028,68 +1064,55 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
 
 
 {% macro block_facts(block, ctx, section, edit_mode) %}
-{# THE LIVE BAND. The one block on the public site that proves a league is
-   actually running: how many teams, how many players, and when the next PLOP
-   is — read from the portal at render time, not typed in by hand.
+{# THE SCOREBOARD. The one block on the public site that proves a league is
+   actually running: the season, how many teams, how many players, and when the
+   next PLOP is — read from the portal at render time, not typed in by hand.
 
-   Set as TYPOGRAPHY, not as cards. Big tabular numerals over a hairline, the
-   way a fixture list or a results table is set. A stat band of three round
-   numbers in three bordered boxes is the shape every marketing site ships and
-   is precisely what this block exists instead of.
+   Set as a DATA STRIP, not as cards. Mono labels, display numerals, rules
+   between columns, the way a fixture list or a results table is set. Three
+   round numbers in three bordered boxes is the shape every marketing site
+   ships, and is precisely what this exists instead of.
 
-   It renders only what is TRUE. No rosters yet (preseason, or a brand-new
-   program) means no counts; no scheduled PLOP means no PLOP column. An honest
-   short band beats a full one padded with zeroes, and an entirely empty band
-   removes itself rather than leaving a labelled void. #}
+   It renders only what is TRUE. No rosters yet (preseason, a brand-new program)
+   means no count columns; no scheduled PLOP means no PLOP column; an entirely
+   empty strip removes itself rather than leaving a labelled void. #}
 {% set d = ctx.dyn(block.id) or {} %}
-{% set counts = d.counts or [] %}
-{% set plop = d.plop %}
-{% if not counts and not plop %}{{ _placeholder(edit_mode, block, 'Live league facts appear here once the season has teams or a scheduled PLOP') }}{% else %}
+{% set cols = d.columns or [] %}
+{% if not cols %}{{ _placeholder(edit_mode, block, 'Live league facts appear here once the season has teams or a scheduled PLOP') }}{% else %}
 {% set on = _on_color(section) %}
-<div class="grid gap-x-12 gap-y-10 sm:grid-cols-2 {{ _hide_mobile_grid(block) }}"
-     data-dynamic="facts"{{ _edit_attrs(block, edit_mode) }}>
-    {% if counts %}
-    <div>
-        {% if d.season_name %}
-        <p class="{{ TYPE.E }} {{ _muted_color(section) }}">{{ d.season_name }}</p>
-        {% endif %}
-        <dl class="mt-5 flex flex-wrap gap-x-12 gap-y-6">
-            {% for c in counts %}
-            <div class="min-w-0">
-                <dd class="font-display font-stretch-condensed text-5xl sm:text-6xl font-extrabold leading-none tabular-nums {{ 'text-white' if on else 'text-ecs-green-ink dark:text-ecs-green-300' }}">{{ c.value }}</dd>
-                <dt class="mt-3 border-t pt-3 {{ 'border-white/25' if on else 'border-ecs-green-ink/20 dark:border-white/15' }} {{ TYPE.E }} {{ _muted_color(section) }}">{{ c.label }}</dt>
-            </div>
-            {% endfor %}
-        </dl>
-    </div>
-    {% endif %}
-    {% if plop %}
-    <div class="{{ '' if counts else 'sm:col-span-2' }}">
-        <p class="{{ TYPE.E }} {{ _muted_color(section) }}">Next PLOP</p>
-        {# <time> carries the machine-readable stamp; the visible string stays
-           the friendly one. #}
-        <p class="mt-5 font-display font-stretch-condensed text-4xl sm:text-5xl font-extrabold leading-none {{ _heading_color(section) }}">
-            <time datetime="{{ plop.datetime_attr }}">{{ plop.date }}</time>
-        </p>
-        <p class="mt-3 border-t pt-3 {{ 'border-white/25' if on else 'border-ecs-green-ink/20 dark:border-white/15' }} {{ TYPE.B }} {{ _body_color(section) }} tabular-nums">
-            {{ plop.time }}{% if plop.end %} &ndash; {{ plop.end }}{% endif %}
-            {%- if plop.location %}<span class="block">{{ plop.location }}</span>{% endif %}
-        </p>
-        {% if d.ics_url %}
-        <div class="mt-6">
-            <a href="{{ d.ics_url }}" class="{{ _btn_base(section, 'sm') }} {{ _btn_variant('outline', on) }}">
+<dl class="grid grid-cols-1 gap-0 sm:grid-cols-2 lg:grid-cols-4 {{ _hide_mobile_grid(block) }}"
+    data-dynamic="facts"{{ _edit_attrs(block, edit_mode) }}>
+    {# Rules BETWEEN columns, not around them. The first cell in each row drops
+       its left rule; on one column they become top rules instead, because a
+       vertical rule on a stacked list is a rule to nowhere. #}
+    {% for c in cols %}
+    <div class="border-t py-8 first:border-t-0 sm:border-t-0 sm:px-6 sm:py-2 sm:first:pl-0 sm:[&:nth-child(odd)]:border-l-0 lg:px-8 lg:first:pl-0 lg:[&:nth-child(odd)]:border-l
+                {{ 'border-white/25 sm:border-l' if on else 'border-ecs-green-ink/20 dark:border-white/15 sm:border-l' }}">
+        <dt class="{{ TYPE.E }} {{ _muted_color(section) }}">{{ c.label }}</dt>
+        <dd class="mt-4 font-display uppercase text-4xl sm:text-5xl font-extrabold leading-[1.02] tracking-[0.005em] tabular-nums {{ 'text-white' if on else 'text-gray-900 dark:text-white' }}">
+            {%- if c.datetime %}<time datetime="{{ c.datetime }}">{{ c.value }}</time>{% else %}{{ c.value }}{% endif -%}
+        </dd>
+        {% if c.caption %}<dd class="mt-3 {{ TYPE.S }} {{ _muted_color(section) }} tabular-nums">{{ c.caption }}</dd>{% endif %}
+        {% if c.ics_url %}
+        <dd class="mt-5">
+            <a href="{{ c.ics_url }}" class="{{ _btn_base(section, 'sm') }} {{ _btn_variant('outline', on) }}">
                 <i class="ti ti-calendar-plus" aria-hidden="true"></i>
                 Add to your calendar
             </a>
-        </div>
+        </dd>
         {% endif %}
     </div>
-    {% endif %}
-</div>
+    {% endfor %}
+</dl>
 {% endif %}
 {% endmacro %}
 
 
+{# The icon plate is /[0.06], not /10. These buttons are the deepest-nested
+   tinted surface on the site — a plate inside a callout inside a 'light'
+   section composites to ~20% of the primary — and at /10 the brand ink on them
+   measured 4.37:1, under the 4.5 floor for their 16px label. Lifting the plate
+   fixes it at the source instead of darkening the ink everywhere else. #}
 {% macro block_social_links(block, ctx, section, edit_mode) %}
 {% if not block['items'] %}{{ _placeholder(edit_mode, block, 'Add social links') }}{% else %}
 {% set icons = {'discord': 'ti-brand-discord', 'instagram': 'ti-brand-instagram', 'facebook': 'ti-brand-facebook',
@@ -1103,7 +1126,7 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
     {# target=_blank only for real navigations. A mailto: in a new tab opens and
        abandons a blank window on every desktop browser. #}
     <a href="{{ it.url }}" {% if it.url.startswith('http') %}target="_blank" rel="noopener noreferrer"{% endif %}
-       class="inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-150 ease-out motion-reduce:transition-none {{ 'bg-white/20 text-white hover:bg-white/30' if _on_color(section) else 'bg-ecs-green/10 text-ecs-green-ink hover:bg-ecs-green/20 dark:bg-ecs-green/15 dark:text-ecs-green-300 dark:hover:bg-ecs-green/25' }} {{ _ring(section) }}">
+       class="inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-150 ease-out motion-reduce:transition-none {{ 'bg-white/20 text-white hover:bg-white/30' if _on_color(section) else 'bg-ecs-green/[0.06] text-ecs-green-ink hover:bg-ecs-green/15 dark:bg-ecs-green/15 dark:text-ecs-green-300 dark:hover:bg-ecs-green/25' }} {{ _ring(section) }}">
         <i class="ti {{ icons.get(it.kind, 'ti-link') }} text-xl" aria-hidden="true"></i>
         <span class="sr-only">{{ it.label or labels.get(it.kind, it.kind) }}</span>
     </a>
@@ -1186,10 +1209,10 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
    is the page's dark anchor. A page can still ask for green explicitly with
    theme='brand'. #}
 {% set hero_ground = THEME_SECTION.get(section.theme if section.theme != 'inherit' else 'dark', THEME_SECTION['dark']) %}
-<section class="relative overflow-hidden {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if img }} {{ hero_ground if not img and not s.bg_color }}"
+<section class="relative overflow-hidden {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if img and s.layout != 'split' }} {{ hero_ground if (not img or s.layout == 'split') and not s.bg_color }}"
          {% if s.bg_color and not img %}style="background-color: {{ s.bg_color }};"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="hero"{% endif %}>
-    {% if img %}
+    {% if img and s.layout != 'split' %}
     <div class="absolute inset-0 isolate">
         {# LCP element: srcset + width/height + focal point + fetchpriority, and
            deliberately no loading="lazy". #}
@@ -1202,6 +1225,34 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
         {% if s.overlay != 'none' %}<div class="absolute inset-0 bg-linear-to-b sm:bg-linear-to-r {{ grads.get(s.overlay, grads['medium']) }}"></div>{% endif %}
     </div>
     {% endif %}
+    {% if s.layout == 'split' and img %}
+    {# SPLIT HERO. Copy on the section's own solid ground at the left, the
+       photograph occupying the right of the viewport and bleeding off its edge.
+
+       Why this instead of type-over-photo: an overlay hero is the single most
+       common shape on the web, and it forces every headline to fight its own
+       background. Splitting gives the type a clean ground to sit on (no scrim,
+       no text-shadow, no contrast risk at all) and gives the photograph room to
+       be a photograph. It is also the one section on the page that deliberately
+       escapes the container, which is what stops the page reading as a stack of
+       identical slabs.
+
+       Below lg it is a plain stack: photo band on top, copy beneath. The photo
+       is NOT absolutely positioned there — a fixed-height absolute panel on a
+       phone either crops the subject to nothing or covers the headline. #}
+    <div class="relative h-64 w-full sm:h-80 lg:absolute lg:inset-y-0 lg:right-0 lg:h-auto lg:w-[42%]">
+        {{ _img_tag(s.image, ctx, class='h-full w-full object-cover ' + _duotone_filter(s.treatment), sizes='(min-width: 1024px) 45vw, 100vw', priority=True) }}
+        {{ _duotone(s.treatment) }}
+        {# The seam. Without it the photo meets the ground on a hard vertical
+           line, which reads as two pasted rectangles rather than one hero. #}
+        <div class="pointer-events-none absolute inset-y-0 left-0 hidden w-40 bg-linear-to-r from-paper-dark to-transparent lg:block" aria-hidden="true"></div>
+    </div>
+    <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ pads.get(s.size, pads['md']) }}">
+        <div class="lg:w-[58%] lg:pr-10 {{ RHYTHM }}">
+            {{ _render_blocks(section.blocks, ctx, section, edit_mode) }}
+        </div>
+    </div>
+    {% else %}
     <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ pads.get(s.size, pads['md']) }}">
         {# max-w-3xl, not 2xl: D1 is set in the CONDENSED cut now, and at 72px a
            42-character headline needs about 760px to hold two lines. At 672px it
@@ -1213,11 +1264,12 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
                     {# Whenever there IS a photo. The shadow costs nothing over a
                        heavy overlay and is the difference between 1.5:1 and legible
                        over the light/medium ones — and 'medium' is the DEFAULT. #}
-                    {{ '[text-shadow:0_2px_12px_rgb(0_0_0/0.35)]' if img }}
+                    {{ '[text-shadow:0_2px_12px_rgb(0_0_0/0.35)]' if img and s.layout != 'split' }}
                     {{ RHYTHM }} {{ '[&>*]:mx-auto' if s.align == 'center' }}">
             {{ _render_blocks(section.blocks, ctx, section, edit_mode) }}
         </div>
     </div>
+    {% endif %}
 </section>
 {% endmacro %}
 
@@ -1248,6 +1300,28 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
 
        'wide' is now max-w-none — the outer container already IS the width. #}
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">
+        {% if s.layout == 'side-head' and head %}
+        {# SIDE-HEAD. The section's title sits in a narrow left column and stays
+           there while its content scrolls past; the content takes the wide right
+           column and the section uses the FULL container width.
+
+           This exists to break the band stack. Every section on the page was a
+           full-width horizontal slab with its heading centred above its content,
+           one after another — which is the templated page shape whether the text
+           is centred or left-aligned. A two-column section with a held title
+           reads as a designed page instead, and it stops a left-aligned section
+           from ending 192px short of the sections either side of it.
+
+           lg: only. Below that it is a plain stack, head then body. #}
+        <div class="grid gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)] lg:gap-x-20">
+            <div class="{{ RHYTHM }} lg:sticky lg:top-28 lg:self-start">
+                {{ _render_blocks(head, ctx, section, edit_mode) }}
+            </div>
+            <div class="{{ RHYTHM }} min-w-0">
+                {{ _render_blocks(body, ctx, section, edit_mode) }}
+            </div>
+        </div>
+        {% else %}
         {% if head %}
         <div class="max-w-3xl mb-10 sm:mb-14 {{ RHYTHM }} {{ 'mx-auto [&>*]:mx-auto' if s.align == 'center' }}">
             {{ _render_blocks(head, ctx, section, edit_mode) }}
@@ -1256,6 +1330,7 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
         <div class="{{ WIDTHS.get(s.width, 'max-w-5xl') }} {{ RHYTHM }} {{ 'mx-auto [&>*]:mx-auto' if s.align == 'center' }}">
             {{ _render_blocks(body, ctx, section, edit_mode) }}
         </div>
+        {% endif %}
     </div>
 </section>
 {% endmacro %}

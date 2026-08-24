@@ -68,9 +68,9 @@
      the public CSP blocks external font CDNs and the type system would fall back
      silently to system-ui. Bricolage displays, Inter reads (design.md § 2). #}
   <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/inter/inter-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/bricolage/bricolage-latin-vf.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/big-shoulders/big-shoulders-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{ static_v('vendor/fonts/inter.css') }}">
-  <link rel="stylesheet" href="{{ static_v('vendor/fonts/bricolage.css') }}">
+  <link rel="stylesheet" href="{{ static_v('vendor/fonts/big-shoulders.css') }}">
   <link rel="stylesheet" href="{{ static_v('vite-dist/css/tailwind.css') }}">
 
   {# The admin's palette when it is reachable; the tailwind.config.js var

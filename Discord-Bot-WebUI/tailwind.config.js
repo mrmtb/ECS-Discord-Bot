@@ -131,7 +131,11 @@ export default {
         // Both are derived in public_theme.theme_vars(), so the Appearance
         // picker re-tints the paper along with everything else. Portal pages
         // never set these vars and never use these utilities.
-        'paper': 'rgb(var(--color-paper-rgb, 249 253 250) / <alpha-value>)',
+        // The GREEN SECTION GROUND. Plain ecs-green cannot carry white body copy
+        // (4.35:1, fails AA); this is the primary darkened until white clears
+        // 4.6:1, derived in theme_vars() so an Appearance re-skin still works.
+        'ecs-pitch': 'rgb(var(--color-pitch-ground-rgb, 47 130 59) / <alpha-value>)',
+        'paper': 'rgb(var(--color-paper-rgb, 229 235 228) / <alpha-value>)',
         'paper-dark': 'rgb(var(--color-paper-dark-rgb, 9 20 12) / <alpha-value>)',
         // Dark theme backgrounds (matching Flowbite dark mode)
         'dark': {
@@ -185,8 +189,12 @@ export default {
       // tables in the admin panel would render monospace. With the fallback,
       // the declaration is always valid and the public :root simply wins.
       fontFamily: {
-        display: ["var(--font-heading, 'Bricolage Grotesque')", 'Bricolage Grotesque', 'Inter', 'system-ui', 'sans-serif'],
+        display: ["var(--font-heading, 'Big Shoulders Display')", 'Big Shoulders Display', 'Haettenschweiler', 'Arial Narrow', 'system-ui', 'sans-serif'],
         sans: ["var(--font-body, 'Inter')", 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        // Data and labels: season strips, counts, eyebrows, dates, step
+        // ordinals. It is what makes a fixture list read as a fixture list
+        // rather than as marketing copy.
+        mono: ["var(--font-mono, 'JetBrains Mono')", 'JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       // Ft8 marquee footer (public site). Declared here rather than as a custom
       // <style> block so it stays inside Tailwind — the project rule is Tailwind

@@ -193,7 +193,7 @@ class RenderContext:
         if block['type'] in ('news_latest', 'faq_list', 'calendar_teaser'):
             return []
         if block['type'] == 'facts':
-            return {'season_name': None, 'counts': [], 'plop': None}
+            return {'season_name': None, 'counts': [], 'plop': None, 'columns': []}
         return None
 
     def cta(self, kind):
@@ -361,7 +361,7 @@ class RenderContext:
         from app.utils.season_context import current_program_season_ids
         from app.public_site import _current_season_name
 
-        out = {'season_name': None, 'counts': [], 'plop': None}
+        out = {'season_name': None, 'counts': [], 'plop': None, 'columns': []}
         try:
             out['season_name'] = _current_season_name()
 
@@ -403,6 +403,7 @@ class RenderContext:
                 if ev:
                     out['plop'] = {
                         'date': ev.start_datetime.strftime('%a, %b %-d'),
+                        'short': ev.start_datetime.strftime('%a %-d'),
                         'time': (ev.start_datetime.strftime('%-I:%M %p') if not ev.is_all_day else 'All day'),
                         'end': (ev.end_datetime.strftime('%-I:%M %p')
                                 if ev.end_datetime and not ev.is_all_day else None),
@@ -411,13 +412,35 @@ class RenderContext:
                     }
                     out['ics_url'] = url_for('public.calendar_ics')
                     out['calendar_url'] = url_for('public.calendar')
+
+            # Assemble the scoreboard. A column only exists when its value is
+            # real; the captions are either derived from the same data or left
+            # out. Nothing here is written to fill a slot — an invented figure
+            # or a padded caption is the exact failure a stat band ships with.
+            cols = []
+            if out['season_name']:
+                cols.append({'label': 'Season', 'value': out['season_name'],
+                             'caption': ''})
+            for c in out['counts']:
+                caption = ('Across Classic and Premier.' if c['label'].startswith('Team')
+                           else 'Everyone on a roster gets minutes.')
+                cols.append({'label': c['label'], 'value': c['value'],
+                             'caption': caption})
+            plop = out['plop']
+            if plop:
+                when = plop['time'] if not plop.get('end') else f"{plop['time']} – {plop['end']}"
+                cols.append({'label': 'Next PLOP', 'value': plop['short'],
+                             'caption': when + (f" · {plop['location']}" if plop.get('location') else ''),
+                             'datetime': plop['datetime_attr'],
+                             'ics_url': out.get('ics_url')})
+            out['columns'] = cols
         except Exception:
             logger.exception('facts block: live league data unavailable')
             try:
                 g.public_render_degraded = True
             except Exception:
                 pass
-            return {'season_name': None, 'counts': [], 'plop': None}
+            return {'season_name': None, 'counts': [], 'plop': None, 'columns': []}
         return out
 
     def _dyn_form(self, block):

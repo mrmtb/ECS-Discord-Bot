@@ -1,5 +1,7 @@
 /* JetBrains Mono — self-hosted variable font (latin, weights 400–700).
-   Admin-only, for stat numbers (.admin-area .font-mono). display:swap. */
+   Used by the ADMIN stat numbers and, since the 2026 layout pass, by the public
+   site's data + label register: season strips, counts, dates, step ordinals.
+   display:swap. */
 
 @font-face {
   font-family: 'JetBrains Mono';

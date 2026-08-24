@@ -477,12 +477,19 @@ class TestRebuiltDocuments:
     def test_home_spends_brand_green_once(self, monkeypatch):
         """Flat brand green used to ground every photoless hero, scrim every
         photographic one and paint every closing band — the same rectangle four
-        or five times a page. It buys exactly one moment now."""
+        or five times a page. It buys exactly one moment now.
+
+        Which section gets it is a design decision and may move (it is currently
+        the join sequence, with the closing argument on the ink ground); that it
+        is spent ONCE is the rule.
+        """
         from app.services.section_schema import validate_sections
         doc, _ = validate_sections(_built(monkeypatch, 'home'), is_admin=True)
         brand = [s for s in doc['sections'] if s['theme'] == 'brand']
         assert len(brand) == 1, f'{len(brand)} brand-green sections'
-        assert brand[0]['type'] == 'band'
+        # and the page still has a real dark anchor besides the green
+        assert any(s['theme'] == 'dark' for s in doc['sections']), \
+            'no ink-ground section — the page has no weight anywhere'
 
     @pytest.mark.parametrize('slug', ('register', 'faqs'))
     def test_photoless_hero_is_not_brand_green(self, monkeypatch, slug):

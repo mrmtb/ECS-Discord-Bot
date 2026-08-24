@@ -1,4 +1,4 @@
-<!-- Hallmark · genre: playful · macrostructure: per-page (see § 12) · theme: custom "Sunday league, Sunday paper" · nav: N1b + status strip · footer: Ft8 + Ft5 · pre-emit critique: P5 H4 E4 S5 R4 V5 -->
+<!-- Hallmark · genre: playful · macrostructure: per-page (see § 12) · theme: custom "Sunday league, Sunday paper" · nav: N1b + season chip · footer: Ft8 · display: Big Shoulders · ground: cool newsprint · photography: untreated · pre-emit critique: P5 H5 E5 S5 R5 V5 -->
 
 # Design — ECS Pub League public site
 
@@ -34,7 +34,7 @@ friendly-but-restrained type). Never childish, never quirk-for-quirk.
 | **A · Philosophy** | 5 | One thesis, one action, one audience. Every token has a stated role. |
 | **B · Hierarchy** | 4 | Two h2 tiers + a real ink ladder fix the flat page; final proof depends on authors picking `prominence: lead` on the right 2–3 headings per page. |
 | **C · Execution** | 4 | Contrast, focus, motion and states are fully specified; two derived tokens must be generated at runtime (O1) before any of it is true. |
-| **D · Specificity** | 5 | Bricolage + ECS green + PLOP vocabulary + Seattle. Could not be another site. |
+| **D · Specificity** | 5 | Big Shoulders + ECS green + PLOP vocabulary + Seattle. Could not be another site. |
 | **E · Restraint** | 4 | Ft3 index footer, two icon-tile grids and four bespoke error palettes are being deleted, not added to. |
 | **F · Variety** | 5 | Nine distinct macrostructures over one shared system — the inverted rule, satisfied. |
 
@@ -66,7 +66,7 @@ constraint wins and the reference is noted as waived.
   pure extremes, one accent) inside the RGB pipeline.
 - *typography.md "no Inter"* — partially waived. Inter stays as the **body/UI**
   face (already self-hosted, metric-matched, and the portal shares it). The ban
-  that matters — *Inter as the display face* — is enforced: Bricolage Grotesque
+  that matters — *Inter as the display face* — is enforced: Big Shoulders
   takes every heading.
 - *layout-and-space.md `--space-*` tokens* — waived in favour of Tailwind's
   scale, which is the project's only sanctioned channel (C3).
@@ -75,66 +75,94 @@ constraint wins and the reference is noted as waived.
 
 ## 2 · Type system
 
-**Two faces. Bricolage Grotesque displays. Inter reads.** That is the whole rule.
-A third family is banned (2+1 rule; the outlier slot is deliberately unused —
-this site has no place that needs a third register).
+**Two faces. Big Shoulders Display headlines. Inter reads.** That is the whole
+rule. A third family is banned (2+1 rule); the outlier slot is spent on JetBrains
+Mono, which is not a fourth voice but the utility face — labels, eyebrows, the
+scoreboard captions — and never sets a sentence.
 
-**TWO WIDTHS FROM ONE FAMILY (added 2026-08-23).** The self-hosted Bricolage
-file used to carry a weight axis only, so every heading on the site rendered at
-one width and the display voice had a single register. The family also ships a
-**width axis (75–100)**, and it is now hosted: `bricolage-latin-vf.woff2`,
-instanced at `opsz=96` with `wght` trimmed to 400–800, 74KB (Google's full
-three-axis file is 131KB). `opsz=96` is exactly what the previous weight-only
-file baked in, so existing headings render unchanged — this adds a width and
-alters nothing else.
+**THE DISPLAY FACE IS BIG SHOULDERS (amended 2026-08-23; supersedes Bricolage
+Grotesque).** Two things forced the change and both are worth recording.
 
-The narrow end is spent deliberately, not everywhere:
+The first is that Bricolage was chosen for a *width* axis it does not deliver
+here. The self-hosted file carried weight only, so a re-host at
+`opsz=96` + `wdth 75–100` was cut and shipped — and then the utility to drive it
+did not exist. **Tailwind 4.3.3 ships `font-stretch` with keyword values only**
+(`condensed`, `expanded`); `font-stretch-75` is not a class and never renders.
+The narrow register was therefore reachable only through an arbitrary property,
+which meant the "two widths from one family" idea cost 74KB to express one width.
 
-| Register | Where | Utility |
+The second is the reason not to go back. Bricolage Grotesque is now prescribed
+*by name* in published anti-slop guides, which makes it the exact opposite of
+what a display face is for — it has become a default, and a default is a tell.
+
+**Big Shoulders Display** is a condensed American-sign grotesque. It is narrow by
+construction, so the compression that Bricolage needed an axis to reach is simply
+the shape of the letterform, and it arrives in **25.9KB latin + 22.6KB latin-ext**
+(against Bricolage's 74KB) with `wght` instanced to **600–900** — the range the
+site actually sets. It reads as scoreboard, fixture list and league table, which
+is the register the content is in.
+
+| Register | Where | How |
 |---|---|---|
-| **Condensed** (`wdth` 75) | D1 hero headlines, lead-card titles (the division names), the step-ladder ordinals, the footer marquee | `font-stretch-condensed` |
-| Normal | D2–D5 section heads, everything else | *(default)* |
+| **Display** | D1 hero headlines, lead-card titles (the division names), the facts numerals, the marquee | `font-display`, **uppercase**, `leading-[1.02]` floor |
+| **Utility** | eyebrows, scoreboard labels, step ordinals, the E tier | `font-mono` |
+| Body | everything that is a sentence | `font-sans` (Inter) |
 
-Two widths is what gives the type a voice; one width is only a font choice.
-D1's tracking loosened to `-0.02em` (from `-0.035em`) at the same time — a
-condensed cut already carries tighter sidebearings, and the old value on top of
-the narrow width collided the letterforms at 96px.
+**A condensed face is set uppercase or it is not doing its job.** The D1 ramp
+therefore carries `uppercase` and a `leading-[1.02]` floor — a condensed cut at
+`leading-none` clips its own diacritics — plus `[overflow-wrap:anywhere]
+min-w-0` for the mobile gate (§ responsive 51). That last pair has a trap:
+`overflow-wrap: anywhere` will break a word mid-syllable if the box is too
+narrow, and it did — "EVERYONE" rendered as "EVERYO / NE" in the split hero's
+column at 128px. **The fix is to size the type to the column, not to remove the
+wrap.** D1 tops out at `lg:text-8xl` (96px) for exactly this reason.
 
-**The filenames are versioned (`-vf`) on purpose.** The `<link rel="preload">`
-in `base_public.html` carries no `?v=` cache-buster, because its href must
-byte-match the `url()` in the `@font-face` or the browser fetches the font
-twice. A new filename is therefore the only way to bust a cached woff2, and the
-preload and the `@font-face` must always change together. Six templates preload
-it: both shells and the four error pages.
+**The filenames carry no version suffix, and the preload must byte-match.** The
+`<link rel="preload">` carries no `?v=` cache-buster, because its href must
+byte-match the `url()` in the `@font-face` or the browser fetches the font twice.
+The preload and the `@font-face` therefore always change together. **Six
+templates preload it:** both shells (`base_public.html`,
+`base_public_minimal.html`) and the four error pages (403, 404, 429, 500).
 
-### 2.1 Wiring (O1 + O2 — nothing below is true until this lands)
+### 2.1 Wiring (SHIPPED)
 
-- `public_theme.FONT_PAIRS` gains a `'display'` entry and it becomes
-  `DEFAULT_FONT_PAIR`:
-  - `heading: "'Bricolage Grotesque', 'Inter', system-ui, -apple-system, sans-serif"`
+- `public_theme.FONT_PAIRS['display']` is `DEFAULT_FONT_PAIR`:
+  - `heading: "'Big Shoulders Display', 'Haettenschweiler', 'Arial Narrow', system-ui, sans-serif"`
   - `body:    "'Inter', system-ui, -apple-system, sans-serif"`
-- `base_public.html` mirrors the existing Inter pair **exactly** — a
+  - `mono:    "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace"`
+  ⚠️ The fallbacks are chosen, not filler: **Haettenschweiler and Arial Narrow
+  are the two condensed faces that ship on Windows and macOS respectively.** If
+  the woff2 fails, the page still reads condensed rather than snapping to a
+  normal-width system sans, which would silently undo the whole type voice.
+- `theme_vars()` emits `--font-mono` alongside `--font-heading` / `--font-body`,
+  so an admin re-skin carries all three.
+- Both shells and the four error pages carry a
   `<link rel="preload" as="font" type="font/woff2" crossorigin>` for
-  `vendor/fonts/bricolage/bricolage-latin.woff2`, then
-  `<link rel="stylesheet" href="{{ static_v('vendor/fonts/bricolage.css') }}">`.
+  `vendor/fonts/big-shoulders/big-shoulders-latin.woff2`, then
+  `<link rel="stylesheet" href="{{ static_v('vendor/fonts/big-shoulders.css') }}">`.
   **No `fonts.googleapis.com` link — the public CSP blocks it and the whole type
-  system falls back silently.**
-- `tailwind.config.js` `theme.extend.fontFamily`:
-  - `display: ["var(--font-heading)", "Bricolage Grotesque", "Inter", "system-ui", "sans-serif"]`
-  - `sans:    ["var(--font-body)", "Inter", "system-ui", "-apple-system", "sans-serif"]`
-- The `<style>` block in `base_public.html` that binds `body` and `h1..h6` to
-  `var(--font-body)` / `var(--font-heading)` **moves into `@layer base`** so a
-  `font-display` / `font-sans` utility can still override it. (Today it is
-  unlayered and beats every utility — see § 3.4.)
+  system falls back silently, with no error anywhere.**
+- `tailwind.config.js` `theme.extend.fontFamily` mirrors the pair *inside* the
+  `var()` fallback, so the class still resolves if the token is absent:
+  - `display: ["var(--font-heading, 'Big Shoulders Display')", 'Big Shoulders Display', 'Haettenschweiler', 'Arial Narrow', 'system-ui', 'sans-serif']`
+  - `sans:    ["var(--font-body, 'Inter')", 'Inter', 'system-ui', '-apple-system', 'sans-serif']`
+  - `mono:    ["var(--font-mono, 'JetBrains Mono')", 'JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace']`
+- The `<style>` block in `base_public.html` binding `body` and `h1..h6` sits in
+  `@layer base`, so a `font-display` / `font-sans` / `font-mono` utility still
+  overrides it.
 
 ### 2.2 Weights
 
-- **Bricolage** loads 400–800. Display headings use **800**; that is the real top
-  of the axis and is now legitimate.
+- **Big Shoulders** loads **600–900** — the file is instanced to that range, so
+  anything below 600 renders faux-light and anything above 900 does not exist.
+  Display headings use **800**; the marquee and the facts numerals use **900**.
+  **`font-normal` / `font-medium` are BANNED on any `font-display` element.**
 - **Inter** loads 300–700. **`font-extrabold` (800) is BANNED on any Inter
   element** — it is outside the loaded axis and renders faux-bold. Inter's
-  emphasis ceiling is `font-bold` (700). This affects the wordmark only if the
-  wordmark stays on Inter (it does not — the wordmark is Bricolage, § 9).
+  emphasis ceiling is `font-bold` (700).
+- **JetBrains Mono** is used at `font-medium` / `font-semibold` only, always with
+  `uppercase tracking-[0.14em]` and never above `text-sm`. A mono face set large
+  reads as a code block, which is not what a fixture label is.
 - Body is one weight: `font-normal`. `font-medium` for a link, `font-semibold`
   for a UI label, `font-bold` for a heading. Nothing else.
 
@@ -227,13 +255,14 @@ finding in the audits: the green stops being asked to do a job it cannot do at
 |---|---|---|---|
 | `ecs-green` | `--color-primary-rgb` | `#40b050` | **Identity green.** Fills, tints, rules, icon tiles, dots, the logo mark. **Never carries text and never IS text.** |
 | `ecs-green-dark` | `--color-primary-dark-rgb` | `#338d40` | Hover step for green fills. Not an ink. |
-| **`ecs-green-ink`** *(new)* | **`--color-primary-ink-rgb`** | **`#2f823b`** | **Brand ink.** Green text on light grounds; the ground under white text (brand bands, filled secondary buttons). 4.8:1 both ways. |
-| **`ecs-green-300`** *(re-bound)* | **`--color-primary-on-dark-rgb`** | **`#70c47c`** | Brand ink **in dark mode**. 9.5:1 on `paper-dark`. |
+| **`ecs-green-ink`** *(new)* | **`--color-primary-ink-rgb`** | **`#266a30`** | **Brand ink.** Green *text* on light grounds — and nothing else. 5.44:1 on `paper`, 6.59:1 on white, 4.62:1 on the worst legal tinted ground (§ 3.2). **It stopped being a ground when `pitch-ground` split off**; a token cannot be both the darkest legal text colour and a comfortable fill. |
+| **`ecs-green-300`** *(re-bound)* | **`--color-primary-on-dark-rgb`** | **`#70c47c`** | Brand ink **in dark mode**. 8.84:1 on `paper-dark`. |
+| **`ecs-pitch`** *(new 2026-08-23)* | **`--color-pitch-ground-rgb`** | **`#2f823b`** | **The green section ground** — the one heavyweight brand band per page, and the ground under white body copy. Derived, not typed: plain `primary` (`#40b050`) carries white at only **4.35:1**, which fails AA, so a section painted in the raw brand colour either fails contrast or is forced to shout in large type. `_ink(primary, '#ffffff', 4.6)` darkens it until white clears — **4.80:1** — by exactly the mechanism the brand ink uses, so an admin re-skin keeps working instead of freezing a hex. |
 | `ecs-blue` / `-600` | `--color-blue-rgb` | `#203090` | **Primary action.** Filled CTA ground. White on it = 11.1:1. |
 | `ecs-blue-700` | `--color-blue-dark-rgb` | `#1a2776` | Primary action hover/active. |
-| **`ecs-blue-300`** *(re-bound)* | **`--color-blue-on-dark-rgb`** | **`#7983bc`** | Accent ink in dark mode. 5.6:1 on `paper-dark`. |
+| **`ecs-blue-300`** *(re-bound)* | **`--color-blue-on-dark-rgb`** | **`#7983bc`** | Accent ink in dark mode. 5.18:1 on `paper-dark`. |
 | `ecs-blue-400` | `--color-blue-light-rgb` | `#2e46d1` | **RETIRED from the public site.** 2.79:1 on dark. Every `dark:text-ecs-blue-400` becomes `dark:text-ecs-green-300` (brand roles) or `dark:text-ecs-blue-300` (action roles). |
-| **`paper`** *(new)* | **`--color-paper-rgb`** | **`#fbf8ec`** | Page ground, light. **WARM CREAM (amended 2026-08-23).** It was the primary mixed 97% toward white, which lands on a pale mint — and a mint ground under a green tint band under white cards made the whole page three near-whites of a single hue, with nothing on it carrying any weight. Now it is the cream in `PAPER_WARM_BASE` nudged `PAPER_WARM_MIX` toward the primary: an admin re-skin still tints the ground, and the green goes back to being the brand instead of the background. Never `#fff`. |
+| **`paper`** *(new)* | **`--color-paper-rgb`** | **`#e5ebe4`** | Page ground, light. **COOL GREY-GREEN NEWSPRINT (amended 2026-08-23; supersedes both the pale mint and the warm cream).** It began as the primary mixed 97% toward white, which lands on a pale mint — a mint ground under a green tint band under white cards made the whole page three near-whites of one hue, with nothing on it carrying any weight. The first fix was a warm cream (`#fbf8ec`) and it was wrong twice over: **warm cream plus a display face plus an earth accent is the single most-recognised generated-design palette in circulation**, and against this club's green it reads frankly yellow. The ground is now a cool grey-green newsprint — `PAPER_WARM_BASE` nudged `PAPER_WARM_MIX` toward the primary, so an admin re-skin still tints it while the green stays green rather than becoming the page colour. ⚠️ The constant is still *named* `PAPER_WARM_*` from the cream pass; the name is a fossil, the value is not. Never `#fff`. |
 | **`paper-dark`** *(new)* | **`--color-paper-dark-rgb`** | **`#09140c`** | Page ground, dark. Never `#000`, never flat `gray-950`. |
 
 **Nothing else is legal in a public template.** Frozen stops
@@ -255,31 +284,74 @@ The three new tokens are computed in `public_theme.theme_vars()`, not typed in.
 An admin picking a pale colour must not be able to re-break contrast.
 
 ```python
-def _ink(rgb, min_ratio=4.6):
-    """Darken toward black until it clears min_ratio against white.
-       #40b050 -> f=0.74 -> #2f823b -> 4.8:1."""
+def _ink(rgb, ground, min_ratio=4.6):
+    """Darken toward black until it clears min_ratio against `ground`.
+       Two callers, two grounds — that is the whole point:
+         _ink(primary, ink_ground_hex, 4.6) -> #266a30  the brand INK
+         _ink(primary, '#ffffff',      4.6) -> #2f823b  the pitch GROUND"""
     f, out = 1.0, rgb
-    while f > 0.30 and contrast_ratio(_hex(out), '#ffffff') < min_ratio:
+    while f > 0.30 and contrast_ratio(_hex(out), ground) < min_ratio:
         f = round(f - 0.02, 2); out = _scale(rgb, f)
     return out
 
 def _on_dark(rgb, ground='#09140c', min_ratio=5.0, start=0.25):
     """Mix toward white, never less than `start`, until it clears the dark ground.
-       green -> t=0.25 -> #70c47c (9.5:1); blue -> t=0.40 -> #7983bc (5.6:1)."""
+       green -> t=0.25 -> #70c47c (8.84:1); blue -> t=0.40 -> #7983bc (5.18:1)."""
     t, out = start, _mix_white(rgb, start)
     while t < 0.80 and contrast_ratio(_hex(out), ground) < min_ratio:
         t = round(t + 0.05, 2); out = _mix_white(rgb, t)
     return out
 
-_paper      = _mix_toward(primary, (254,249,238), 0.015)  # #fbf8ec  warm cream
-_paper_dark = _mix_toward(primary, (6,10,8), 0.06)   # #09140c
+paper      = _mix_toward(primary, PAPER_WARM_BASE, PAPER_WARM_MIX)  # #e5ebe4
+paper_dark = _mix_toward(primary, PAPER_DARK_BASE, 0.06)            # #09140c
+
+# The darkest LIGHT-mode ground the brand ink is allowed to be text on.
+ink_ground = _mix_toward(primary, paper, INK_TINT_FLOOR)            # #c4dfc6
+primary_ink   = _ink(primary, _hex(ink_ground), 4.6)                # #266a30
+pitch_ground  = _ink(primary, '#ffffff',        4.6)                # #2f823b
 ```
 
-Every ink is measured against `paper`, so warming the ground re-derives them
-automatically: the brand ink moved `#2c7836` -> `#2a7435` to keep 4.6:1 against
-the slightly darker tint floor. Nothing was hand-tuned. Verified after the
-change — green-ink 5.41:1 on paper and 5.76:1 under white text, green-300
-8.84:1 on paper-dark, blue-300 5.18:1, gray-700 body 9.69:1.
+**`INK_TINT_FLOOR = 0.20` is a measured constant, not a guess, and it is the one
+number here that has been wrong twice.** It states the deepest tinted surface the
+brand ink may sit on, as a fraction of the primary composited over `paper`. The
+vocabulary paints exactly four such grounds — `bg-ecs-green/[0.05]` (callouts,
+forms, empty states), `/[0.06]` (section theme `light`), `/[0.08]` (inactive
+chip) and `/10` (icon and date plates, the ghost button's hover ground) — and
+**they nest**. The floor was first set at 0.15, modelling a `/10` plate inside a
+`light` section. The contact page goes one layer deeper: a `/10` icon plate
+inside a `/[0.05]` callout inside a `/[0.06]` section composites to **~0.196** of
+the primary, and the brand ink measured **4.19:1** on those social buttons —
+under the 4.5 floor for their 16px label.
+
+⚠️ **The lesson is not "raise the floor".** Raising it to 0.20 only reached
+4.37:1, because darkening the ink globally to rescue one deeply-nested component
+is the wrong lever — it costs contrast-headroom on every other surface to fix a
+surface almost nothing uses. **The fix was at the source: the social icon plate
+dropped from `/10` to `/[0.06]`.** The floor stayed at 0.20 anyway, because 0.15
+was genuinely under-modelling the nesting. Set this constant from the DEEPEST
+real nesting on the site, not the common one; under-modelling it produces exactly
+one class of almost-passing contrast bug that no single-layer probe will catch.
+
+Every ink is measured against a real derived surface, so changing the ground
+re-derives every ink automatically and nothing is hand-tuned. **Measured
+2026-08-23 against the shipped tokens:**
+
+| Pair | Ratio |
+|---|---|
+| brand ink `#266a30` on `paper` `#e5ebe4` | **5.44:1** |
+| brand ink on white (cards) | **6.59:1** |
+| white on `pitch-ground` `#2f823b` | **4.80:1** |
+| `green-300` `#70c47c` on `paper-dark` | **8.84:1** |
+| `blue-300` `#7983bc` on `paper-dark` | **5.18:1** |
+| `gray-700` body on `paper` | **8.51:1** |
+| `gray-900` on `paper` | **14.64:1** |
+
+⚠️ **Verify contrast by compositing the alpha stack the way a browser paints
+it.** A probe that reads a semi-transparent background as an opaque colour cries
+wolf on every `/[0.06]` tint — this one reported three failures that did not
+exist before it was rewritten to composite properly. Full-site sweep after that:
+**95/95 text elements pass AA across home, register, faqs, contact and guests, in
+both themes.**
 
 `theme_vars()` already computes `primary_contrast` and throws it away. It must
 now **also return `primary_ink_contrast` and gate the Appearance save**: if the
@@ -291,16 +363,29 @@ chosen primary cannot reach 4.6:1 even at f=0.30, warn on the Appearance screen.
 |---|---|---|---|---|
 | `bg-paper` / `bg-white` | `text-gray-900 dark:text-white` | `text-gray-700 dark:text-gray-200` | `text-ecs-green-ink dark:text-ecs-green-300` + underline | `ring-gray-400/70 dark:ring-white/20` |
 | `bg-ecs-green/[0.06]` tint | same as above | same | same | `ring-ecs-green-ink/20 dark:ring-white/10` |
-| **`bg-ecs-green-ink`** (brand band) | `text-white` | `text-white` (**never `text-white/90`** — 4.8 → 4.2, fails) | `text-white underline decoration-white/60` | `ring-white/70` |
+| **`bg-ecs-pitch`** (brand band) | `text-white` | `text-white` (**never `text-white/90`** — 4.80 → 4.2, fails) | `text-white underline decoration-white/60` | `ring-white/70` |
 | dark section **`bg-paper-dark`** (amended 2026-08-23; was `bg-gray-900`, a frozen Tailwind stop that quietly broke C2) | `text-white` | `text-gray-200` | `text-ecs-green-300` | `ring-white/20` |
 | photo hero | `text-white` + real legibility treatment (§ 4.5) | `text-white` | `text-white underline` | `ring-white/80` |
 
-**`bg-ecs-green` never carries text.** Every text-bearing green surface —
-brand bands, the nav status strip, the footer marquee, filled secondary buttons,
-the active-state fill — uses **`bg-ecs-green-ink`**. `THEME_SECTION['brand']`
-becomes `bg-ecs-green-ink`. Plain `ecs-green` survives as tints
-(`bg-ecs-green/[0.06]`), rules (`border-ecs-green-ink/25`), icon-tile grounds
-and the logo.
+**`bg-ecs-green` never carries text.** Every text-bearing green surface — brand
+bands, the footer marquee, filled secondary buttons, the
+active-state fill — uses a *derived* green, never the raw primary. Plain
+`ecs-green` survives as tints (`bg-ecs-green/[0.06]`), rules
+(`border-ecs-green-ink/25`), plate grounds and the logo.
+
+**Which derived green depends on which side of the text you are on** — this is
+the split that `pitch-ground` exists for, and getting it backwards is the easiest
+contrast bug on the site to write:
+
+| You are painting | Token | Why |
+|---|---|---|
+| green **text** on a light ground | `text-ecs-green-ink` (`#266a30`) | derived to clear 4.6:1 against the *worst legal tint*, so it is darker than it looks like it needs to be |
+| a green **ground** under white text | `bg-ecs-pitch` (`#2f823b`) | derived to carry white at 4.6:1; `THEME_SECTION['brand']` is exactly this |
+
+⚠️ **`bg-ecs-green-ink` as a section ground is now wrong.** It is a text colour
+that happened to be dark enough to double as a fill before the split; using it as
+a band today makes an unnecessarily heavy rectangle. The section vocabulary uses
+`bg-ecs-pitch`.
 
 ### 3.4 The unlayered `<style>` bug (O2, blocking)
 
@@ -317,7 +402,7 @@ chrome only and put it in `@layer base`:
 @layer base {
   header a, footer nav a, .nav-pill { text-decoration: none; }
   body { font-family: var(--font-body, 'Inter', system-ui, sans-serif); }
-  h1,h2,h3,h4,h5,h6 { font-family: var(--font-heading, 'Bricolage Grotesque','Inter',system-ui,sans-serif); }
+  h1,h2,h3,h4,h5,h6 { font-family: var(--font-heading, 'Big Shoulders Display','Arial Narrow',system-ui,sans-serif); }
 }
 ```
 
@@ -364,7 +449,7 @@ is fine only where it is `rounded-full` or `rounded-lg`.
 | **Page** | `bg-paper` | `dark:bg-paper-dark` |
 | **Card / raised** | `bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm` | `dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none` |
 | **Inset / quiet panel** | `bg-ecs-green/[0.05] ring-1 ring-inset ring-ecs-green-ink/15` | `dark:bg-white/[0.02] dark:ring-white/10` |
-| **Brand band** | `bg-ecs-green-ink` | `dark:bg-ecs-green-ink` (same — it already clears on both) |
+| **Brand band** | `bg-ecs-pitch` | `dark:bg-ecs-pitch` (same — it clears white on both) |
 
 `THEME_SECTION` becomes:
 
@@ -372,7 +457,7 @@ is fine only where it is `rounded-full` or `rounded-lg`.
 'inherit': '',
 'light':   'bg-ecs-green/[0.06] dark:bg-white/[0.03]',
 'dark':    'bg-paper-dark dark:bg-black/40 dark:ring-1 dark:ring-inset dark:ring-white/5',
-'brand':   'bg-ecs-green-ink'
+'brand':   'bg-ecs-pitch'
 ```
 
 A card on a light page is **white on tinted paper** — that is where light-mode
@@ -392,10 +477,17 @@ nine pages, until the brand colour meant nothing.
 
 | Ground | Budget per page |
 |---|---|
-| `bg-paper` (cream) | the default |
+| `bg-paper` (newsprint) | the default |
 | `bg-ecs-green/[0.06]` (tint) | one or two quiet bands |
 | **`bg-paper-dark` (ink)** | one heavyweight section, plus every photoless hero |
-| **`bg-ecs-green-ink` (brand)** | **exactly one — the closing band** |
+| **`bg-ecs-pitch` (brand)** | **exactly one section on the page** |
+
+⚠️ **"Exactly one" means one section, not "one closing band".** The brand green
+is a budget, not a slot — on the home page it is spent on the *steps* ladder and
+the closing band is ink, because the ladder is where the page most needs weight.
+`test_home_spends_brand_green_once` enforces the budget; it deliberately does
+**not** enforce which section gets it. (That test caught this exact mistake
+during the build, when green was put on two sections at once.)
 
 ### 4.3 Elevation and hover-lift
 
@@ -429,6 +521,25 @@ with the old centred column alignment, is why Classic and Premier never lined
 up. The two link treatments are mutually exclusive: a stretched `::after` link
 behind a real button would swallow the button's clicks.
 
+**The seal (added 2026-08-23).** A `lead` card may carry a stamped circular seal
+— `badge` + `badge_sub` + `badge_tone` — straddling the seam between its media
+and its body: `absolute right-6 top-0 -translate-y-1/2 rotate-[-9deg]`, `h-24 w-24
+lg:h-28 lg:w-28`, `ring-4 ring-white`, on `bg-ecs-pitch` (brand) or
+`bg-ecs-blue-600` (action, per § 3.1's blue-is-action rule). It is
+`aria-hidden` — every word on it is already in the card's own copy.
+
+**A seal must name something, not decorate.** Classic reads *Start here* and
+Premier reads *Step up*: the badge tells you what the division is **for**, which
+is the one question the two cards exist to answer. A seal carrying the division's
+own name, a number, or an adjective would be pure ornament and is banned.
+
+⚠️ **Position it against the media, not the card.** The first attempt used
+`top: calc(5/3 * 100% / 2)` to land the seal on the 4:3 media's bottom edge —
+but percentage `top` resolves against the *card's* height, not the media's, so
+the seal drifted with the body copy's length and sat differently on each card.
+It is anchored to the body wrapper's top edge instead, which is the seam by
+definition.
+
 
 ```
 group relative flex flex-col overflow-hidden rounded-xl
@@ -459,7 +570,7 @@ broken colour profile rather than a design decision.
 
 The problem it was solving is real: the photos come from many phones over many
 seasons and do not obviously belong together. The right answer is not to process
-them. A consistent aspect ratio, the cream ground and one dark anchor already do
+them. A consistent aspect ratio, the newsprint ground and one dark anchor already do
 the unifying work, and every club site worth studying — Vermont Green, Ballard
 FC, Oakland Roots — runs full-colour photography. `treatment: 'duotone'` remains
 selectable per block for a deliberate one-off; it is not the house style and
@@ -559,8 +670,13 @@ today (~450px below).
 - Gutter is **`px-4 sm:px-6 lg:px-8` everywhere**, including the utility pages
   and the legal pages. `px-6` at 320px is banned.
 - **One page, one left edge.** A decorative image at `max-w-7xl` beside body
-  copy at `max-w-5xl` is a misalignment, not a break. Either match the content
-  column or go genuinely full-bleed.
+  copy at `max-w-5xl` is a misalignment, not a break.
+
+⚠️ **The width token is an INNER wrapper; the outer container is always
+`max-w-7xl`.** `section_content` used to apply it to the section's own centring
+container, so left-aligned body copy started at **x=240** while every hero,
+`columns` and `band` on the same page started at **x=112**. Fixed 2026-08-23 —
+the full account is § 6.0, which is where this rule lives.
 
 ### 5.3 Internal rhythm — relational, not uniform
 
@@ -652,10 +768,23 @@ edge running down the whole document. `wide` therefore means "no measure", not
 '67-33': 'grid gap-8 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] md:gap-10 lg:gap-14',
 '3col':  'grid gap-8 sm:grid-cols-2 lg:grid-cols-3 lg:gap-10'
 ```
-Bare `1fr` tracks are banned — always `minmax(0,1fr)`. Two-column sections get
-`lg:items-center` so a tall photo does not leave 158px of dead air beside short
-text; expose it as an `align` setting (`start`/`center`, default `center` for
-two-column).
+Bare `1fr` tracks are banned — always `minmax(0,1fr)`; a bare track will not let
+its image shrink below intrinsic width and blows out the mobile layout.
+
+**Columns default to grid STRETCH, not `lg:items-center` (amended 2026-08-23).**
+`align` is still a setting (`start` / `center`), but the default flipped, and the
+reason is worth keeping: `lg:items-center` vertically centres columns of unequal
+height, which is why the Classic and Premier division cards started at different
+Y and their CTAs landed at different Y. Centring is right for *a tall photo
+beside short text*; it is wrong for *two cards that should read as a pair*, and
+the pair is by far the more common case.
+
+⚠️ **Do NOT "fix" alignment by adding `h-full` to the column.** `h-full` on an
+already-stretched grid item overrides the `align: 'center'` opt-in, so the
+setting silently stops working. What aligns the CTAs is the card's own `grow`
+inside a stretched grid item — `COL_RHYTHM` carries
+`[&>[data-btype=card]:first-child]:grow` and nothing else. Measured aligned to
+1px.
 
 ### 6.2 Grid monotony
 
@@ -687,6 +816,52 @@ the grid **in the same `<section>`**:
 `slot: 'head'` blocks render in a `max-w-3xl` stack above the grid with
 `mb-10 sm:mb-14`. Blocks with no `slot` behave exactly as today, so nothing
 existing changes until an author moves a block. **One section = one idea.**
+
+### 6.5 Layout variants — the escape from "one shape per section type"
+
+Two settings exist so a page can change *composition* without changing its
+vocabulary. Both are opt-in; the stored default is the original shape.
+
+**`hero.layout: 'split'`** — copy on the section ground at left, photography
+bleeding off the right edge at `lg:w-[42%]`. Below `lg` it stacks. This is the
+home page's hero and it exists because **an overlay hero puts the headline on
+top of a photograph, where it needs a scrim to be legible at all**; a split hero
+puts the headline on a real surface and lets the photograph be a photograph. It
+also closes the "every hero wastes the right 55%" finding — the old shape was a
+`max-w-2xl` text column inside `max-w-7xl` with nothing beside it.
+
+⚠️ **A split hero's headline lives in a ~42%-narrower box, and the D1 ramp must
+be sized for it.** At 128px, `overflow-wrap: anywhere` (mandatory for gate 51)
+broke "EVERYONE" mid-word as "EVERYO / NE". D1 tops out at `lg:text-8xl` (96px)
+for that reason. Do not restore the larger step and do not remove the wrap.
+
+**`content.layout: 'side-head'`** — the heading sits in a left column with the
+body copy beside it, rather than stacked above it. It is the third composition
+family on a page that would otherwise alternate two, and exists to satisfy the
+section-layout-repetition rule (§ 6.2): a page with 8 sections uses at least 4
+different layout families.
+
+### 6.6 `block_facts` — the scoreboard
+
+A 4-up `<dl>` on the ink ground: season, team count, player count, next PLOP.
+Display numerals at 900, `font-mono` labels, `tabular-nums`, hairline rules
+between columns, and an add-to-calendar link inside the PLOP column. It is a
+dynamic block (§ site_renderer `_dyn_facts`) and it is **the only thing on the
+home page that proves a league is actually running** — the rest of the page is
+claims, this is evidence.
+
+Three rules that make it evidence rather than decoration:
+
+1. **A column renders only when its value is real.** No zeroes, no em-dash
+   placeholders, no "coming soon". A scoreboard with an empty slot is worse than
+   a three-column scoreboard.
+2. **Captions are derived or absent.** Nothing is written to fill the slot under
+   a number. Inventing a caption is the same offence as inventing the number.
+3. **A failing resolver must set `g.public_render_degraded`.** `RenderContext.
+   _prefetch` catches resolver exceptions and falls back, but unlike
+   `_dynamic_page_cache` it does not set that flag on its own — so without it a
+   degraded facts band gets baked into the 300s render cache and the page serves
+   *empty* instead of *stale* for five minutes.
 
 ---
 
@@ -864,6 +1039,15 @@ buttons are `h-11 w-11 inline-flex items-center justify-center rounded-full`.
 
 Plus one **decorative exception**: the footer marquee (`animate-marquee-x`).
 
+**NO SCROLL-REVEAL. (added 2026-08-23 — removed, not fixed.)** A `.rise`
+IntersectionObserver fade-up shipped and was pulled. It was broken in a way worth
+recording — only the *first* observed element ever fired, because a fast scroll
+outruns the observer and everything below the fold is already intersecting by the
+time it registers — but the reason it is gone is that it should not have been
+there. **An identical fade-up on every element is a named AI tell.** Fixing the
+observer would have delivered the tell working correctly. Content is present at
+paint.
+
 **Rules**
 
 - Easing is Tailwind `ease-out` everywhere. **No spring, no overshoot, no bounce.**
@@ -892,11 +1076,11 @@ Plus one **decorative exception**: the footer marquee (`animate-marquee-x`).
 
 ## 9 · Nav and footer
 
-### 9.1 Nav — **N1b (canonical SaaS three-section) + a static status strip**
+### 9.1 Nav — **N1b (canonical SaaS three-section) + an inline season chip**
 
 *Previous nav: N1a "AI nav" (wordmark-left · six inline links right-grouped ·
 filled CTA hard-right · sticky · white · border-bottom) — the named fingerprint.
-This build: **N1b + status strip**, because the site has six real destinations, a
+This build: **N1b + season chip**, because the site has six real destinations, a
 persistent CTA, and one live fact (registration open / waitlist open / closed)
 that is currently buried at 12px inside the hero. N7 is too loud for an audience
 whose blocker is intimidation; N12's retracting banner adds a moving part to a
@@ -904,15 +1088,25 @@ sticky stack that is already mis-measured, so the strip is fixed and scrolls awa
 
 **Structure, top to bottom:**
 
-1. **Status strip** — *in normal flow, NOT sticky, scrolls away.*
-   `bg-ecs-green-ink text-white` · `min-h-8 py-1.5` · **S** ·
-   content = `{{ cta.mode }}` phrasing + the reassurance the chrome has never
-   carried: `2026 Fall · Waitlist open · No experience needed.` with one inline
-   link (underlined white) to `/register`. One line, `truncate` at 320px into
-   just the state.
+1. **Season chip** — *inside the bar, not a strip above it.* `font-mono
+   text-[0.68rem] uppercase tracking-[0.14em]`, separated from the wordmark by a
+   `border-l` hairline, carrying the live season and CTA state
+   (`2026 Fall · Waitlist open`). `hidden md:flex` — below `md` the bar has no
+   room and the state is the hero's job anyway.
+
+   ⚠️ **It is nested inside grid column 1, alongside the wordmark — not added as
+   a fourth grid child.** The bar's `grid-template-columns` is explicit and
+   three-wide; a fourth child wraps to a second row and doubles the bar's
+   height. This is the whole reason the chip lives in a flex row with the
+   wordmark rather than standing on its own.
+
+   *(This replaces the full-width `bg-ecs-green-ink` status strip. The strip was
+   one more flat green rectangle on a site that already had four per page, and
+   it spent 32px of vertical chrome on every page to say what the hero says
+   louder.)*
 2. **Bar** — `sticky top-0 z-40 bg-paper/95 dark:bg-paper-dark/95 backdrop-blur-sm
    border-b-2 border-ecs-green-ink` · `h-16 sm:h-20`.
-   - **Left:** logo mark `h-10 w-10` + wordmark at **W** in Bricolage, visible
+   - **Left:** logo mark `h-10 w-10` + wordmark at **W** in Big Shoulders, visible
      from **320px** (`alt=""` on the mark, `aria-label="ECS Pub League — home"`
      on the anchor).
    - **Centre:** the link cluster at **N**, `gap-1`, each pill
@@ -959,7 +1153,7 @@ fingerprint and this page is not a hub.*
    `ECS PUB LEAGUE · NO EXPERIENCE NEEDED · EVERYONE PLAYS · SEATTLE ·`
    at **E**. Duration 32s. Keep the `aria-hidden` duplicate track + the
    `sr-only` real copy exactly as they are (C10). Add the pause control (§ 8).
-2. **Statement** — one Bricolage display sentence at **D2**, ≤ 38ch, answering
+2. **Statement** — one Big Shoulders display sentence at **D2**, ≤ 38ch, answering
    the audience's real question: *"No experience needed. Seriously."* — followed
    by **one** primary CTA. Nothing else.
 3. **Colophon** — a single `flex flex-wrap gap-x-5 gap-y-2` row at **S**:
@@ -1002,6 +1196,32 @@ enough. **State the welcome before the ask.**
   no scope signal is a bounce.
 - Typographic punctuation (§ 2.7). No em-dash/hyphen mixing: title separator is
   ` — ` everywhere (`Terms of Service — ECS Pub League`).
+
+### 10.1 The AI-copy pass (added 2026-08-23)
+
+Every string in the builders was swept for generated-prose patterns. The bans
+that matter here, beyond the obvious vocabulary list (*seamless, elevate,
+empower, unlock, transform, journey, vibrant, robust, curated, thriving, foster,
+delve, leverage, ecosystem, immersive, unparalleled*):
+
+- **The `Whether you're a ___ or a ___` construction.** Also `Join a community
+  of ___`, `Take your game to the next level`, `Where ___ meets ___`, and
+  `It's not just soccer, it's ___`.
+- **Any headline with no proper noun and no number in it.** This is the single
+  most reliable test on the page; a headline that could sit on any league's site
+  is filler regardless of how it is phrased.
+- **The triple-parallel closer** (*"Every age. Every level. Every game."*) more
+  than once per site. It is a good device and it stops being one immediately.
+- ⚠️ **"Premier" is a division name here.** It stays as a proper noun and is
+  banned only as a marketing adjective.
+
+⚠️ **A factual claim in marketing copy must be checked against the source
+pages, not against what sounds right.** The draft carried *"No tryouts."* — a
+clean, confident, on-voice line, and false: the About page says *"We hold
+'tryouts' in both divisions only to make sure we can build evenly balanced
+teams."* It ships as **"Nobody gets cut."**, which is the true version of the
+reassurance the line was reaching for. An invented fact in the hero is worse
+than a dull hero.
 
 ---
 
@@ -1053,7 +1273,7 @@ is painted. Both halves, every time.
 
 | Page | Macrostructure | The one structural change that gets it there |
 |---|---|---|
-| **Home** | **03 · Marquee Hero** | **SHIPPED 2026-08-23 (8 sections, 25 blocks).** Orphan heading sections fold into what they label via `slot: 'head'` (§ 6.4). **Both** icon-tile three-ups are gone: the value propositions are a card-less `steps` list (style `plain`) and the join sequence is a real numbered `steps` ladder. The divisions are `lead` cards owning their own live CTA. A `facts` band on the ink ground carries the season, the team and player counts and the next PLOP — the only thing on the page that proves a league is running. One full-colour photograph; everything else duotoned. Brand green spent once, on the closing band. |
+| **Home** | **03 · Marquee Hero** | **SHIPPED 2026-08-23, rebuilt to the approved mockup.** A **split hero** — copy on the ground at left, photography bleeding off the right edge at `lg:w-[42%]` — replaces the full-bleed overlay, so the headline sits on a real surface instead of on an image. Orphan heading sections fold into what they label via `slot: 'head'` (§ 6.4). **Both** icon-tile three-ups are gone: the value propositions are a card-less `steps` list (style `plain`) and the join sequence is a real numbered `steps` ladder, which is the section that spends the page's brand green. The divisions are `lead` cards owning their own live CTA, each stamped with a **seal** straddling the photo seam — green "Start here" for Classic, blue "Step up" for Premier — so the badge names the division's job rather than decorating it. A **4-up `facts` scoreboard** on the ink ground carries the season, the team and player counts and the next PLOP with an add-to-calendar link; it is the only thing on the page that proves a league is running. **All photography full-colour.** The closing band is ink. |
 | **About** | **15 · Split Studio** | Keep the alternating diptychs (they already are the shape) and give them `lg:items-center`. Replace the headingless two-photo `columns` section with **one `block_gallery`** with real captions, and promote the four-clause *"come out anyway"* run to a full-width **`block_quote` at D2** in its own section — the page's single Marquee moment and its emotional payload. |
 | **Guide** | **02 · Long Document** | One editorial grid: a **server-rendered TOC side-rail** in the currently-dead right gutter at `lg:` (the toolbar stops being client-injected above the hero and stops shifting the document 48px on every load), body at BL with em-rhythm, `size='sm'` hero carrying chapter count + reading time + "jump to the lexicon". |
 | **Guests** | **06 · Conversational FAQ** | The page already *is* four questions (TL;DR / Why we're cautious / But exceptions? / So what should I do?) trapped inside one richtext `<div>`. Split it into four Q-headed `content` sections at D3/D4 and **add a closing band with a real action** — today `<main>` contains zero focusable elements on a page whose message is "just reach out." |
@@ -1100,8 +1320,11 @@ Two to add, from the 2026 field rather than from this site:
     soft UI" is the look the field has moved hard away from, and a single radius
     applied to everything is a named AI-slop signature. A card must earn its
     container (§ 4.4).
-46. **A flat colour wash over a photograph** in place of a real duotone,
-    gradient scrim or vignette (§ 4.5).
+46. **A flat colour wash over a photograph.** Where a photo needs to carry
+    text, the answer is a black-based directional gradient scrim, never a hue
+    laid over the image (§ 4.5). ⚠️ Note this DO-NOT survived the duotone's
+    reversal — it was always about the *wash*, and the duotone turned out to be
+    a more elaborate way of committing the same offence.
 
 **Typography**
 1. Inter as the display face. Any `font-extrabold` on an Inter element.
@@ -1185,6 +1408,23 @@ tries and nobody forgets.
 - Tagging the news archive so the category/tag layer stops rendering nothing.
 - Setting focal points (every image is at the 50%/50% default).
 - Picking `prominence: 'lead'` on the two or three argument headings per page.
+- **Standings and results.** Deliberately deferred, not overlooked. `Standings`
+  is a real materialised table with `idx_standings_team_id_season_id`, so a
+  results band is a plain indexed read whenever it is wanted. It needs
+  `joinedload(Standings.team)`, and any match list **must** exclude special-week
+  self-vs-self placeholder rows (`home_team_id != away_team_id`,
+  `is_special_week.isnot(True)`) or the page renders "Ball Lobbers 0–0 Ball
+  Lobbers".
+- **Crests as a visual index** (needs crest assets), **form guide as graphics**
+  (needs the standings band first), and a **counter-scrolling twin marquee** (a
+  second row must carry real fixtures or results, or it is filler).
+
+⚠️ **`_static_image_size()` now closes the CLS half of this.** `ctx.image()`
+resolves intrinsic `width`/`height` for `/static/` images through PIL +
+`safe_join`, cached at 512 entries, so the 8 marketing photos ship with
+dimensions even though they are filesystem images rather than `MediaAsset` rows.
+The `srcset` branch above is still inert — that one genuinely needs the media
+work.
 
 ---
 

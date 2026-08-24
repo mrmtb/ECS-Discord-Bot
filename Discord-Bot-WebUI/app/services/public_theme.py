@@ -53,9 +53,10 @@ FONT_PAIRS = {
     # grotesk that gives the marketing site a voice Inter (a UI face) cannot;
     # Inter keeps the body copy, so the portal and the public site still read
     # as one product. Both are self-hosted variable fonts.
-    'display':   {'label': 'Display — Bricolage headings, Inter body',
-                  'heading': "'Bricolage Grotesque', 'Inter', system-ui, -apple-system, sans-serif",
-                  'body': "'Inter', system-ui, -apple-system, sans-serif"},
+    'display':   {'label': 'Display — Big Shoulders headings, Inter body',
+                  'heading': "'Big Shoulders Display', 'Haettenschweiler', 'Arial Narrow', system-ui, sans-serif",
+                  'body': "'Inter', system-ui, -apple-system, sans-serif",
+                  'mono': "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace"},
     'modern':    {'label': 'Modern — clean sans (Inter)',
                   'heading': "'Inter', system-ui, -apple-system, sans-serif",
                   'body': "'Inter', system-ui, -apple-system, sans-serif"},
@@ -164,16 +165,23 @@ PAPER_DARK_BASE = (6, 10, 8)
 # tint band and white cards, the whole page was three near-whites of the same
 # hue and nothing had any weight.
 #
-# Every club site worth studying grounds on a warm cream instead — Vermont Green
-# FC #fef8eb, Ballard FC #f5ead4 — which lets the green go back to being the
-# brand instead of the background. This is that cream, and `paper` is now it,
-# nudged a trace toward the primary so an admin re-skin still tints the ground.
-PAPER_WARM_BASE = (254, 249, 238)
+# The replacement is a COOL grey-green newsprint, not a warm cream. Warm cream
+# paired with a display face and an earth accent is the most-recognised
+# generated-design palette going, and against this club's green it also reads
+# yellow. A cool ground lets the green stay green. `paper` is that ground,
+# nudged a trace toward the primary so an admin re-skin still tints it.
+PAPER_WARM_BASE = (232, 236, 230)
 
-# How far `paper` is pulled from the cream toward the primary. Deliberately tiny.
-# The trace has to survive an Appearance re-skin (a red-branded site should get a
-# faintly warm-red paper, not this exact cream) without the green reasserting
-# itself as the page colour. At 0.015 the default lands near #fbf8ec.
+# How far `paper` is pulled from the newsprint base toward the primary.
+# Deliberately tiny. The trace has to survive an Appearance re-skin (a
+# red-branded site should get a faintly warm-red paper, not this exact grey)
+# without the brand colour reasserting itself as the page colour. At 0.015 the
+# default lands on #e5ebe4.
+#
+# NOTE the PAPER_WARM_* names are a fossil of the warm-cream pass that this
+# replaced; the values are cool. Renaming them would touch design.md, the tests
+# and two call sites for no behavioural gain, so the names stay and this comment
+# is the correction.
 PAPER_WARM_MIX = 0.015
 
 # The TINT FLOOR: the darkest light-mode surface the brand ink is allowed to be
@@ -184,9 +192,14 @@ PAPER_WARM_MIX = 0.015
 # theme 'light'), /[0.08] (inactive chip) and /10 (icon + date plates, the ghost
 # button's hover ground). The worst real case is the deepest of those nested
 # inside a 'light' section: 0.10 over 0.06 == 0.154 of the primary over paper.
-# 0.15 is that case, and it is therefore the ground `_ink()` must clear — not
-# white, which nothing on the public site actually is.
-INK_TINT_FLOOR = 0.15
+# MEASURED 2026-08-23 and raised to 0.20. The 0.15 figure modelled /10 over a
+# 'light' section. The contact page goes one layer deeper — an icon plate at /10
+# inside a callout at /[0.05] inside a 'light' section at /[0.06] composites to
+# ~0.196 of the primary — and the brand ink landed at 4.19:1 on those social
+# buttons, below the 4.5 floor for 16px text. The constant is the DEEPEST real
+# nesting, not the common one; under-modelling it produces exactly one class of
+# almost-passing contrast bug.
+INK_TINT_FLOOR = 0.20
 
 
 def _hex_to_rgb(hex_str):
@@ -330,6 +343,13 @@ def theme_vars(primary_hex=None, accent_hex=None, font_pair=None):
     # The darkest LIGHT-mode ground the brand ink may be text on: the primary at
     # INK_TINT_FLOOR over paper (_mix_toward nudges `paper` that fraction toward
     # `primary`, which is exactly what `bg-ecs-green/15` composites to).
+    # The GREEN SECTION GROUND. Plain `primary` is too light to carry white body
+    # copy — #40b050 gives 4.35:1, which fails AA — so a section painted in it
+    # either fails contrast or has to shout in large type only. This darkens the
+    # primary until white clears 4.5:1 against it, exactly the way the brand ink
+    # is derived, so an admin re-skin keeps working instead of freezing a hex.
+    pitch_ground = _ink(primary, '#ffffff', 4.6)
+
     ink_ground = _mix_toward(primary, paper, INK_TINT_FLOOR)
     ink_ground_hex = _hex(ink_ground)
 
@@ -346,10 +366,12 @@ def theme_vars(primary_hex=None, accent_hex=None, font_pair=None):
         '--color-blue-dark-rgb': _triplet(_scale(accent, 0.82)),
         '--color-blue-light-rgb': _triplet(_scale(accent, 1.45)),
         '--color-blue-on-dark-rgb': _triplet(accent_on_dark),
+        '--color-pitch-ground-rgb': _triplet(pitch_ground),
         '--color-paper-rgb': _triplet(paper),
         '--color-paper-dark-rgb': _triplet(paper_dark),
         '--font-heading': pair['heading'],
         '--font-body': pair['body'],
+        '--font-mono': pair.get('mono', "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace"),
     }
     return {
         'css': css,

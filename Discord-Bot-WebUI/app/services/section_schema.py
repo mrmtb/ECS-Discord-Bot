@@ -62,6 +62,13 @@ TREATMENTS = ('full-colour', 'duotone')
 # right. See block_steps in macros.html for why this block exists at all.
 STEP_STYLES = ('numbered', 'plain')
 COLUMN_LAYOUTS = ('50-50', '33-67', '67-33', '3col')
+# A content section is either a plain stack (head above body) or 'side-head':
+# title held in a narrow sticky left column, content in the wide right one. The
+# second exists so the page is not eight full-width horizontal slabs in a row.
+CONTENT_LAYOUTS = ('stack', 'side-head')
+# A hero either lays type OVER its photograph, or splits: copy on a solid ground
+# on the left, photograph bleeding off the right edge of the viewport.
+HERO_LAYOUTS = ('overlay', 'split')
 GALLERY_LAYOUTS = ('grid-2', 'grid-3', 'grid-4', 'carousel')
 BUTTON_STYLES = ('primary', 'secondary', 'outline')
 CTA_KINDS = ('waitlist_or_register', 'division_classic', 'division_premier',
@@ -254,6 +261,15 @@ def _v_card(b, notes, w, is_admin):
     kind = _enum(b.get('cta_kind'), CTA_KINDS, None)
     if kind:
         out['cta_kind'] = kind
+    # A lead card may carry a stamped seal on its photo seam. It names the thing
+    # and what it is for, so it is information, not ornament — see block_card.
+    badge = _text(b.get('badge'), 18)
+    if badge:
+        out['badge'] = badge
+        sub = _text(b.get('badge_sub'), 24)
+        if sub:
+            out['badge_sub'] = sub
+        out['badge_tone'] = _enum(b.get('badge_tone'), ('brand', 'action'), 'brand')
     img = _image_ref(b.get('image'), notes, w)
     if img:
         out['image'] = img
@@ -479,6 +495,7 @@ def _section_settings(stype, raw, notes, where):
         out['align'] = _enum(s.get('align'), ALIGNS, 'center')
         out['overlay'] = _enum(s.get('overlay'), OVERLAYS, 'medium')
         out['treatment'] = _enum(s.get('treatment'), TREATMENTS, 'full-colour')
+        out['layout'] = _enum(s.get('layout'), HERO_LAYOUTS, 'overlay')
         img = _image_ref(s.get('image'), notes, where)
         if img:
             out['image'] = img
@@ -486,6 +503,7 @@ def _section_settings(stype, raw, notes, where):
         if bg:
             out['bg_color'] = bg
     elif stype == 'content':
+        out['layout'] = _enum(s.get('layout'), CONTENT_LAYOUTS, 'stack')
         out['width'] = _enum(s.get('width'), WIDTHS, 'normal')
         out['align'] = _enum(s.get('align'), ALIGNS, 'left')
     elif stype == 'columns':

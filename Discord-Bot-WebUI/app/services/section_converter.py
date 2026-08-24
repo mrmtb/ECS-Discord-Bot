@@ -67,21 +67,29 @@ _PLOP = 'Pub League Offseason Practice'
 # Defaults mirrored from the pre-conversion home.html template so a site that
 # never customized a block converts to exactly what it was rendering.
 _D = {
-    'hero_title': 'Beginner-friendly adult soccer in Seattle.',
-    'hero_body': '<p>Soccer for all. No experience needed, no pressure — just a '
-                 'welcoming community, real games, and a good time. Everyone plays.</p>',
+    # The display face is uppercase and condensed, so the hero headline has to
+    # be SHORT — two or three words. "Everyone plays" is the league's own
+    # promise and the strongest two words it has. The explanatory sentence moves
+    # to the lede, where it belongs.
+    'hero_title': 'Everyone plays.',
+    'hero_body': '<p>Beginner-friendly adult soccer in Seattle. Nobody gets cut, '
+                 'no experience is needed, and everyone on the roster gets '
+                 'minutes.</p>',
     'intro_title': 'Soccer for all',
-    'intro_body': '<p>Whether you last played in high school, kicked a ball once, '
-                  'or never at all — you belong here. We built a league where '
-                  'showing up is the only requirement.</p>',
+    # Two large sentences, not a paragraph of marketing. Both are the league's
+    # own argument, tightened.
+    'intro_body': '<p>Seattle has a deep, talented soccer scene, and almost '
+                  'nowhere for a beginner to start.</p>'
+                  '<p>So we built the league where your opponents high-five you '
+                  'for scoring, especially if it’s your first goal ever.</p>',
     'classic_title': 'Classic',
-    'classic_body': '<p>Beginner-friendly and focused on fun and skill development '
-                    'over competition. Everyone gets equal playing time, and every '
+    'classic_body': '<p>For players with little or no experience. Fun and skill '
+                    'development over competition, equal playing time, and every '
                     'team makes the playoffs. New players start here.</p>',
     'premier_title': 'Premier',
-    'premier_body': '<p>A slightly higher level of friendly competition — still '
-                    'low/no contact and laid-back, with the same emphasis on '
-                    'development, team play, and fun. Everyone plays.</p>',
+    'premier_body': '<p>A slightly higher level of friendly competition: still '
+                    'low contact and laid-back, with the same emphasis on '
+                    'development, team play and fun. Everyone plays.</p>',
     'justforfun_body': '<p>Both divisions play 8v8 on a half-field with unlimited subs. '
                        'If you’ve played in the other Seattle leagues (RATS, GSSL, Arena '
                        'Sports) or have college or club experience, this probably isn’t '
@@ -111,14 +119,14 @@ _VALUE_CARDS = [
 # renumber after a reorder. The icons went with the card grid this replaced.
 _JOIN_STEPS = [
     ('Come to a PLOP',
-     f'Turn up to one {_PLOP} — a drop-in kickabout — to meet the community and '
-     'get a feel for the game. No commitment either way.'),
+     f'A {_PLOP}: a drop-in kickabout. Meet people, get a feel for the game, '
+     'and commit to nothing.'),
     ('Get approved',
      'New players are approved before they register, so every team stays '
      'balanced and every division stays welcoming.'),
     ('Register, or join the waitlist',
-     'When registration is open, sign up. When a season is full, hop on the '
-     'waitlist and we’ll reach out as soon as a place opens.'),
+     'When registration is open, sign up. When a season is full, the waitlist '
+     'is the way in — and it moves.'),
 ]
 
 
@@ -286,9 +294,9 @@ def build_home_doc(session):
             _b('cta_live', kind='waitlist_or_register', style='primary'),
             _b('button', label='See the schedule',
                link={'kind': 'builtin', 'value': 'calendar'}, style='outline'),
-        ], size='lg', align='left', overlay=overlay,
+        ], size='lg', align='left', overlay=overlay, layout='split',
            image={'url': hero_img, 'focal': focal,
-                  'alt': 'ECS Pub League players on the pitch in Seattle'}),
+                  'alt': 'ECS Pub League players celebrating on the pitch in Seattle'}),
 
         # 2 · WHO WE ARE — the claim, then the three value propositions as a
         #     rule-separated list. The heading rides in the head slot rather
@@ -320,14 +328,17 @@ def build_home_doc(session):
         _s('columns', [
             _head(_b('heading', level=2, prominence='lead',
                      html='Two divisions, one community')),
-            _head(_b('richtext', html='<p>Pick the pace that fits you — and move '
-                                      'between them season to season.</p>')),
+            _head(_b('richtext', html='<p>Start where you’re comfortable. Players '
+                                      'move between them season to season, and '
+                                      'plenty do.</p>')),
             _b('card', col=0, prominence='lead', cta_kind='division_classic',
+               badge='Classic', badge_sub='Start here', badge_tone='brand',
                image={'url': classic_img,
                       'alt': 'ECS Pub League Classic division team'},
                title=_block('home_division_classic', 'title', _D['classic_title']),
                html=_block('home_division_classic', 'body_html', _D['classic_body'])),
             _b('card', col=1, prominence='lead', cta_kind='division_premier',
+               badge='Premier', badge_sub='Step up', badge_tone='action',
                image={'url': premier_img,
                       'alt': 'ECS Pub League Premier division team'},
                title=_block('home_division_premier', 'title', _D['premier_title']),
@@ -351,14 +362,17 @@ def build_home_doc(session):
         #     rules the rows apart. The FAQ link is its OWN full-width row
         #     rather than parked in a grid cell (§ 6.3).
         _s('content', [
-            _b('heading', level=2, prominence='lead', html='Three steps and you’re in.'),
-            _b('richtext', html='<p>New players are always welcome. Here’s the '
-                                'path in.</p>'),
+            _b('heading', level=2, prominence='lead', html='Turn up once.'),
+            _b('richtext', html='<p>New players are always welcome. This is the '
+                                'whole path in.</p>'),
             _b('steps', style='numbered',
                items=[{'title': t, 'html': f'<p>{body}</p>'} for t, body in _JOIN_STEPS]),
             _b('button', label='Read the full FAQ',
                link={'kind': 'builtin', 'value': 'faqs'}, style='outline'),
-        ], width='normal', align='left', padding='lg'),
+        # On the green ground, per the approved layout. The join sequence is the
+        # page's one instructional beat and it earns the colour block; the paper
+        # sections either side give it somewhere to land.
+        ], theme='brand', width='normal', align='left', padding='lg'),
 
         # 7 · LATEST NEWS (dynamic)
         _s('content', [
@@ -369,10 +383,17 @@ def build_home_doc(session):
         # 8 · CLOSING BAND — the top of the CTA escalation (§ 10): the label
         #     rises, the destination does not change.
         _s('band', [
-            _b('heading', level=2, html='Come play with us.'),
-            _b('richtext', html='<p>Come as you are. We’ll take care of the rest.</p>'),
+            _b('heading', level=2, html='Come as you are.'),
+            _b('richtext', html='<p>Get on the list and we’ll reach out as soon as a '
+                                'place opens. Or turn up to a PLOP this Sunday and see '
+                                'for yourself first.</p>'),
             _b('cta_live', kind='waitlist_or_register', style='primary', align='center'),
-        ], theme='brand', align='center', padding='lg'),
+        # INK, not green. Green is spent once per page and the join sequence
+        # earns it; the closing argument lands harder on the dark ground, with
+        # the green marquee immediately beneath it in the shell. This is what
+        # the approved layout does, and what test_home_spends_brand_green_once
+        # holds the page to.
+        ], theme='dark', align='center', padding='lg'),
     ]
     return {'v': 1, 'sections': sections}
 
