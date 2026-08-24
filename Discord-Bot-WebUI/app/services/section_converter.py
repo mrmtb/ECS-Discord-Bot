@@ -334,13 +334,9 @@ def build_home_doc(session):
                html=_block('home_division_premier', 'body_html', _D['premier_body'])),
         ], theme='light', layout='50-50', padding='lg'),
 
-        # 5 · JUST FOR FUN — the reassurance diptych, and the page's ONE
-        #     full-colour photograph. Every other image on the site is duotoned
-        #     into the brand two tones; this one is left alone. That is the
-        #     point of the break — it only reads as a break while everything
-        #     around it is treated, so a page gets exactly one.
+        # 5 · JUST FOR FUN — the reassurance diptych.
         _s('columns', [
-            _b('image', col=0, treatment='full-colour',
+            _b('image', col=0,
                image={'url': jff_img,
                       'alt': 'ECS Pub League players celebrating after a match'},
                size='full', aspect='4:3'),

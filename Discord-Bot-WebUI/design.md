@@ -450,7 +450,30 @@ same URL per card is banned.
 
 ### 4.5 Images
 
-**DUOTONE IS THE HOUSE TREATMENT (added 2026-08-23).** The photography comes
+**PHOTOGRAPHY SHIPS UNTREATED. THE DUOTONE WAS TRIED AND REVERTED
+(2026-08-23).** It went live for one deploy and was wrong. On the real page the
+single full-colour photograph read as obviously better than the two duotoned
+ones directly above it — the treatment was making good photography worse, and at
+full strength it flattened team photos into a pale mint wash that looks like a
+broken colour profile rather than a design decision.
+
+The problem it was solving is real: the photos come from many phones over many
+seasons and do not obviously belong together. The right answer is not to process
+them. A consistent aspect ratio, the cream ground and one dark anchor already do
+the unifying work, and every club site worth studying — Vermont Green, Ballard
+FC, Oakland Roots — runs full-colour photography. `treatment: 'duotone'` remains
+selectable per block for a deliberate one-off; it is not the house style and
+nothing in the builders opts into it. `tests/test_public_site_builder.py::
+test_photography_ships_untreated` holds that line.
+
+**The scrim over a photo is still BLACK, never brand green** — that half of the
+change stands, and matters more now that the photography is in full colour. A
+green wash does not read as a scrim; it stains the picture. Measured on the
+rebuilt hero: white text sits at 6.65:1 worst case over the photograph.
+
+The mechanism, kept for the record and for the opt-in:
+
+**~~DUOTONE IS THE HOUSE TREATMENT~~ (superseded).** The photography comes
 from many phones over many seasons in every kind of Seattle light; shown raw it
 reads as a shoebox rather than as one club. Every photo is flattened to
 greyscale and mapped between the same two brand tones, so a blurry 2019 team
@@ -606,6 +629,20 @@ covers it. Every long-form `h3` and `h4` gets a server-rendered slug `id`.
 ---
 
 ## 6 · Layout vocabulary
+
+### 6.0 One left edge (added 2026-08-23)
+
+**Every section type shares one outer container: `mx-auto max-w-7xl px-4 sm:px-6
+lg:px-8`.** Hero, content, columns and band all start their content at the same
+x. The reading measure (`narrow` / `normal` / `wide`) is an **inner** wrapper and
+never moves a section's left edge.
+
+It was the other way round and it was the most visible flaw on the redesigned
+site: `section_content` centred a narrower container, so a left-aligned content
+section began ~130px right of every hero, columns and band section on the same
+page. Centring the page hid it; left-aligning the page exposed it as a ragged
+edge running down the whole document. `wide` therefore means "no measure", not
+"a wider container".
 
 ### 6.1 Column layouts — the `sm:` step is mandatory (C8)
 

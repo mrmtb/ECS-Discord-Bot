@@ -510,16 +510,40 @@ class TestRebuiltDocuments:
         assert len(cards) == 2
         assert all(c.get('prominence') == 'lead' for c in cards)
 
-    def test_one_full_colour_photograph_per_page(self, monkeypatch):
-        """The duotone only reads as the house treatment while the break is
-        rare. More than one full-colour image and it is just inconsistency."""
+    def test_photography_ships_untreated(self, monkeypatch):
+        """Photography is full-colour, everywhere, by default.
+
+        A duotone house style was tried and reverted: on the live page the one
+        untreated photo was visibly better than the treated ones either side of
+        it. The treatment stays available per block for a deliberate one-off,
+        but nothing the builders emit may opt into it — a page of duotoned
+        photos reads as a broken colour profile, not as an identity.
+        """
         from app.services.section_schema import validate_sections
         for slug in self.SLUGS:
             doc, _ = validate_sections(_built(monkeypatch, slug), is_admin=True)
-            full = [b for b in _all_blocks(doc)
-                    if b['type'] in ('image', 'card')
-                    and b.get('treatment') == 'full-colour']
-            assert len(full) <= 1, f'{slug} has {len(full)} full-colour images'
+            treated = [b for b in _all_blocks(doc)
+                       if b.get('treatment') == 'duotone']
+            treated += [s for s in doc['sections']
+                        if s['settings'].get('treatment') == 'duotone']
+            assert not treated, f'{slug} ships {len(treated)} duotoned images'
+
+    def test_content_sections_do_not_indent(self, monkeypatch):
+        """Every section type must share one left edge.
+
+        `section_content` used to centre a narrower container (`mx-auto
+        max-w-5xl`), which put a left-aligned content section's text ~130px
+        further right than every hero, columns and band section on the same
+        page. Three different left edges within two screens is what reads as
+        "not aligned" even when nothing is technically broken. The measure is an
+        inner wrapper now; the outer container is max-w-7xl everywhere.
+        """
+        import re
+        src = open('app/templates/public/sections/macros.html', encoding='utf-8').read()
+        body = src.split('{% macro section_content')[1].split('{% endmacro %}')[0]
+        outer = re.search(r'<div class="mx-auto ([a-z0-9-]+) px-4', body)
+        assert outer and outer.group(1) == 'max-w-7xl', \
+            f'section_content outer container is {outer and outer.group(1)!r}, not max-w-7xl'
 
     def test_rebuildable_slugs_all_have_builders(self):
         from app.services.section_converter import REBUILDABLE_SLUGS

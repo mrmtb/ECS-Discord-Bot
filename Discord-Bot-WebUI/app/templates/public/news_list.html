@@ -106,7 +106,7 @@
         <li class="grid {{ 'sm:col-span-2' if _is_lead }}">
           {{ news_card(post,
                        size='lead' if _is_lead else 'standard',
-                       info=(imgs.get(post.featured_image_url) if imgs and post.featured_image_url else none),
+                       info=(media.get(post.featured_image_url) if media and post.featured_image_url else none),
                        eager=(post.slug in _eager_slugs)) }}
         </li>
         {% endfor %}

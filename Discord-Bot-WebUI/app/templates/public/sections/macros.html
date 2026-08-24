@@ -99,7 +99,11 @@
     'xl': 'pt-24 pb-32 sm:pt-28 sm:pb-40'
 } %}
 
-{% set WIDTHS = {'narrow': 'max-w-3xl', 'normal': 'max-w-5xl', 'wide': 'max-w-7xl'} %}
+{# The READING MEASURE, applied to an inner wrapper. The outer container of
+   every section is max-w-7xl, so these never move a section's left edge — they
+   only decide how far its text runs before it wraps. 'wide' therefore means
+   "no measure", not "a wider container". #}
+{% set WIDTHS = {'narrow': 'max-w-3xl', 'normal': 'max-w-5xl', 'wide': 'max-w-none'} %}
 
 {# Relational internal rhythm (design.md § 5.3). A flat space-y-6 puts a 26px
    status badge the same distance from a 72px headline as two buttons sit from
@@ -1230,13 +1234,26 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
 <section class="{{ THEME_SECTION.get(section.theme, '') }} {{ PAD.get(s.padding, PAD['md']) }}"
          {% if _fill %}style="{{ _fill }}"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="content"{% endif %}>
-    <div class="mx-auto {{ WIDTHS.get(s.width, 'max-w-5xl') }} px-4 sm:px-6 lg:px-8 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">
+    {# ONE LEFT EDGE DOWN THE PAGE. The outer container is max-w-7xl for EVERY
+       section type — hero, content, columns, band — and the reading measure is
+       an inner max-width, not a narrower centred container.
+
+       It used to be the other way round: `mx-auto max-w-5xl` on the outer div
+       put a left-aligned content section's text at x=240 on a 1440px screen
+       while every hero, columns and band section started at x=112. Three
+       different left edges within two screens, which is exactly what reads as
+       "not aligned" even when nothing is technically broken. Centring hid it
+       while everything was centred; the redesign left-aligned the page and it
+       became the most visible flaw on the site.
+
+       'wide' is now max-w-none — the outer container already IS the width. #}
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">
         {% if head %}
-        <div class="mx-auto max-w-3xl mb-10 sm:mb-14 {{ RHYTHM }} {{ '[&>*]:mx-auto' if s.align == 'center' }}">
+        <div class="max-w-3xl mb-10 sm:mb-14 {{ RHYTHM }} {{ 'mx-auto [&>*]:mx-auto' if s.align == 'center' }}">
             {{ _render_blocks(head, ctx, section, edit_mode) }}
         </div>
         {% endif %}
-        <div class="{{ RHYTHM }} {{ '[&>*]:mx-auto' if s.align == 'center' }}">
+        <div class="{{ WIDTHS.get(s.width, 'max-w-5xl') }} {{ RHYTHM }} {{ 'mx-auto [&>*]:mx-auto' if s.align == 'center' }}">
             {{ _render_blocks(body, ctx, section, edit_mode) }}
         </div>
     </div>

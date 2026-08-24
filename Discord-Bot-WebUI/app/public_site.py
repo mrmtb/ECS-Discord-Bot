@@ -832,7 +832,14 @@ def news_list():
         return render_template('public/news_list.html', active_page='news', seo=seo,
                                posts=posts, categories=categories, active_category=category,
                                active_tag=tag,
-                               page_num=page_num, total_pages=total_pages, imgs=imgs,
+                               # NOT `imgs`: that name is already taken by the
+                               # context processor's named marketing-image map
+                               # (imgs.logo drives the nav wordmark). Passing a
+                               # different dict under the same name shadowed it
+                               # for this template only, so the header logo
+                               # rendered as src="" on /news and nowhere else.
+                               page_num=page_num, total_pages=total_pages,
+                               media=imgs,
                                copy=copy,
                                edit_url=_edit_url('admin_panel.public_site_news'))
 
