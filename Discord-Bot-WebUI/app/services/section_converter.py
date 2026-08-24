@@ -439,12 +439,59 @@ _GUIDE_CONTENT_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                                    'seeds', 'guide_content.json')
 
 
+_BULLET_P_RE = re.compile(r'<p>(.*?)</p>', re.S)
+
+
+def _bulletise(html):
+    """Turn the guide's run-on asterisk paragraphs into real lists.
+
+    The guide was imported from a Google Doc whose bullets came across as a
+    literal ' * ' separator inside one <p>. 32 paragraphs are affected and the
+    document contains ZERO <ul> elements, so the longest page on the site
+    renders its equipment list, its Discord instructions and its rules as
+    single unbroken blocks of prose with asterisks in them. It reads like a
+    broken import because it is one.
+
+    Done at LOAD time rather than by hand-editing the seed so that a future
+    re-import of the same doc gets the same treatment instead of silently
+    regressing.
+
+    Conservative on purpose — a paragraph converts only if it opens with a
+    bullet marker or carries at least two of them, so an asterisk used in
+    ordinary prose is left alone.
+    """
+    def repl(m):
+        inner = m.group(1).strip()
+        marks = inner.count(' * ')
+        if not (inner.startswith('* ') or marks >= 2):
+            return m.group(0)
+        lead = ''
+        if not inner.startswith('* '):
+            head, _, rest = inner.partition(' * ')
+            lead, inner = f'<p>{head.strip()}</p>', '* ' + rest
+        items = [i.strip() for i in inner[2:].split(' * ')]
+        items = [i for i in items if i]
+        if len(items) < 2:
+            # A one-item "list" is a paragraph that kept its bullet marker. Drop
+            # the marker rather than leaving a stray asterisk in the copy, and
+            # do not wrap a single <li> in a <ul> — a one-item list is a tell.
+            return f'{lead}<p>{items[0]}</p>' if items else m.group(0)
+        lis = ''.join(f'<li>{i}</li>' for i in items)
+        return f'{lead}<ul>{lis}</ul>'
+    return _BULLET_P_RE.sub(repl, html or '')
+
+
 def _load_guide_chapters():
     try:
         import json
         with open(_GUIDE_CONTENT_FILE, encoding='utf-8') as f:
             data = json.load(f)
-        return data if isinstance(data, list) else []
+        if not isinstance(data, list):
+            return []
+        for c in data:
+            if isinstance(c, dict) and c.get('html'):
+                c['html'] = _bulletise(c['html'])
+        return data
     except Exception:
         return []
 
@@ -695,10 +742,16 @@ def build_guide_doc():
                   'Jump to the lexicon</a>.')
     scope += '</p>'
 
-    toc = '<nav aria-label="Guide contents"><p><strong>What’s inside</strong></p><ul>'
+    # ⚠️ NO <nav> WRAPPER. The richtext sanitizer strips it — verified — so the
+    # landmark never reached the page, and the JS that keyed on
+    # nav[aria-label="Guide contents"] to hide this card silently matched
+    # nothing for as long as it existed. The guide has been shipping two
+    # contents lists. The card is now gated by the section's own hide_at='xl'
+    # and the heading below is a real <h2>, which the sanitizer does keep.
+    toc = '<h2>What’s inside</h2><ul>'
     for c in chapters:
         toc += f'<li><a href="#{c.get("slug", "")}">{c.get("title", "")}</a></li>'
-    toc += '</ul></nav>'
+    toc += '</ul>'
 
     def img(fn, alt):
         return {'url': f'/static/img/publeague/{fn}', 'alt': alt}
@@ -727,12 +780,15 @@ def build_guide_doc():
                 f'<p><a href="{doc_url}" target="_blank" rel="noopener">Read or download '
                 'the original on Google Docs &rarr;</a></p>')),
         ], width='narrow', align='left', padding='md'),
-        # 'What's inside' contents, set apart on the quiet inset surface. The
-        # <nav aria-label="Guide contents"> landmark is load-bearing: the
-        # reader chrome hides this inline copy by that exact selector, so if
-        # the sanitizer ever drops <nav> the page ships TWO tables of contents.
+        # 'What's inside' contents, set apart on the quiet inset surface.
+        # hide_at='xl' — above 1280px the fixed gutter rail
+        # (public/_guide_chrome.html) is the contents and this card would be the
+        # same list twice on one screen. Below it there is no gutter, so this IS
+        # the contents. Gating it in the section rather than in JS is what keeps
+        # the page from reflowing after paint.
         _s('content', [_b('richtext', html=toc)],
-           theme='light', width='narrow', align='left', padding='md'),
+           theme='light', width='narrow', align='left', padding='md',
+           hide_at='xl'),
     ]
     seen_ids = {c.get('slug', '') for c in chapters}
     for i, c in enumerate(chapters):

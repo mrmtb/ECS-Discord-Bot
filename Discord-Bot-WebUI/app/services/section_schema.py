@@ -65,6 +65,7 @@ COLUMN_LAYOUTS = ('50-50', '33-67', '67-33', '3col')
 # A content section is either a plain stack (head above body) or 'side-head':
 # title held in a narrow sticky left column, content in the wide right one. The
 # second exists so the page is not eight full-width horizontal slabs in a row.
+SECTION_HIDE = ('', 'mobile', 'xl')
 CONTENT_LAYOUTS = ('stack', 'side-head')
 # A hero either lays type OVER its photograph, or splits: copy on a solid ground
 # on the left, photograph bleeding off the right edge of the viewport.
@@ -519,6 +520,14 @@ def _section_settings(stype, raw, notes, where):
         out['align'] = _enum(s.get('align'), ALIGNS, 'center')
     # Common knobs
     out['padding'] = _enum(s.get('padding'), SIZES, 'md')
+    # Optional viewport gate. '' = always shown, which is the default and what
+    # every stored section has. The two real values exist because a section can
+    # be superseded by CHROME at one breakpoint and be the only copy of its
+    # content at another — the guide's "What's inside" card is replaced by the
+    # fixed TOC rail at xl and is the contents everywhere below it. Doing that
+    # in JS would shift the document after paint, which is the exact defect the
+    # rail was built to remove.
+    out['hide_at'] = _enum(s.get('hide_at'), SECTION_HIDE, '')
     # Optional per-section fill: a solid background + text color, both strictly
     # hex-validated (validate_hex_color) so an author can't inject arbitrary CSS.
     # Absent/invalid -> not set, so the section falls back to its theme.

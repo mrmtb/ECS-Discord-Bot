@@ -252,6 +252,12 @@
     display or the block silently becomes a stack of full-width rows at >=640px.
     One macro per display value — sm:block on a flex/grid container is the bug
     these three exist to prevent. -#}
+{# Section-level viewport gate (schema `hide_at`). Both branches are COMPLETE
+   static strings — Tailwind purges a concatenated class name silently. Used
+   where chrome supersedes a section at one breakpoint only; doing the same
+   thing in JS shifts the document after paint. #}
+{%- macro _section_hide(s) -%}{{ 'hidden sm:block' if s.hide_at == 'mobile' else ('xl:hidden' if s.hide_at == 'xl' else '') }}{%- endmacro -%}
+
 {%- macro _hide_mobile(block) -%}{{ 'hidden sm:block' if block.hide_mobile else '' }}{%- endmacro -%}
 {%- macro _hide_mobile_flex(block) -%}{{ 'hidden sm:flex' if block.hide_mobile else '' }}{%- endmacro -%}
 {%- macro _hide_mobile_grid(block) -%}{{ 'hidden sm:grid' if block.hide_mobile else '' }}{%- endmacro -%}
@@ -378,14 +384,27 @@ motion-reduce:transition-none motion-reduce:transform-none
 {%- endmacro -%}
 
 {#- Colour only. The focus ring comes from _btn_base/_ring so two competing
-    ring-* utilities can never fight over stylesheet order. -#}
+    ring-* utilities can never fight over stylesheet order.
+
+    ⚠️ ON A BRAND BAND, A SECONDARY BUTTON DARKENS — IT DOES NOT LIGHTEN.
+    MEASURED 2026-08-24. `secondary` on-colour used to be
+    `bg-white/20 … hover:bg-white/30`, which puts white text on a ground of
+    white-over-#2f823b: 3.34:1 at rest and 2.81:1 ON HOVER, both under the 4.5
+    floor for a 16px label, and the hover state made it worse. Every white fill
+    fails, because lightening the ground under white text is the wrong
+    direction — /15 is 3.65 and /10 is 4.00, still short. Darkening works and
+    keeps the three variants visually distinct on the band:
+      primary   solid white pill        (ecs-green-ink on white, 6.59:1)
+      secondary bg-black/20 + soft ring (white on #2a6b35, 6.77:1)
+      outline   ring only, no fill      (white on #2f823b,     4.80:1)
+    Hover darkens further in both, so no state drops below rest. -#}
 {%- macro _btn_variant(style, on_color) -%}
 {%- if style == 'primary' -%}
 {%- if on_color %}bg-white text-ecs-green-ink shadow-sm hover:bg-white/90{% else %}bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md{% endif -%}
 {%- elif style == 'secondary' -%}
-{%- if on_color %}bg-white/20 text-white ring-1 ring-inset ring-white/70 hover:bg-white/30{% else %}bg-ecs-green-ink text-white shadow-sm hover:bg-ecs-green-ink/90 hover:shadow-md{% endif -%}
+{%- if on_color %}bg-black/20 text-white ring-1 ring-inset ring-white/40 hover:bg-black/30{% else %}bg-ecs-green-ink text-white shadow-sm hover:bg-ecs-green-ink/90 hover:shadow-md{% endif -%}
 {%- else -%}
-{%- if on_color %}text-white ring-1 ring-inset ring-white/60 hover:bg-white/15{% else %}text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10{% endif -%}
+{%- if on_color %}text-white ring-1 ring-inset ring-white/60 hover:bg-black/15{% else %}text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10{% endif -%}
 {%- endif -%}
 {%- endmacro -%}
 
@@ -1209,7 +1228,7 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
    is the page's dark anchor. A page can still ask for green explicitly with
    theme='brand'. #}
 {% set hero_ground = THEME_SECTION.get(section.theme if section.theme != 'inherit' else 'dark', THEME_SECTION['dark']) %}
-<section class="relative overflow-hidden {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if img and s.layout != 'split' }} {{ hero_ground if (not img or s.layout == 'split') and not s.bg_color }}"
+<section class="relative overflow-hidden {{ _section_hide(s) }} {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if img and s.layout != 'split' }} {{ hero_ground if (not img or s.layout == 'split') and not s.bg_color }}"
          {% if s.bg_color and not img %}style="background-color: {{ s.bg_color }};"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="hero"{% endif %}>
     {% if img and s.layout != 'split' %}
@@ -1283,7 +1302,7 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
 {% set body = section.blocks | rejectattr('slot', 'equalto', 'head') | list %}
 {# Optional per-section fill (hex-validated in the schema). #}
 {%- set _fill %}{% if s.bg_color %}background-color:{{ s.bg_color }};{% endif %}{% if s.text_color %}color:{{ s.text_color }};{% endif %}{% endset -%}
-<section class="{{ THEME_SECTION.get(section.theme, '') }} {{ PAD.get(s.padding, PAD['md']) }}"
+<section class="{{ THEME_SECTION.get(section.theme, '') }} {{ _section_hide(s) }} {{ PAD.get(s.padding, PAD['md']) }}"
          {% if _fill %}style="{{ _fill }}"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="content"{% endif %}>
     {# ONE LEFT EDGE DOWN THE PAGE. The outer container is max-w-7xl for EVERY
@@ -1365,7 +1384,7 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
 {% set valign = 'lg:items-center' if s.align == 'center' and ncols == 2 else '' %}
 {% set head = section.blocks | selectattr('slot', 'equalto', 'head') | list %}
 {% set body = section.blocks | rejectattr('slot', 'equalto', 'head') | list %}
-<section class="{{ THEME_SECTION.get(section.theme, '') }} {{ PAD.get(s.padding, PAD['md']) }}"
+<section class="{{ THEME_SECTION.get(section.theme, '') }} {{ _section_hide(s) }} {{ PAD.get(s.padding, PAD['md']) }}"
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="columns"{% endif %}>
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {% if head %}
@@ -1400,7 +1419,7 @@ flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settin
 {# Reads PAD like every other section — the hardcoded py-20 sm:py-24 is why
    every band on the site used to be exactly the same height. #}
 {%- set _fill %}{% if s.bg_color %}background-color:{{ s.bg_color }};{% endif %}{% if s.text_color %}color:{{ s.text_color }};{% endif %}{% endset -%}
-<section class="{{ THEME_SECTION.get(theme, THEME_SECTION['brand']) }} {{ PAD.get(s.padding, PAD['lg']) }}"
+<section class="{{ THEME_SECTION.get(theme, THEME_SECTION['brand']) }} {{ _section_hide(s) }} {{ PAD.get(s.padding, PAD['lg']) }}"
          {% if _fill %}style="{{ _fill }}"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="band"{% endif %}>
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">

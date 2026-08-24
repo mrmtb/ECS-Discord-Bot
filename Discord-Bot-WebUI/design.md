@@ -863,6 +863,56 @@ Three rules that make it evidence rather than decoration:
    degraded facts band gets baked into the 300s render cache and the page serves
    *empty* instead of *stale* for five minutes.
 
+### 6.7 The guide's contents rail — chrome, not a section
+
+The guide is the one page long enough to need persistent navigation, and it is
+the one page with a dead gutter to put it in: its sections are `width: 'normal'`
+(max-w-5xl) inside the shell's max-w-7xl and left-aligned (§ 6.0), so ~190px
+runs empty down the right of the whole document.
+
+`public/_guide_chrome.html` renders both pieces server-side and
+`public-guide.js` only enhances them:
+
+| Piece | Where | Why it is not JS |
+|---|---|---|
+| Sticky toolbar (`h-12`: contents, scrollspy label, search, progress) | first child of `<main>` | It was built in JS and `main.prepend()`ed, which pushed the whole document down 48px after first paint — a guaranteed shift on every load of the longest page on the site. |
+| Contents rail | `fixed`, right gutter, `xl:` | `fixed` keeps it out of the flow entirely, so it cannot break the `auto` rhythm (§ 5.4), which pairs adjacent siblings. |
+
+⚠️ **The rail is `xl:`, and the width is `w-44` until `2xl`.** At `lg` (1024px)
+`max-w-7xl` is already clamped by the viewport and there is no gutter at all —
+the rail would sit on the body copy. Above 1280 the gutter is a constant 192px
+(1280 − 32 − the 1024 measure − 32); the rail reclaims the container's own 32px
+of right padding, so it has 224px to sit in — **except at exactly 1280**, where
+it only has the 192 and a 208px rail overlapped the copy by 16px. Measured at
+that one width. `w-44` clears it; `2xl:w-52` restores the wider rail where the
+room genuinely exists.
+
+**The outline is derived from the RENDERED html** (`_guide_outline`), not from
+the seed, because the guide is a sections document an admin can edit — the only
+outline that is always true is the one on the page. ⚠️ It skips `bg-ecs-pitch`
+sections: every h2 carries a generated id, the closing CTA's included, and
+without that filter "Now go play." lands in the contents as a tenth chapter.
+
+**The inline "What's inside" card is gated by `hide_at: 'xl'`, in the section.**
+It is the contents below `xl` (where the rail cannot exist) and the rail
+supersedes it above. ⚠️ The JS used to hide it by
+`nav[aria-label="Guide contents"]` — **a selector that matched nothing, because
+the richtext sanitizer strips `<nav>`** — so the page shipped two contents lists
+for as long as both existed. Hiding a whole section from JS is a second
+post-paint shift anyway; a viewport gate belongs in the section.
+
+### 6.8 Imported content is not clean content
+
+The guide came from a Google Doc whose bullets arrived as a literal `' * '`
+separator inside one `<p>`. **32 paragraphs, and zero `<ul>` in the entire
+document** — the equipment list, the Discord instructions and the rules all
+rendered as unbroken prose with asterisks in it, on the longest page on the
+site. `_bulletise()` repairs it at load time rather than by hand-editing the
+seed, so a future re-import gets the same treatment instead of silently
+regressing. It converts only a paragraph that opens with a marker or carries at
+least two, so an asterisk in ordinary prose is left alone, and a one-item
+"list" loses its marker rather than becoming a one-`<li>` `<ul>`.
+
 ---
 
 ## 7 · Component voice
@@ -889,7 +939,7 @@ the 4px scale and is deleted.** `min-h-11` is a hard floor everywhere.
 | Variant | Off-colour | On brand/dark ground |
 |---|---|---|
 | **primary** (the ask) | `bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600` | `bg-white text-ecs-green-ink shadow-sm hover:bg-white/90 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink` |
-| **secondary** (the brand action) | `bg-ecs-green-ink text-white hover:bg-ecs-green-ink/90 focus-visible:ring-ecs-green-ink` | `bg-white/20 text-white ring-1 ring-inset ring-white/70 hover:bg-white/30 focus-visible:ring-white` |
+| **secondary** (the brand action) | `bg-ecs-green-ink text-white hover:bg-ecs-green-ink/90 focus-visible:ring-ecs-green-ink` | `bg-black/20 text-white ring-1 ring-inset ring-white/40 hover:bg-black/30 focus-visible:ring-white` |
 | **ghost** (the aside) | `text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300` | `text-white ring-1 ring-inset ring-white/60 hover:bg-white/15 focus-visible:ring-white` |
 
 **Eight states, all required:**
@@ -916,6 +966,23 @@ the 4px scale and is deleted.** `min-h-11` is a hard floor everywhere.
 
 **Colour-only `hover:opacity-90` is banned** — it dims the label too, so the
 hover state has *less* contrast than rest.
+
+⚠️ **ON A BRAND BAND, A SECONDARY BUTTON DARKENS — IT DOES NOT LIGHTEN
+(amended 2026-08-24).** The on-colour secondary used to be `bg-white/20 …
+hover:bg-white/30`. White text on white-over-`pitch-ground` measures **3.34:1 at
+rest and 2.81:1 on hover** — both under the 4.5 floor for a 16px label, and the
+hover state was *worse than the rest state*, which is the tell that the
+direction itself was wrong. Every white fill fails: `/15` is 3.65, `/10` is 4.00.
+Lightening the ground under white text can only reduce contrast. Darkening it
+works and keeps the three variants distinct on the band — solid white pill,
+darkened pill with a soft ring, ring-only — with hover darkening further in both
+outlined variants, so no state drops below its own rest. The `outline` on-colour
+hover moved `bg-white/15` → `bg-black/15` for the same reason.
+
+⚠️ This was live on every page with a brand band and was invisible to three
+successive contrast probes, because all of them tried to REASON about the ground
+instead of measuring it. It surfaced only once the probe repainted the page with
+all text transparent and sampled the actual pixel. **Measure the pixel.**
 
 ### 7.2 Form fields — one spec
 
@@ -1274,14 +1341,14 @@ is painted. Both halves, every time.
 | Page | Macrostructure | The one structural change that gets it there |
 |---|---|---|
 | **Home** | **03 · Marquee Hero** | **SHIPPED 2026-08-23, rebuilt to the approved mockup.** A **split hero** — copy on the ground at left, photography bleeding off the right edge at `lg:w-[42%]` — replaces the full-bleed overlay, so the headline sits on a real surface instead of on an image. Orphan heading sections fold into what they label via `slot: 'head'` (§ 6.4). **Both** icon-tile three-ups are gone: the value propositions are a card-less `steps` list (style `plain`) and the join sequence is a real numbered `steps` ladder, which is the section that spends the page's brand green. The divisions are `lead` cards owning their own live CTA, each stamped with a **seal** straddling the photo seam — green "Start here" for Classic, blue "Step up" for Premier — so the badge names the division's job rather than decorating it. A **4-up `facts` scoreboard** on the ink ground carries the season, the team and player counts and the next PLOP with an add-to-calendar link; it is the only thing on the page that proves a league is running. **All photography full-colour.** The closing band is ink. |
-| **About** | **15 · Split Studio** | Keep the alternating diptychs (they already are the shape) and give them `lg:items-center`. Replace the headingless two-photo `columns` section with **one `block_gallery`** with real captions, and promote the four-clause *"come out anyway"* run to a full-width **`block_quote` at D2** in its own section — the page's single Marquee moment and its emotional payload. |
-| **Guide** | **02 · Long Document** | One editorial grid: a **server-rendered TOC side-rail** in the currently-dead right gutter at `lg:` (the toolbar stops being client-injected above the hero and stops shifting the document 48px on every load), body at BL with em-rhythm, `size='sm'` hero carrying chapter count + reading time + "jump to the lexicon". |
-| **Guests** | **06 · Conversational FAQ** | The page already *is* four questions (TL;DR / Why we're cautious / But exceptions? / So what should I do?) trapped inside one richtext `<div>`. Split it into four Q-headed `content` sections at D3/D4 and **add a closing band with a real action** — today `<main>` contains zero focusable elements on a page whose message is "just reach out." |
-| **FAQs** | **13 · Index-First** | The list IS the page. Hero absorbs a category jump-strip (the `Faq.category` column already exists and is unused); questions group under sticky category heads; every `<details>` gets a slug `id`; the hero stops being a 208px green slab with one word in it. |
+| **About** | **15 · Split Studio** | **SHIPPED 2026-08-23 (10 sections).** Alternating 50-50 diptychs, one stats row of real figures, a `block_gallery` with captions in place of the headingless two-photo row, and the four-clause *"come out anyway"* run promoted out of a paragraph into a full-width `block_quote` in its own section — the page's single Marquee moment. Two `prominence: 'lead'` argument headings. |
+| **Guide** | **02 · Long Document** | **SHIPPED 2026-08-24.** `size='sm'` hero carrying a real scope signal (chapter count, reading time, jump-to-lexicon, all derived from the seed), one section per chapter with slug ids on every h2/h3, and a **server-rendered contents rail** in the right gutter (§ 6.7). ⚠️ **The rail is `xl:`, not the `lg:` this row originally specified** — at 1024px `max-w-7xl` is already clamped by the viewport and there is no gutter to put it in. The inline "What's inside" card is the contents below `xl` and is gated off above it by the section's own `hide_at`. Two defects closed with it: the toolbar was client-injected and shifted the document 48px on every load, and 32 imported paragraphs rendered their bullets as literal asterisks in run-on prose. |
+| **Guests** | **06 · Conversational FAQ** | **SHIPPED 2026-08-23 (6 sections).** The four questions (TL;DR / Why we're cautious / But exceptions? / So what should I do?) are four Q-headed `content` sections instead of one richtext `<div>`, and the page closes on a band with a real action — `<main>` used to contain zero focusable elements on a page whose whole message is "just reach out." |
+| **FAQs** | **13 · Index-First** | **SHIPPED 2026-08-23.** The list IS the page: the hero carries a category jump-strip built from the `Faq.category` column (previously unused), questions group under category heads, every `<details>` has a slug id so an answer is linkable, and the empty state is a conversion moment rather than "check back soon". The hero is no longer a 208px green slab with one word in it. |
 | **Register** | **14 · Narrative Workflow** | **SHIPPED 2026-08-23 (5 sections, 12 blocks).** The ask lands after the prerequisite: live registration state (loud, § 12.1) → the three steps as a real `steps` ladder (§ 6.2) → the division choice → the CTA. The hero is the ink ground, not a green slab. Every section shares `width: normal`, so the page has one left edge instead of three. |
-| **Contact** | **12 · Letter** | Lead with a short first-person lede in the site's voice, then the form as the page's single object on the inset surface, filling its column. "Other ways to reach us" demotes to a colophon-weight footnote, and the page gains a closing band back to the waitlist. |
-| **News** | **20 · Ecosystem Index** | A **lead card** (`sm:col-span-2`, taller media, title at D3) breaks the twelve identical tiles, and posts group by a derived axis (year, or a title-prefix series) so the archive has structure even before anyone tags a post. Article detail gains a hero band so list and detail open the same way. |
-| **Calendar** | **04 · Stat-Led** | The hero becomes the **next PLOP** — date, time and venue as the giant fact, with the register CTA under it — computed from data already in the template. The subscribe cluster demotes to outline pills inside a proper `<section>`; the month grid restructures to a day-grouped list below `sm:` instead of scrolling a 640px table sideways. |
+| **Contact** | **12 · Letter** | **SHIPPED 2026-08-23 (4 sections).** A short first-person lede, then the form as the page's single object on the inset surface, "other ways to reach us" demoted to colophon weight, and a closing band back to the waitlist. ⚠️ The social buttons here are the deepest-nested tinted surface on the site and drove `INK_TINT_FLOOR` to 0.20 (§ 3.2). |
+| **News** | **20 · Ecosystem Index** | **SHIPPED 2026-08-23** (`news_list.html` / `news_detail.html` — template-driven, NOT a sections document, so `rebuild-public-pages` does not touch it). A lead card breaks the identical tiles, posts group under a sticky year rail derived from `display_date` (no taxonomy work needed), the masthead absorbs the category rail and the result count, and the article detail opens with the same shared hero band as the archive. |
+| **Calendar** | **04 · Stat-Led** | **SHIPPED 2026-08-23** (`calendar.html` — template-driven, not a sections document). The hero IS the next PLOP: date, time and venue as the giant fact with the register CTA under it, computed from the agenda the page already fetches. The subscribe cluster is outline pills inside a real `<section>`, three-or-more repeats of the same event collapse into one run, and the month grid becomes a day-grouped list below `sm:`. |
 
 ### 12.1 Registration status is the loudest live element, not the quietest
 

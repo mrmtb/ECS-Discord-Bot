@@ -20,7 +20,9 @@ the real backend — the core "buttons auto-update from the backend" goal.
 
 import logging
 import os
+import re
 from datetime import datetime
+from html import unescape
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for, abort,
@@ -290,6 +292,43 @@ def _edit_url(endpoint, **values):
         return None
 
 
+_GUIDE_H2_RE = re.compile(
+    r'<h2\b[^>]*\bid="([^"]+)"[^>]*>(.*?)</h2>', re.I | re.S)
+_GUIDE_TAG_RE = re.compile(r'<[^>]+>')
+_GUIDE_SECTION_SPLIT_RE = re.compile(r'(?=<section\b)', re.I)
+
+
+def _guide_outline(html):
+    """Chapter list for the guide's TOC rail, derived from the RENDERED html.
+
+    Reading the output rather than the seed is deliberate: the guide is a
+    sections document an admin can edit in the site builder, so the only
+    outline that is always true is the one actually on the page. It is also the
+    contract public-guide.js has always used client-side — it walks the DOM —
+    so the rail and the search panel cannot disagree.
+
+    ⚠️ The brand band is skipped. Every h2 on the page carries a generated id,
+    including the closing CTA's ("Now go play."), and without this filter that
+    heading lands in the contents as a tenth chapter that is not a chapter. A
+    `bg-ecs-pitch` ground IS the page's closing CTA by construction — design.md
+    § 4.2 budgets exactly one brand section per page — so keying on it is a
+    statement about the document, not a coincidence of styling.
+
+    Returns [] on anything unexpected; the partial renders nothing under three
+    chapters, which is also the JS's own threshold for "this is a long page".
+    """
+    out = []
+    for chunk in _GUIDE_SECTION_SPLIT_RE.split(html or ''):
+        head = chunk[:chunk.find('>') + 1] if '>' in chunk else ''
+        if 'bg-ecs-pitch' in head:
+            continue
+        for hid, inner in _GUIDE_H2_RE.findall(chunk):
+            title = unescape(_GUIDE_TAG_RE.sub('', inner)).strip()
+            if title and hid:
+                out.append({'id': hid, 'title': title})
+    return out
+
+
 def _render_page_sections(page, seo, active, fallback_builder=None):
     """Render a page through the ONE section pipeline.
 
@@ -356,8 +395,12 @@ def _render_page_sections(page, seo, active, fallback_builder=None):
                                 headers={'Cache-Control': 'public, max-age=30'})
 
     html = _render_doc(page, doc, edit_mode)
+    # Only the guide carries reader chrome, and only outside the editor iframe
+    # (the fixed rail would fight the selection overlay).
+    guide_chapters = _guide_outline(html) if (active == 'guide' and not edit_mode) else []
     rendered = render_template('public/page_sections.html', active_page=active, seo=seo,
                                sections_html=html, edit_mode=edit_mode,
+                               guide_chapters=guide_chapters,
                                page=page,
                                edit_url=(_edit_url('admin_panel.site_editor', page_id=page.id)
                                          if page and page.id else None))

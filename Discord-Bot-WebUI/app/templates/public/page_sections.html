@@ -11,6 +11,15 @@
    extra_js, which renders at the end of <body>, outside <main>. #}
 
 {% block content %}
+{# The guide's reader chrome is the ONE sanctioned non-<section> child of
+   <main>, and it is safe for the `auto` rhythm because it renders BEFORE every
+   section: the selector pairs ADJACENT sections, and the first section has no
+   preceding section either way. It has to be here rather than injected by JS —
+   the toolbar is 48px tall and prepending it after paint shifted the whole
+   document down on every single load. #}
+{% if active_page == 'guide' and not edit_mode %}
+{% include 'public/_guide_chrome.html' with context %}
+{% endif %}
 {{ sections_html | safe }}
 {% endblock %}
 

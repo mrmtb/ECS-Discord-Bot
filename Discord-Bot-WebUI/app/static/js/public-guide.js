@@ -29,11 +29,6 @@ const MIN_CHAPTERS = 3;        // below this the page isn't "long" — do nothin
 const SEARCH_MIN_CHARS = 2;
 const SEARCH_MAX_RESULTS = 40;
 
-/* This toolbar is h-12 and sticks directly under the site header, so it is part
-   of the sticky stack the shell measures in --sticky-stack. See the single
-   scroll-padding-top adjustment in init(). */
-const BAR_HEIGHT = '3rem';
-
 /* design.md § 8: smooth scrolling is opt-in per user. Read the query at call
    time (not once at load) so a mid-session OS change is honoured. */
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -131,62 +126,26 @@ function init() {
   if (chapters.length < MIN_CHAPTERS) return;
   const searchIndex = buildSearchIndex(main, chapters);
 
-  // The server-rendered "What's inside" card is superseded by this toolbar;
-  // keep it in the markup for no-JS visitors and crawlers, hide it here.
-  const inlineToc = main.querySelector('nav[aria-label="Guide contents"]');
-  if (inlineToc) (inlineToc.closest('section') || inlineToc).classList.add('hidden');
+  // NOTE the inline "What's inside" card is NOT hidden here any more. It is
+  // gated server-side by the section's `hide_at: 'xl'`, so it is the contents
+  // below xl (where there is no gutter for the rail) and the rail takes over
+  // above it. Hiding a whole section from JS was a second post-paint shift.
 
   // ---- Toolbar ----------------------------------------------------------
-  // top-[var(--sticky-stack)] parks the bar exactly on the shell's own measure
-  // of the pinned chrome (header height + admin bar), so it tracks the sm:
-  // breakpoint and the admin bar without a resize listener or a JS offset.
-  const bar = document.createElement('div');
-  bar.className = 'sticky top-[var(--sticky-stack)] z-30 border-b border-ecs-green-ink/20 '
-    + 'bg-paper/95 backdrop-blur-sm dark:border-white/10 dark:bg-paper-dark/95';
+  // The shell is SERVER-RENDERED (public/_guide_chrome.html) and this module
+  // only enhances it. It used to be built here and main.prepend()ed, which
+  // pushed the whole document down by the bar's own 48px after first paint —
+  // a guaranteed layout shift on the site's longest page, every single load.
+  // If the markup is absent there is nothing to enhance: bail rather than
+  // resurrect the old injection path, so the two can never drift.
+  const bar = document.querySelector('[data-guide-bar]');
+  if (!bar) return;
 
-  bar.innerHTML = `
-    <div class="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-      <div class="flex h-12 items-center gap-1 sm:gap-2">
-        <button type="button" data-guide-toggle aria-expanded="false" aria-controls="guide-toc-panel"
-                class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
-          <i class="ti ti-list-details text-base" aria-hidden="true"></i>
-          <span class="sr-only sm:not-sr-only">Contents</span>
-          <i class="ti ti-chevron-down text-xs transition-transform duration-150 ease-out motion-reduce:transition-none" aria-hidden="true" data-guide-chevron></i>
-        </button>
-        <span class="min-w-0 flex-1 truncate text-sm text-gray-600 dark:text-gray-300" aria-hidden="true" data-guide-current></span>
-        <button type="button" data-guide-search-open aria-label="Search the guide"
-                class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-gray-600 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
-          <i class="ti ti-search text-base" aria-hidden="true"></i>
-          <span class="sr-only sm:not-sr-only">Search</span>
-        </button>
-      </div>
-      <div class="absolute inset-x-0 bottom-0 h-0.5 bg-ecs-green/10 dark:bg-white/10" aria-hidden="true">
-        <div class="h-full w-0 bg-ecs-green dark:bg-ecs-green-300" data-guide-progress></div>
-      </div>
-      <div class="absolute inset-x-0 top-full hidden" id="guide-toc-panel" data-guide-panel>
-        <div class="mx-2 mt-1 overflow-hidden rounded-xl bg-white shadow-md ring-1 ring-inset ring-black/[0.07] sm:mx-4 dark:bg-paper-dark dark:shadow-none dark:ring-white/10">
-          <div class="border-b border-ecs-green-ink/15 p-3 dark:border-white/10">
-            <div class="relative">
-              <i class="ti ti-search pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400" aria-hidden="true"></i>
-              <input type="search" data-guide-search placeholder="Search the guide…"
-                     aria-label="Search the guide" autocomplete="off"
-                     class="block min-h-11 w-full rounded-lg border-0 bg-white py-2.5 pl-10 pr-3.5 text-base text-gray-900 ring-1 ring-inset ring-gray-400/70 transition-[box-shadow] duration-150 ease-out placeholder:text-gray-500 hover:ring-gray-500 focus:outline-hidden focus:ring-2 focus:ring-ecs-blue-600 motion-reduce:transition-none dark:bg-white/[0.05] dark:text-white dark:ring-white/20 dark:placeholder:text-gray-400 dark:hover:ring-white/30 dark:focus:ring-ecs-green-300">
-            </div>
-          </div>
-          <div class="max-h-[60vh] overflow-y-auto overscroll-contain p-2" data-guide-list></div>
-        </div>
-      </div>
-    </div>`;
-  main.prepend(bar);
-
-  // Anchor clearance stays a SINGLE declaration derived from the shell's own
-  // token — base_public.html sets html{scroll-padding-top:calc(var(--sticky-stack)
-  // + 1.5rem)} in @layer base, and this bar adds its own height to that stack.
-  // Adjusting the one scroll-padding is what keeps TOC jumps correct; per-heading
-  // scroll-margin would STACK on top of the shell's padding and overshoot every
-  // jump (design.md § 5.5).
-  document.documentElement.style.scrollPaddingTop =
-    `calc(var(--sticky-stack) + ${BAR_HEIGHT} + 1.5rem)`;
+  // NOTE anchor clearance is NOT set here any more. base_public.html declares
+  // it for the guide in @layer base, because the inline contents card is a set
+  // of anchors that has to work before this module runs — and did not.
+  // Per-heading scroll-margin would STACK on top of the shell's padding and
+  // overshoot every jump, so it stays a single declaration (design.md § 5.5).
 
   const panel = bar.querySelector('[data-guide-panel]');
   const list = bar.querySelector('[data-guide-list]');
@@ -195,6 +154,31 @@ function init() {
   const chevron = bar.querySelector('[data-guide-chevron]');
   const currentLabel = bar.querySelector('[data-guide-current]');
   const progress = bar.querySelector('[data-guide-progress]');
+
+  // The xl gutter rail, also server-rendered. Absent below xl only in the sense
+  // that CSS hides it — the nodes exist, so the scrollspy can drive it without
+  // a resize listener and it is already correct the moment it becomes visible.
+  const railLinks = new Map();
+  document.querySelectorAll('[data-guide-rail-link]').forEach((a) => {
+    railLinks.set(a.getAttribute('data-guide-rail-link'), a);
+  });
+  /* Complete static strings on both sides of the toggle — tailwind.config.js
+     scans app/static/js/**, but it cannot see a class name built by
+     concatenation. */
+  const RAIL_ON = ['border-ecs-green-ink', 'text-gray-900', 'font-semibold',
+    'dark:border-ecs-green-300', 'dark:text-white'];
+  const RAIL_OFF = ['border-transparent', 'text-gray-600', 'dark:text-gray-400'];
+  function markRail(id) {
+    railLinks.forEach((a, key) => {
+      const on = key === id;
+      a.classList.toggle('border-transparent', !on);
+      RAIL_ON.forEach((c) => a.classList.toggle(c, on));
+      RAIL_OFF.filter((c) => c !== 'border-transparent')
+        .forEach((c) => a.classList.toggle(c, !on));
+      if (on) a.setAttribute('aria-current', 'true');
+      else a.removeAttribute('aria-current');
+    });
+  }
 
   // ---- TOC / search result rendering ------------------------------------
   // Shared row classes live OUTSIDE the active/inactive ternary so an active
@@ -341,6 +325,10 @@ function init() {
       if (newId !== currentId) {
         currentId = newId;
         if (open && searchInput.value.trim().length < SEARCH_MIN_CHARS) renderToc(currentId);
+        // The rail lists CHAPTERS (h2) only, so walk up from a subsection to
+        // the chapter that owns it — otherwise scrolling through h3s clears the
+        // marker instead of holding it on the chapter you are reading.
+        markRail(active && active.chapter ? active.chapter.el.id : null);
       }
       const doc = document.documentElement;
       const max = doc.scrollHeight - window.innerHeight;

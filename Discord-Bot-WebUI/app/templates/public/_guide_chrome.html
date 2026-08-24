@@ -1,0 +1,88 @@
+{# Guide reader chrome, SERVER-RENDERED (design.md § 12 · Guide).
+
+   Two pieces, both rendered here so neither shifts the document after paint:
+
+   1. The sticky toolbar shell. It used to be built in JS and `main.prepend()`ed
+      on every load, which pushed the entire document down by its own 48px after
+      the first paint — a guaranteed CLS on the site's longest page. The markup
+      is static; only the panel list is dynamic, so the shell belongs in the
+      template and public-guide.js now ENHANCES it instead of creating it.
+
+   2. The contents rail, in the right gutter. The guide's sections are
+      `width='normal'` (max-w-5xl) inside the shell's max-w-7xl and left-aligned
+      (§ 6.0), so ~190px of gutter sits empty down the whole page at xl.
+
+   ⚠️ THE RAIL IS `xl:`, NOT `lg:` AS § 12 ORIGINALLY SPECIFIED. At lg (1024px)
+   max-w-7xl is already clamped by the viewport and there is no gutter at all —
+   the rail would sit on top of the body copy. 1280px is the first width where
+   the gutter actually exists. § 12 is amended to say so.
+
+   The rail is `fixed`, so it never enters the flow and cannot break the `auto`
+   section rhythm, which selects on adjacent siblings (§ 5.4).
+
+   `guide_chapters` is derived server-side from the RENDERED html, not from the seed,
+   so it keeps working after an admin edits the page in the site builder. #}
+
+{% if guide_chapters | length >= 3 %}
+<div data-guide-bar class="sticky top-[var(--sticky-stack)] z-30 border-b border-ecs-green-ink/20 bg-paper/95 backdrop-blur-sm dark:border-white/10 dark:bg-paper-dark/95">
+  <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="flex h-12 items-center gap-1 sm:gap-2">
+      <button type="button" data-guide-toggle aria-expanded="false" aria-controls="guide-toc-panel"
+              class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark xl:hidden">
+        <i class="ti ti-list-details text-base" aria-hidden="true"></i>
+        <span class="sr-only sm:not-sr-only">Contents</span>
+        <i class="ti ti-chevron-down text-xs transition-transform duration-150 ease-out motion-reduce:transition-none" aria-hidden="true" data-guide-chevron></i>
+      </button>
+      <span class="min-w-0 flex-1 truncate text-sm text-gray-600 dark:text-gray-300" aria-hidden="true" data-guide-current></span>
+      <button type="button" data-guide-search-open aria-label="Search the guide"
+              class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-gray-600 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+        <i class="ti ti-search text-base" aria-hidden="true"></i>
+        <span class="sr-only sm:not-sr-only">Search</span>
+      </button>
+    </div>
+    {# Reading progress. aria-hidden: it duplicates the scrollbar, which is the
+       accessible affordance already. #}
+    <div class="absolute inset-x-0 bottom-0 h-0.5 bg-ecs-green/10 dark:bg-white/10" aria-hidden="true">
+      <div class="h-full w-0 bg-ecs-green dark:bg-ecs-green-300" data-guide-progress></div>
+    </div>
+    <div class="absolute inset-x-0 top-full hidden" id="guide-toc-panel" data-guide-panel>
+      <div class="mx-2 mt-1 overflow-hidden rounded-xl bg-white shadow-md ring-1 ring-inset ring-black/[0.07] sm:mx-4 dark:bg-paper-dark dark:shadow-none dark:ring-white/10">
+        <div class="border-b border-ecs-green-ink/15 p-3 dark:border-white/10">
+          <div class="relative">
+            <i class="ti ti-search pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400" aria-hidden="true"></i>
+            <input type="search" data-guide-search placeholder="Search the guide…"
+                   aria-label="Search the guide" autocomplete="off"
+                   class="block min-h-11 w-full rounded-lg border-0 bg-white py-2.5 pl-10 pr-3.5 text-base text-gray-900 ring-1 ring-inset ring-gray-400/70 transition-[box-shadow] duration-150 ease-out placeholder:text-gray-500 hover:ring-gray-500 focus:outline-hidden focus:ring-2 focus:ring-ecs-blue-600 motion-reduce:transition-none dark:bg-white/[0.05] dark:text-white dark:ring-white/20 dark:placeholder:text-gray-400 dark:hover:ring-white/30 dark:focus:ring-ecs-green-300">
+          </div>
+        </div>
+        <div class="max-h-[60vh] overflow-y-auto overscroll-contain p-2" data-guide-list></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# The rail. `right` is the page gutter: half of whatever the viewport has over
+   max-w-7xl (80rem), floored at the shell's own lg gutter so it never touches
+   the viewport edge — which aligns the rail's right edge with the shell
+   container's, exactly where the eye expects the page to end.
+
+   ⚠️ THE WIDTH IS w-44, NOT w-52, AND THAT IS LOAD-BEARING AT EXACTLY 1280px.
+   Once max-w-7xl stops being clamped the gutter is a constant 192px (1280 −
+   32px padding − the 1024px measure − 32px padding). Above 1280 the rail
+   reclaims the container's own 32px right padding and has 224px to sit in, but
+   AT 1280 it only has the 192px, so a 208px rail overlapped the body copy by
+   16px — measured, at that one width. w-44 (176px) clears it there, and 2xl
+   restores the wider rail where the room genuinely exists. #}
+<aside data-guide-rail aria-label="Guide contents"
+       class="fixed right-[max(2rem,calc((100vw-80rem)/2))] top-[calc(var(--sticky-stack)+5rem)] z-20 hidden max-h-[calc(100vh-var(--sticky-stack)-8rem)] w-44 overflow-y-auto overscroll-contain xl:block 2xl:w-52">
+  <p class="mb-3 font-mono text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-gray-300">What&#8217;s inside</p>
+  <ol class="space-y-0.5 border-l border-ecs-green-ink/20 dark:border-white/15">
+    {% for c in guide_chapters %}
+    {# -ml-px pulls the active marker onto the rule so it reads as a moving
+       indicator on one line, not as a second border beside it. #}
+    <li><a href="#{{ c.id }}" data-guide-rail-link="{{ c.id }}"
+           class="-ml-px block border-l-2 border-transparent py-1.5 pl-4 text-sm leading-snug text-gray-600 transition-colors duration-150 ease-out hover:border-ecs-green-ink/40 hover:text-gray-900 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-400 dark:hover:border-ecs-green-300/40 dark:hover:text-white dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">{{ c.title }}</a></li>
+    {% endfor %}
+  </ol>
+</aside>
+{% endif %}

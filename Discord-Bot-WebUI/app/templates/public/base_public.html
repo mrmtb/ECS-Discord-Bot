@@ -141,6 +141,16 @@
         @media (min-width: 640px) { :root { --sticky-stack: calc(5rem + {{ '3rem' if _admin_chrome else '0px' }}); } }
         @layer base {
             html { scroll-padding-top: calc(var(--sticky-stack) + 1.5rem); }
+            {%- if active_page == 'guide' and not edit_mode %}
+            /* The guide carries a second pinned bar (public/_guide_chrome.html,
+               h-12) under the header, so its anchor clearance is one rem taller.
+               This is SERVER-SIDE on purpose: the guide's inline contents card
+               is a list of anchors that works with no JS at all, and setting the
+               clearance from public-guide.js meant every one of those jumps
+               landed under the bar until the module had run. `--sticky-stack`
+               itself is NOT changed — the bar is positioned from it. */
+            html { scroll-padding-top: calc(var(--sticky-stack) + 3rem + 1.5rem); }
+            {%- endif %}
             header a, footer nav a, .nav-pill { text-decoration: none; }
             /* Kills the ~300ms double-tap-to-zoom delay mobile browsers hold on
                every tap target. Scoped to controls, never to the document: set

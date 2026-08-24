@@ -562,3 +562,98 @@ class TestRebuiltDocuments:
         src = inspect.getsource(sc.build_doc_for_page)
         for slug in REBUILDABLE_SLUGS:
             assert f"slug == '{slug}'" in src or slug in ('about',), slug
+
+
+class TestGuideReaderChrome:
+    """The guide's contents rail and the imported-bullet repair.
+
+    Both of these fix defects that shipped for as long as the page existed, so
+    the assertions are about the DEFECT, not about the implementation — they
+    stay meaningful if the rail is rebuilt some other way.
+    """
+
+    def test_guide_bullets_become_real_lists(self):
+        """The Google Doc import turned every bullet into a literal ' * '.
+
+        32 paragraphs across 9 chapters, and ZERO <ul> in the whole document,
+        so the site's longest page rendered its equipment list, its Discord
+        instructions and its rules as unbroken prose with asterisks in it.
+        """
+        import re
+        from app.services.section_converter import _load_guide_chapters
+        chapters = _load_guide_chapters()
+        assert chapters, 'guide seed did not load'
+        html = ''.join(c.get('html', '') for c in chapters)
+        assert html.count('<ul>') >= 20, f'only {html.count("<ul>")} lists — bullets not repaired'
+        leftover = [m.group(1)[:60]
+                    for m in re.finditer(r'<p>(.*?)</p>', html, re.S)
+                    if m.group(1).count(' * ') >= 2 or m.group(1).strip().startswith('* ')]
+        assert not leftover, f'{len(leftover)} asterisk paragraphs survived: {leftover[:2]}'
+
+    def test_bulletise_leaves_ordinary_prose_alone(self):
+        """A single asterisk in running copy is not a list."""
+        from app.services.section_converter import _bulletise
+        prose = '<p>Shots are worth 1 point * see the rules.</p>'
+        assert _bulletise(prose) == prose
+        # ...and a one-item "list" loses its marker rather than becoming a <ul>.
+        one = _bulletise('<p>* Fun Week is the second-to-last week.</p>')
+        assert '<ul>' not in one and one.startswith('<p>Fun Week')
+
+    def test_guide_outline_skips_the_closing_cta(self):
+        """Every h2 gets a generated id, the closing band's included.
+
+        Without the brand-ground filter, "Now go play." lands in the contents
+        rail as a chapter that is not a chapter.
+        """
+        from app.public_site import _guide_outline
+        html = (
+            '<section class="pt-14"><h2 id="chapter-one">Chapter One</h2></section>'
+            '<section class="pt-14"><h2 id="chapter-two">Chapter Two</h2></section>'
+            '<section class="bg-ecs-pitch pt-20"><h2 id="now-go-play">Now go play.</h2></section>'
+        )
+        ids = [c['id'] for c in _guide_outline(html)]
+        assert ids == ['chapter-one', 'chapter-two'], ids
+
+    def test_guide_contents_card_is_gated_server_side(self):
+        """`hide_at` must survive the schema's allowlist rebuild.
+
+        _validate_block/_section_settings rebuild every section from an
+        allowlist, so an unregistered key is silently dropped — the exact
+        failure mode that ate `slot` and `prominence` in an earlier pass. If
+        this regresses, the card and the rail both render at xl and the page
+        ships its contents twice.
+        """
+        from app.services.section_converter import build_guide_doc
+        from app.services.section_schema import validate_sections
+        doc, _ = validate_sections(build_guide_doc(), is_admin=True)
+        gated = [s for s in doc['sections'] if s['settings'].get('hide_at') == 'xl']
+        assert len(gated) == 1, f'{len(gated)} sections gated at xl, expected exactly 1'
+        assert 'What' in gated[0]['blocks'][0].get('html', '')
+
+    def test_guide_toc_card_carries_no_nav_wrapper(self):
+        """The richtext sanitizer strips <nav>.
+
+        The card used to be wrapped in <nav aria-label="Guide contents"> and
+        the JS hid it by that exact selector — which therefore matched nothing,
+        so the guide shipped two contents lists for as long as both existed.
+        """
+        from app.services.section_converter import build_guide_doc
+        html = ''.join(b.get('html', '') for s in build_guide_doc()['sections']
+                       for b in s['blocks'])
+        assert '<nav' not in html
+
+    def test_guide_chrome_is_not_built_in_js(self):
+        """The toolbar shell is server-rendered.
+
+        It used to be created in JS and main.prepend()ed, which pushed the whole
+        document down by its own 48px after first paint — a guaranteed layout
+        shift on every load of the longest page on the site.
+        """
+        js = open('app/static/js/public-guide.js', encoding='utf-8').read()
+        # The CALL, not the substring — the comment above the replacement names
+        # the old code on purpose, and a bare `main.prepend` match would fail on
+        # its own explanation.
+        assert 'main.prepend(bar)' not in js
+        assert "querySelector('[data-guide-bar]')" in js
+        tpl = open('app/templates/public/_guide_chrome.html', encoding='utf-8').read()
+        assert 'data-guide-bar' in tpl and 'data-guide-rail' in tpl
