@@ -31,7 +31,7 @@
 {%- set _sizes = '(min-width: 1024px) 640px, 100vw' if _lead else '(min-width: 1024px) 310px, (min-width: 640px) 50vw, 100vw' -%}
 {%- set _load %}{% if eager %}loading="eager" fetchpriority="high" decoding="async"{% else %}loading="lazy" decoding="async"{% endif %}{% endset -%}
 {%- set _img_attrs %}{% if _info and _info.srcset %} srcset="{{ _info.srcset }}" sizes="{{ _sizes }}"{% endif %}{% if _info and _info.width and _info.height %} width="{{ _info.width }}" height="{{ _info.height }}"{% endif %}{% endset -%}
-<article class="group relative flex flex-col overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none transition-[transform,box-shadow,background-color] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none hover:-translate-y-0.5 hover:shadow-md dark:hover:bg-white/[0.07] focus-within:-translate-y-0.5 {{ 'sm:col-span-2' if _lead }}">
+<article class="group relative flex flex-col overflow-hidden rounded-[2px] bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none transition-[transform,box-shadow,background-color] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none hover:-translate-y-0.5 hover:shadow-md dark:hover:bg-white/[0.07] focus-within:-translate-y-0.5 {{ 'sm:col-span-2' if _lead }}">
   {# Media well — the box is reserved by aspect-video whether or not the media
      row knows its own dimensions, so a missing width/height can never shift
      the grid (design.md §4.5). #}
@@ -66,13 +66,13 @@
       <span class="tabular-nums">{{ post.date }}</span>
       {% endif %}
       {% if post.category is defined and post.category %}
-      <span class="ml-2 inline-flex min-h-6 items-center gap-1.5 rounded-full bg-ecs-green/[0.08] px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-gray-800 ring-1 ring-inset ring-ecs-green-ink/20 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15">{{ post.category }}</span>
+      <span class="ml-2 inline-flex min-h-6 items-center gap-1.5 rounded-[2px] bg-ecs-green/[0.08] px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-gray-800 ring-1 ring-inset ring-ecs-green-ink/20 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15">{{ post.category }}</span>
       {% endif %}
     </p>
 
     <h3 class="mt-2 font-display {{ 'text-2xl sm:text-3xl lg:text-4xl font-extrabold leading-[1.1] tracking-[-0.02em]' if _lead else 'text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em]' }} text-pretty break-words text-gray-900 dark:text-white">
       <a href="{{ _url }}"
-         class="rounded-lg after:absolute after:inset-0 after:content-[''] transition-colors duration-150 ease-out motion-reduce:transition-none group-hover:text-ecs-green-ink dark:group-hover:text-ecs-green-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">{{ post.title }}</a>
+         class="rounded-[2px] after:absolute after:inset-0 after:content-[''] transition-colors duration-150 ease-out motion-reduce:transition-none group-hover:text-ecs-green-ink dark:group-hover:text-ecs-green-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">{{ post.title }}</a>
     </h3>
 
     {% if post.excerpt %}
@@ -85,7 +85,7 @@
       {% set post_tag = raw_tag.strip() %}
       {% if post_tag %}
       <a href="{{ url_for('public.news_list', tag=post_tag) }}"
-         class="inline-flex items-center gap-2 rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15">#{{ post_tag }}</a>
+         class="inline-flex items-center gap-2 rounded-[2px] px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15">#{{ post_tag }}</a>
       {% endif %}
       {% endfor %}
     </div>

@@ -11,12 +11,20 @@
   WHY THE var() FALLBACKS MATTER: `appearance.theme_css` (which defines
   --font-heading/--font-body) is only in scope when a public context processor
   ran. The utility pages live on their own blueprints where it does not, so the
-  fallback chain here is what actually renders — it must name Bricolage
-  explicitly, not just Inter.
+  fallback chain here is what actually renders — it must name the real display
+  face explicitly, not just Inter.
+
+  ⚠️ IT NAMED BRICOLAGE UNTIL 2026-08-24, months after that font was deleted
+  from the repo, so every utility page set its headings in Inter and nothing
+  anywhere reported an error. A font fallback chain is dead code that renders:
+  when the display face changes, this file changes with it.
+  Haettenschweiler and Arial Narrow are here for the same reason they are in
+  FONT_PAIRS — they are the condensed faces already on Windows and macOS, so a
+  miss still reads condensed instead of snapping to a normal-width sans.
 
   WHY @layer base: an UNLAYERED font-family rule beats every Tailwind utility in
   @layer utilities, which is how a previous unlayered version of this block
   silently killed `font-display`/`font-sans` overrides. Keep it layered.
 #}
             body { font-family: var(--font-body, 'Inter', system-ui, -apple-system, sans-serif); }
-            h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading, 'Bricolage Grotesque', 'Inter', system-ui, sans-serif); }
+            h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading, 'Big Shoulders Display', 'Haettenschweiler', 'Arial Narrow', system-ui, sans-serif); }

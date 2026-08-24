@@ -6,7 +6,7 @@
   authenticated app (Tailwind/Flowbite via Vite, Tabler icons, class-based dark
   mode) so the public site is one system with the portal.
 
-  TYPE: two faces, per design.md § 2. Bricolage Grotesque displays (headings,
+  TYPE: two faces, per design.md § 2. Big Shoulders displays (headings,
   wordmark, marquee), Inter reads (body/UI). Both are SELF-HOSTED — the public
   CSP blocks fonts.googleapis.com, so a CDN <link> would fall back to system-ui
   with no error anywhere.
@@ -182,42 +182,45 @@
    replaces it, and a second bar just steals canvas + confuses. #}
 <body class="overflow-x-clip bg-paper dark:bg-paper-dark text-gray-800 dark:text-gray-200 antialiased min-h-screen flex flex-col {{ 'pt-12' if _admin_chrome else '' }}">
 
-    <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:z-[110] focus:rounded-full focus:bg-ecs-blue-600 focus:px-5 focus:py-2.5 focus:font-semibold focus:text-white {{ 'focus:top-16' if _admin_chrome else 'focus:top-4' }}">Skip to content</a>
+    <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:z-[110] focus:rounded-[2px] focus:bg-ecs-blue-600 focus:px-5 focus:py-2.5 focus:font-semibold focus:text-white {{ 'focus:top-16' if _admin_chrome else 'focus:top-4' }}">Skip to content</a>
 
     {% if _admin_chrome %}{% include 'public/_admin_bar.html' %}{% endif %}
 
     {# ---- Shared class strings (design.md § 7.1). One button geometry on the
        whole site; the shell must not invent a second one. ---- #}
-    {% set BTN_BASE = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 text-base font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark active:translate-y-px active:shadow-none active:brightness-95 motion-reduce:transition-none motion-reduce:transform-none' %}
-    {% set BTN_SM = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2.5 min-h-11 text-sm font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark active:translate-y-px active:shadow-none active:brightness-95 motion-reduce:transition-none motion-reduce:transform-none' %}
+    {% set BTN_BASE = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[2px] px-6 py-3 min-h-11 text-base font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark active:translate-y-px active:shadow-none active:brightness-95 motion-reduce:transition-none motion-reduce:transform-none' %}
+    {% set BTN_SM = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[2px] px-4 py-2.5 min-h-11 text-sm font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark active:translate-y-px active:shadow-none active:brightness-95 motion-reduce:transition-none motion-reduce:transform-none' %}
     {% set BTN_PRIMARY = 'bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600 aria-disabled:opacity-55 aria-disabled:pointer-events-none' %}
     {% set BTN_GHOST = 'text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 focus-visible:ring-ecs-green-ink dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300' %}
+    {# ⚠️ DESKTOP-ONLY CONTROLS USE `max-lg:hidden`, NEVER `hidden lg:inline-flex`.
+       MEASURED 2026-08-24. `hidden` and `inline-flex` are both DISPLAY utilities
+       with identical specificity, so source order in the built stylesheet
+       decides — and Tailwind emits `.inline-flex` AFTER `.hidden`. Since
+       NAV_PILL and BTN_SM below both carry an unprefixed `inline-flex`, writing
+       `hidden lg:inline-flex` on the same element shipped `display:inline-flex`
+       at EVERY width: Log in, the Portal button and the CTA pill were all
+       rendering at 320px, eating ~174px of a 288px bar and truncating the
+       wordmark to "ECS Pub …". `max-lg:hidden` lives in a `@media (width <
+       64rem)` block that comes after the base utilities, so it actually wins.
+       Anything that composes a shared class constant containing a display
+       utility has this hazard. #}
     {% set NAV_RING = 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300' %}
-    {% set NAV_PILL = 'nav-pill inline-flex items-center gap-1 rounded-full px-3.5 py-2 min-h-11 whitespace-nowrap text-[0.9375rem] font-semibold leading-none transition-colors duration-150 ease-out motion-reduce:transition-none ' ~ NAV_RING %}
+    {% set NAV_PILL = 'nav-pill inline-flex items-center gap-1 rounded-[2px] px-3.5 py-2 min-h-11 whitespace-nowrap text-[0.9375rem] font-semibold leading-none transition-colors duration-150 ease-out motion-reduce:transition-none ' ~ NAV_RING %}
     {% set NAV_ON = 'bg-ecs-green/[0.10] text-ecs-green-ink font-bold dark:bg-ecs-green/15 dark:text-ecs-green-300' %}
     {% set NAV_OFF = 'text-gray-700 hover:bg-ecs-green/10 hover:text-ecs-green-ink dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-white' %}
     {% set nav_active = active_page | default('') %}
 
-    {# =================== STATUS STRIP =================== #}
-    {# The site's one live fact used to be 12px type buried inside the hero. It
-       belongs in the chrome. In NORMAL FLOW, not sticky: it states the season
-       state once and then scrolls away, so the sticky stack stays one bar tall
-       (design.md § 9.1). Below sm it truncates down to the state alone. #}
-    <div class="bg-ecs-green-ink text-white">
-        <div class="mx-auto flex min-h-11 max-w-7xl items-center justify-center gap-x-3 px-4 text-sm sm:px-6 lg:px-8">
-            <p class="flex min-w-0 items-center gap-x-2 truncate">
-                {% if season_name %}
-                <span class="hidden shrink-0 tabular-nums sm:inline">{{ season_name }}</span>
-                <span class="hidden shrink-0 sm:inline" aria-hidden="true">&middot;</span>
-                {% endif %}
-                <span class="shrink-0 font-semibold">{{ 'Waitlist open' if cta and cta.mode == 'waitlist' else 'Registration open' }}</span>
-                <span class="hidden shrink-0 sm:inline" aria-hidden="true">&middot;</span>
-                <span class="hidden truncate sm:inline">No experience needed.</span>
-            </p>
-            <a href="{{ url_for('public.register') }}"
-               class="inline-flex min-h-11 shrink-0 items-center font-semibold underline decoration-white/60 underline-offset-2 hover:decoration-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-ecs-green-ink">How joining works</a>
-        </div>
-    </div>
+    {# The full-width STATUS STRIP that used to live here is GONE (2026-08-24).
+       It was a flat `bg-ecs-green-ink` rectangle spending 32px of vertical
+       chrome on every page of the site to say what the hero says louder, on a
+       page that already carried four flat green rectangles. Its one piece of
+       real information — the live season + registration state — moved into the
+       nav bar as a chip beside the wordmark (§ 9.1).
+
+       ⚠️ It shipped ALONGSIDE the chip for one deploy, so the season and the
+       state were on screen twice and the chip's text overflowed into the nav
+       links. design.md described the strip as replaced before the template
+       actually replaced it. #}
 
     {# =================== NAV =================== #}
     {# ---- N1b, canonical three-section, always-solid --------------------------
@@ -236,7 +239,16 @@
        Unchanged behaviour: admin-editable nav_items + submenus, Flowbite mobile
        collapse, both theme toggles, the auth-aware CTA. #}
     <header class="sticky {{ 'top-12' if _admin_chrome else 'top-0' }} z-40 w-full border-b-2 border-ecs-green-ink bg-paper/95 backdrop-blur-sm dark:bg-paper-dark/95">
-        {# TRACKS — no bare `1fr` anywhere (C8 / design.md § 6.1), but the two
+        {# TRACKS — `minmax(0,1fr) auto minmax(0,1fr)`: outer tracks equal, so the
+           link cluster sits on the page's centre axis (N1b, design.md § 9.1).
+           ⚠️ BOTH outer tracks state a 0 minimum. A bare `1fr` or a bare `auto`
+           will NOT shrink below its content, so it overflows the grid instead —
+           and `min-w-0`/`truncate` inside are then inert, because there is no
+           overflow for them to hide. With the 0 minimum stated, a long
+           admin-set site title degrades to an ellipsis instead of shoving the
+           nav links out of their own track. Tested at 41 characters.
+
+                      No bare `1fr` anywhere (C8 / design.md § 6.1), but the two
            halves of that rule are not the same fix:
            * The WORDMARK track carries an image, so a bare `1fr`'s automatic
              min-content floor is the overflow hazard the rule names →
@@ -250,37 +262,48 @@
              which is the exact failure mode the note above records. So it gets
              `minmax(min-content,1fr)`: same computed behaviour as the `1fr` it
              replaces, with the floor stated instead of implied. #}
-        <nav aria-label="Main" class="mx-auto grid h-16 max-w-7xl grid-cols-[minmax(0,auto)_minmax(min-content,1fr)] items-center gap-3 px-4 sm:h-20 sm:gap-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(min-content,1fr)] lg:px-8">
+        <nav aria-label="Main" class="mx-auto grid h-16 max-w-7xl grid-cols-[minmax(0,auto)_minmax(min-content,1fr)] items-center gap-3 px-4 sm:h-20 sm:gap-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:px-8">
             {# min-h-11: the link's height is otherwise driven by the h-10 logo,
                which put the wordmark at 40px — the one control on the public
                site under the 44px floor (C8). The row is h-16/sm:h-20, so
                nothing moves. #}
-            <div class="flex min-w-0 items-center gap-4 justify-self-start">
+            {# ⚠️ NO `justify-self-start` HERE. A grid item stretches to its track by
+               default; `justify-self-start` sizes it to MAX-CONTENT instead, so
+               this row grew to 498px inside a 382.5px track and the season chip
+               spilled 99px onto the centred nav links. `min-w-0` and the chip's
+               own `truncate` are inert while the box is max-content sized —
+               there is no overflow to hide. Stretch is what makes them work. #}
+            <div class="flex min-w-0 items-center gap-4">
 
                 <a href="{{ url_for('public.home') }}" aria-label="{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }} — home"
-               class="nav-pill flex min-h-11 min-w-0 items-center gap-2.5 justify-self-start rounded-full sm:gap-3 {{ NAV_RING }}">
+               class="nav-pill flex min-h-11 min-w-0 items-center gap-2.5 justify-self-start rounded-[2px] sm:gap-3 {{ NAV_RING }}">
+                {# ⚠️ The wordmark steps up at `xl:`, not `sm:`. The centred link
+                   cluster arrives at `lg:` and takes 419px out of the middle, so
+                   between 1024 and 1279 each outer track is ~254px — 3px less
+                   than "ECS Pub League" needs at 24px, which is enough to render
+                   a pointless ellipsis. Holding 20px until the tracks widen
+                   costs nothing anyone will notice and removes the crunch. #}
                 <img src="{{ appearance.logo_url or imgs.logo }}" alt="" class="h-10 w-10 shrink-0 object-contain">
-                <span class="min-w-0 truncate font-display text-xl font-extrabold leading-none tracking-[-0.03em] text-gray-900 sm:text-2xl dark:text-white">{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }}</span>
+                <span class="min-w-0 truncate font-display text-xl font-extrabold leading-none tracking-[-0.03em] text-gray-900 xl:text-2xl dark:text-white">{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }}</span>
             </a>
 
-                {# Live season state, in the bar. The most useful thing a returning
+                {# ⚠️ NO SEASON CHIP HERE. One was added when the status strip was
+                   deleted, on the theory that the strip's live fact had to
+                   survive somewhere in the chrome. It did not need to: the hero
+                   already opens with a `registration_status` block carrying the
+                   identical string ("2026 Fall · Waitlist open"), so the chip
+                   was a THIRD copy of one fact.
 
-                   visitor wants, and it breaks the wordmark-left / inline-links /
-
-                   button-right silhouette that reads as the default nav shape.
-
-                   It rides INSIDE grid column one: the nav's column template is
-
-                   explicit, so a fourth grid child wraps onto a second row. #}
-
-                <p class="hidden items-center gap-2 whitespace-nowrap border-l border-black/10 pl-4 font-mono text-[0.68rem] uppercase tracking-[0.14em] text-gray-600 md:flex dark:border-white/15 dark:text-gray-300">
-
-                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-ecs-pitch" aria-hidden="true"></span>
-
-                    {% if season_name %}{{ season_name }} &middot; {% endif %}{{ cta.label if cta and cta.label else 'Join us' }}
-
-                </p>
-
+                   It also did not fit. At 11px mono with 0.14em tracking it is
+                   224px, and the wordmark is 256px — 480px in a track that a
+                   page-centred link cluster limits to 382.5px. Every attempt to
+                   make it fit moved the damage somewhere else: it overlapped the
+                   nav links, then it truncated the wordmark to "ECS Pub …", then
+                   it crushed the link track to 92px. The layout was telling the
+                   truth — this nav carries a wordmark, six links, Log in, Portal
+                   and a theme toggle, and has no room for a sixth element. The
+                   mockup's nav has room because its brand is "Pub League" and it
+                   has none of those three controls. #}
             </div>
 
             {# Centre cluster (admin-editable menu via Appearance -> Menus) #}
@@ -296,10 +319,10 @@
                     {{ item.label }}
                     <i class="ti ti-chevron-down text-xs transition-transform duration-150 ease-out group-aria-expanded:rotate-180 motion-reduce:transition-none" aria-hidden="true"></i>
                   </button>
-                  <div id="nav-dd-{{ loop.index }}" class="z-50 hidden min-w-48 rounded-xl bg-white p-1.5 shadow-md ring-1 ring-inset ring-black/[0.07] dark:bg-paper-dark dark:ring-white/10">
-                    <a href="{{ item.url }}" {% if nav_active == item.key %}aria-current="page"{% endif %} class="nav-pill flex min-h-11 items-center rounded-lg px-3.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none dark:text-gray-100 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">{{ item.label }}</a>
+                  <div id="nav-dd-{{ loop.index }}" class="z-50 hidden min-w-48 rounded-[2px] bg-white p-1.5 shadow-md ring-1 ring-inset ring-black/[0.07] dark:bg-paper-dark dark:ring-white/10">
+                    <a href="{{ item.url }}" {% if nav_active == item.key %}aria-current="page"{% endif %} class="nav-pill flex min-h-11 items-center rounded-[2px] px-3.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none dark:text-gray-100 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">{{ item.label }}</a>
                     {% for child in item.children %}
-                    <a href="{{ child.url }}" class="nav-pill flex min-h-11 items-center rounded-lg px-3.5 text-[0.9375rem] font-medium leading-none text-gray-700 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">{{ child.label }}</a>
+                    <a href="{{ child.url }}" class="nav-pill flex min-h-11 items-center rounded-[2px] px-3.5 text-[0.9375rem] font-medium leading-none text-gray-700 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">{{ child.label }}</a>
                     {% endfor %}
                   </div>
                 </div>
@@ -314,18 +337,18 @@
                hamburger below lg. #}
             <div class="flex items-center gap-1 justify-self-end sm:gap-2">
                 {% if current_user.is_authenticated %}
-                <a href="{{ portal_url('main.index') }}" class="hidden lg:inline-flex {{ BTN_SM }} {{ BTN_PRIMARY }}">
+                <a href="{{ portal_url('main.index') }}" class="max-lg:hidden {{ BTN_SM }} {{ BTN_PRIMARY }}">
                     <i class="ti ti-layout-dashboard text-base" aria-hidden="true"></i> Portal
                 </a>
                 {% else %}
-                <a href="{{ portal_url('auth.login') }}" class="hidden lg:inline-flex {{ NAV_PILL }} {{ NAV_OFF }}">Log in</a>
+                <a href="{{ portal_url('auth.login') }}" class="max-lg:hidden {{ NAV_PILL }} {{ NAV_OFF }}">Log in</a>
                 {# Nav label is the shortest rung of the CTA ladder (design.md
                    § 10). The live state is APPENDED visually-hidden, never set as
                    an aria-label: an aria-label REPLACES the accessible name, so
                    with the waitlist closed the button read "Join" and answered to
                    "Register" — a speech-input user saying "click Join" could not
                    fire the site's primary CTA (WCAG 2.5.3 Label in Name). #}
-                <a href="{{ cta.url }}" class="hidden lg:inline-flex {{ BTN_SM }} {{ BTN_PRIMARY }}">
+                <a href="{{ cta.url }}" class="max-lg:hidden {{ BTN_SM }} {{ BTN_PRIMARY }}">
                     <i class="ti ti-user-plus text-base" aria-hidden="true"></i> Join<span class="sr-only"> &mdash; {{ cta.label }}</span>
                 </a>
                 {% endif %}
@@ -354,12 +377,12 @@
                     {% for item in nav_items %}
                     <li>
                         <a href="{{ item.url }}" {% if nav_active == item.key %}aria-current="page"{% endif %}
-                           class="nav-pill flex min-h-11 items-center rounded-lg px-3 text-base font-semibold leading-none transition-colors duration-150 ease-out motion-reduce:transition-none {{ NAV_ON if nav_active == item.key else NAV_OFF }} {{ NAV_RING }}">{{ item.label }}</a>
+                           class="nav-pill flex min-h-11 items-center rounded-[2px] px-3 text-base font-semibold leading-none transition-colors duration-150 ease-out motion-reduce:transition-none {{ NAV_ON if nav_active == item.key else NAV_OFF }} {{ NAV_RING }}">{{ item.label }}</a>
                         {% if item.children %}
                         <ul class="mt-1 space-y-1">
                             {% for child in item.children %}
                             <li><a href="{{ child.url }}"
-                                   class="nav-pill flex min-h-11 items-center rounded-lg pl-8 pr-3 text-[0.9375rem] font-medium leading-none text-gray-700 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">{{ child.label }}</a></li>
+                                   class="nav-pill flex min-h-11 items-center rounded-[2px] pl-8 pr-3 text-[0.9375rem] font-medium leading-none text-gray-700 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">{{ child.label }}</a></li>
                             {% endfor %}
                         </ul>
                         {% endif %}
@@ -407,7 +430,7 @@
            }[_tone] %}
         {% set _tone_icon = {'error': 'ti-alert-triangle', 'warning': 'ti-alert-circle', 'brand': 'ti-info-circle'}[_tone] %}
         <div id="flash-{{ loop.index }}" role="{{ 'alert' if _err else 'status' }}"
-             class="mb-3 flex items-start gap-3 rounded-xl p-4 text-base ring-1 ring-inset {{ _tone_cls }}">
+             class="mb-3 flex items-start gap-3 rounded-[2px] p-4 text-base ring-1 ring-inset {{ _tone_cls }}">
             <i class="ti {{ _tone_icon }} mt-0.5 shrink-0 text-lg" aria-hidden="true"></i>
             <p class="min-w-0 flex-1">{{ message }}</p>
             <button type="button" data-dismiss-target="#flash-{{ loop.index }}"
@@ -492,7 +515,7 @@
         <div class="mx-auto max-w-7xl px-4 pt-14 pb-12 sm:px-6 lg:px-8">
             <nav aria-label="Site information"
                  class="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-black/[0.08] pt-4 text-sm text-gray-600 dark:border-white/10 dark:text-gray-300">
-                {% set _colo = 'nav-pill inline-flex min-h-11 items-center rounded-lg transition-colors duration-150 ease-out hover:text-ecs-green-ink motion-reduce:transition-none dark:hover:text-ecs-green-300 ' ~ NAV_RING %}
+                {% set _colo = 'nav-pill inline-flex min-h-11 items-center rounded-[2px] transition-colors duration-150 ease-out hover:text-ecs-green-ink motion-reduce:transition-none dark:hover:text-ecs-green-300 ' ~ NAV_RING %}
                 <a href="{{ url_for('public.contact') }}" class="{{ _colo }}">Contact</a>
                 <a href="{{ discord_invite_url }}" class="{{ _colo }} gap-2"><i class="ti ti-brand-discord text-base" aria-hidden="true"></i>Discord</a>
                 <a href="mailto:ecspubleague@gmail.com" class="{{ _colo }} gap-2"><i class="ti ti-mail text-base" aria-hidden="true"></i>Email</a>

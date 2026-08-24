@@ -20,7 +20,7 @@
        active chip can never lose its focus ring. This hero is a brand band, so
        the chips use the on-colour pair from §3.3 / §7.1's "on brand ground"
        column rather than the off-colour one. #}
-    {% set chip = 'inline-flex items-center gap-2 rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink' %}
+    {% set chip = 'inline-flex items-center gap-2 rounded-[2px] px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink' %}
     {% set chip_on = 'bg-white text-ecs-green-ink ring-white' %}
     {% set chip_off = 'bg-white/15 text-white ring-white/45 hover:bg-white/25' %}
     <a href="{{ url_for('public.news_list') }}"
@@ -42,7 +42,7 @@
   <p class="{{ 'mt-4' if categories else '' }} flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-normal leading-normal text-white">
     <span>Tagged <span class="font-semibold">#{{ active_tag }}</span></span>
     <a href="{{ url_for('public.news_list', category=active_category or None) }}"
-       class="inline-flex items-center gap-1.5 rounded-full px-3 py-2 min-h-11 font-semibold text-white underline decoration-white/60 underline-offset-2 transition-colors duration-150 ease-out motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink">
+       class="inline-flex items-center gap-1.5 rounded-[2px] px-3 py-2 min-h-11 font-semibold text-white underline decoration-white/60 underline-offset-2 transition-colors duration-150 ease-out motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink">
       <i class="ti ti-x" aria-hidden="true"></i> Clear the tag
     </a>
   </p>
@@ -62,19 +62,19 @@
     {% if not posts %}
     {# design.md §7.7 — no dashed border, no "check back soon", exactly one
        action, and the copy branches on WHY the list is empty. #}
-    <div class="rounded-xl bg-ecs-green/[0.05] p-8 sm:p-10 text-left ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.03] dark:ring-white/10">
+    <div class="rounded-[2px] bg-ecs-green/[0.05] p-8 sm:p-10 text-left ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.03] dark:ring-white/10">
       {% if active_tag or active_category %}
       <h2 class="font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words text-gray-900 dark:text-white">Nothing filed under {% if active_tag %}#{{ active_tag }}{% else %}{{ active_category }}{% endif %} yet.</h2>
       <p class="mt-3 max-w-[65ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200">That filter is empty for now. The rest of the archive is not.</p>
       <a href="{{ url_for('public.news_list') }}"
-         class="mt-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">
+         class="mt-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[2px] px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">
         <i class="ti ti-arrow-back-up" aria-hidden="true"></i> Show every post
       </a>
       {% else %}
       <h2 class="font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words text-gray-900 dark:text-white">The first post lands here.</h2>
       <p class="mt-3 max-w-[65ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200">Team reveals, season dates and the odd match report get posted here before anywhere else. Put your name down and you won’t miss one.</p>
       <a href="{{ cta.url }}"
-         class="mt-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">
+         class="mt-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[2px] px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">
         <i class="ti ti-user-plus" aria-hidden="true"></i> {{ cta.label }}
       </a>
       {% endif %}
@@ -123,7 +123,7 @@
    the page label never slides sideways between pages. Wrapped in a <section>
    so it does not break the site's `auto` section rhythm selector. #}
 {% if total_pages and total_pages > 1 %}
-{% set page_pill = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-5 py-2.5 min-h-11 text-sm font-semibold ring-1 ring-inset transition-[background-color,box-shadow,color,outline-color] duration-150 ease-out motion-reduce:transition-none active:translate-y-px active:brightness-95 text-ecs-green-ink ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark' %}
+{% set page_pill = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-[2px] px-5 py-2.5 min-h-11 text-sm font-semibold ring-1 ring-inset transition-[background-color,box-shadow,color,outline-color] duration-150 ease-out motion-reduce:transition-none active:translate-y-px active:brightness-95 text-ecs-green-ink ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark' %}
 <section class="pb-20 sm:pb-24">
   <nav class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8" aria-label="News archive pages">
     <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-4">
@@ -160,7 +160,7 @@
       <p class="mt-3 max-w-[65ch] text-lg sm:text-xl lg:text-2xl font-normal leading-[1.45] text-pretty text-white">No experience needed. Turn up, get put on a team, play on Sunday.</p>
       <div class="mt-8 flex flex-wrap items-center gap-3 sm:gap-4">
         <a href="{{ cta.url }}"
-           class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-white text-ecs-green-ink shadow-sm hover:bg-white/90 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink">
+           class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[2px] px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-white text-ecs-green-ink shadow-sm hover:bg-white/90 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink">
           <i class="ti ti-user-plus" aria-hidden="true"></i> {{ cta.label }}
         </a>
       </div>

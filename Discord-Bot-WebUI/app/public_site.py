@@ -94,7 +94,12 @@ def _cta_state(league=None):
     args = {'league': pref} if pref else {}
 
     if waitlist_open:
-        return {'label': 'Join the Waitlist',
+        # Sentence case, matching the approved mockup and design.md § 10 — the
+        # site's voice is deliberately conversational, and Title Case on a
+        # button reads as a product surface rather than a club's own words.
+        # (The portal's own auth pages keep their Title Case titles; this label
+        # is the PUBLIC site's CTA only.)
+        return {'label': 'Join the waitlist',
                 'url': portal_url('auth.waitlist_register', **args),
                 'mode': 'waitlist', 'league': league}
     return {'label': 'Register',

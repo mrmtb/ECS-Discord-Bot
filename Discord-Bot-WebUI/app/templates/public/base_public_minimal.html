@@ -9,7 +9,7 @@
   WHY THIS FILE EXISTS (design.md, work order O7.1): the seven utility templates
   used to extend `base_unauthenticated_flowbite.html`, the PORTAL LOGIN shell.
   That shell is shared with the portal and must not be restyled, and it carries
-  none of the public design system (no Bricolage, no paper ground, no tokens, an
+  none of the public design system (no Big Shoulders, no paper ground, no tokens, an
   unlabelled floating theme toggle, a hardcoded #1a472a in its SweetAlert calls).
   Re-parenting here is the single change that pulls all seven into the system.
 
@@ -53,7 +53,7 @@
 
     {% if appearance is defined and appearance and appearance.favicon_url %}<link rel="icon" href="{{ appearance.favicon_url }}">{% endif %}
 
-    {# ---- Fonts. Bricolage Grotesque displays, Inter reads (design.md § 2).
+    {# ---- Fonts. Big Shoulders displays, Inter reads (design.md § 2).
        Both are self-hosted: the public CSP blocks fonts.googleapis.com, so a
        <link> to a font CDN would fall back to system-ui with no error. Preload
        hrefs must byte-match the url() inside the two .css files (bare, no ?v=). ---- #}

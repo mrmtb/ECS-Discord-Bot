@@ -71,11 +71,11 @@ _D = {
     # be SHORT — two or three words. "Everyone plays" is the league's own
     # promise and the strongest two words it has. The explanatory sentence moves
     # to the lede, where it belongs.
-    'hero_title': 'Everyone plays.',
+    'hero_title': 'Everyone<br>plays.',
     'hero_body': '<p>Beginner-friendly adult soccer in Seattle. Nobody gets cut, '
                  'no experience is needed, and everyone on the roster gets '
                  'minutes.</p>',
-    'intro_title': 'Soccer for all',
+    'intro_title': 'Soccer<br>for all',
     # Two large sentences, not a paragraph of marketing. Both are the league's
     # own argument, tightened.
     'intro_body': '<p>Seattle has a deep, talented soccer scene, and almost '
@@ -292,13 +292,25 @@ def build_home_doc(session):
             _b('heading', level=1, html=hero_title),
             _b('richtext', html=_block('home_hero', 'body_html', _D['hero_body'])),
             _b('cta_live', kind='waitlist_or_register', style='primary'),
-            _b('button', label='See the schedule',
-               link={'kind': 'builtin', 'value': 'calendar'}, style='outline'),
+            # The mockup's second hero CTA is "How joining works" — the rung
+            # below the ask on the CTA ladder (§ 10), for the visitor who is not
+            # ready to commit. It points at /register, which IS the how: that
+            # page opens with the three-step ladder before it asks for anything.
+            _b('button', label='How joining works',
+               link={'kind': 'builtin', 'value': 'register'}, style='outline'),
         ], size='lg', align='left', overlay=overlay, layout='split',
            image={'url': hero_img, 'focal': focal,
                   'alt': 'ECS Pub League players celebrating on the pitch in Seattle'}),
 
-        # 2 · WHO WE ARE — the claim, then the three value propositions as a
+        # 2 · THE LIVE BAND — on the ink ground, the page's one dark anchor.
+        #     Teams, players and the next PLOP, read from the portal at render
+        #     time. Nothing else on this page proves a league is actually
+        #     running; without it the home page could belong to anyone.
+        _s('content', [
+            _b('facts', show_counts=True, show_plop=True),
+        ], theme='dark', width='wide', align='left', padding='lg'),
+
+        # 3 · WHO WE ARE — the claim, then the three value propositions as a
         #     rule-separated list. The heading rides in the head slot rather
         #     than standing as its own centred section (design.md § 6.4).
         _s('content', [
@@ -308,14 +320,6 @@ def build_home_doc(session):
             _b('steps', style='plain',
                items=[{'title': t, 'html': h} for t, h in _VALUE_CARDS]),
         ], width='normal', align='left', padding='lg'),
-
-        # 3 · THE LIVE BAND — on the ink ground, the page's one dark anchor.
-        #     Teams, players and the next PLOP, read from the portal at render
-        #     time. Nothing else on this page proves a league is actually
-        #     running; without it the home page could belong to anyone.
-        _s('content', [
-            _b('facts', show_counts=True, show_plop=True),
-        ], theme='dark', width='wide', align='left', padding='lg'),
 
         # 4 · DIVISIONS — head slot + a two-up diptych of LEAD cards.
         #     Each division owns its own live CTA INSIDE the block. They used to
@@ -327,7 +331,7 @@ def build_home_doc(session):
         #     and drops both buttons onto one baseline.
         _s('columns', [
             _head(_b('heading', level=2, prominence='lead',
-                     html='Two divisions, one community')),
+                     html='Two divisions,<br>one community')),
             _head(_b('richtext', html='<p>Start where you’re comfortable. Players '
                                       'move between them season to season, and '
                                       'plenty do.</p>')),
@@ -345,24 +349,13 @@ def build_home_doc(session):
                html=_block('home_division_premier', 'body_html', _D['premier_body'])),
         ], theme='light', layout='50-50', padding='lg'),
 
-        # 5 · JUST FOR FUN — the reassurance diptych.
-        _s('columns', [
-            _b('image', col=0,
-               image={'url': jff_img,
-                      'alt': 'ECS Pub League players celebrating after a match'},
-               size='full', aspect='4:3'),
-            _b('heading', col=1, level=2, html='Just for fun. Genuinely.'),
-            _b('richtext', col=1,
-               html=_block('home_justforfun', 'body_html', _D['justforfun_body'])),
-        ], layout='50-50', align='center', padding='md'),
-
-        # 6 · HOW TO JOIN — a real numbered step ladder (design.md § 6.2), not
+        # 5 · HOW TO JOIN — a real numbered step ladder (design.md § 6.2), not
         #     a second icon three-up and no longer an <ol> buried in a richtext
         #     block: `steps` sets the ordinals in the condensed display cut and
         #     rules the rows apart. The FAQ link is its OWN full-width row
         #     rather than parked in a grid cell (§ 6.3).
         _s('content', [
-            _b('heading', level=2, prominence='lead', html='Turn up once.'),
+            _b('heading', level=2, prominence='lead', html='Turn up<br>once.'),
             _b('richtext', html='<p>New players are always welcome. This is the '
                                 'whole path in.</p>'),
             _b('steps', style='numbered',
@@ -374,6 +367,17 @@ def build_home_doc(session):
         # sections either side give it somewhere to land.
         ], theme='brand', width='normal', align='left', padding='lg'),
 
+        # 6 · JUST FOR FUN — the reassurance diptych.
+        _s('columns', [
+            _b('image', col=0,
+               image={'url': jff_img,
+                      'alt': 'ECS Pub League players celebrating after a match'},
+               size='full', aspect='4:3'),
+            _b('heading', col=1, level=2, html='Just for fun.<br>Genuinely.'),
+            _b('richtext', col=1,
+               html=_block('home_justforfun', 'body_html', _D['justforfun_body'])),
+        ], layout='50-50', align='center', padding='md'),
+
         # 7 · LATEST NEWS (dynamic)
         _s('content', [
             _b('heading', level=2, html='Latest news'),
@@ -383,7 +387,7 @@ def build_home_doc(session):
         # 8 · CLOSING BAND — the top of the CTA escalation (§ 10): the label
         #     rises, the destination does not change.
         _s('band', [
-            _b('heading', level=2, html='Come as you are.'),
+            _b('heading', level=2, html='Come as<br>you are.'),
             _b('richtext', html='<p>Get on the list and we’ll reach out as soon as a '
                                 'place opens. Or turn up to a PLOP this Sunday and see '
                                 'for yourself first.</p>'),

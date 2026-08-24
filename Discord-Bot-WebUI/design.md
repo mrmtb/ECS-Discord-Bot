@@ -151,6 +151,36 @@ templates preload it:** both shells (`base_public.html`,
   `@layer base`, so a `font-display` / `font-sans` / `font-mono` utility still
   overrides it.
 
+### 2.1a ⚠️ `theme_css` MUST BE Markup — the site-wide serif bug
+
+`css_var_block()` returns **`Markup`**, and that is load-bearing. The block is
+emitted as `<style>{{ appearance.theme_css }}</style>` in **five** templates.
+Jinja autoescapes; the font stacks contain single quotes; so a plain `str`
+shipped:
+
+```
+--font-heading: &#39;Big Shoulders Display&#39;, &#39;Haettenschweiler&#39;, …
+```
+
+**`<style>` is a RAW TEXT element — the CSS parser never decodes HTML
+entities**, so it reads those six characters literally. The custom property is
+still *set*, to a garbage token stream, which is worse than leaving it unset:
+`var(--font-heading, …)` only falls back for a property that is **not set**. The
+resulting `font-family` is invalid at computed-value time, so the whole public
+site rendered in the browser's default serif — headings and body alike.
+
+⚠️ **It hid behind the palette.** A colour triplet is `64 176 80` — no quotes,
+nothing to escape — so every colour in the same block kept working perfectly.
+The page looked deliberately designed in Georgia rather than broken, which is
+why it survived review, a redesign and a deploy. **Anything interpolated into
+`<style>` or `<script>` needs the same audit.**
+
+⚠️ **The verification harness had the identical bug**, so every responsive
+measurement taken before 2026-08-24 was made in Times New Roman — with the wrong
+glyph widths. Re-run after fixing it: still 0/49, but the earlier number was
+luck, not evidence. An instrument that shares the bug it is looking for cannot
+find it.
+
 ### 2.2 Weights
 
 - **Big Shoulders** loads **600–900** — the file is instanced to that range, so
@@ -165,6 +195,32 @@ templates preload it:** both shells (`base_public.html`,
   reads as a code block, which is not what a fixture label is.
 - Body is one weight: `font-normal`. `font-medium` for a link, `font-semibold`
   for a UI label, `font-bold` for a heading. Nothing else.
+
+### 2.2a Two fluid steps — the hero, and only the hero
+
+D1's `xs` bucket and the lede tier `L` are **`clamp()` values, not breakpoint
+steps**, and they are the only two in the system:
+
+```
+D1 xs : text-[clamp(3.6rem,12.5vw,10.5rem)]     56px -> 168px
+L     : text-[clamp(1.06rem,1.5vw,1.28rem)]     17px -> 20.5px
+```
+
+⚠️ **Solved from the mockup's own rendered values, not guessed.** The approved
+mockup sizes both with `clamp()`, so a discrete ramp agreed with it only at the
+widths where the steps happened to land — measured, the hero was **168px at
+1024 where the mockup was 128px**. The two curves now match at 320 / 375 / 414 /
+768 / 1024 / 1280 / 1440 / 1920 exactly.
+
+⚠️ **A fluid D1 is only safe because that headline carries an explicit `<br>`.**
+`overflow-wrap: anywhere` is non-negotiable on mobile (gate 51) and it will
+break a word mid-syllable when the box is too narrow — "EVERYONE" rendered as
+"EVERYO / NE" once. A two-word display headline gets its own line break;
+anything longer stays in a smaller bucket. Verified: no mid-word break at any
+width.
+
+Everything else stays on the discrete ramp. Two exceptions, both in the hero,
+both measured — not a licence to make the whole scale fluid.
 
 ### 2.3 The ramp — literal class strings, copy exactly
 
@@ -430,17 +486,31 @@ section ever emits a `prose` class outside `news_detail.html`.
 
 ## 4 · Surface, elevation and radius
 
-### 4.1 Radius scale — three values, no others
+### 4.1 Radius scale — TWO values, no others (amended 2026-08-24)
 
 | Value | Class | Used for |
 |---|---|---|
-| 999px | `rounded-full` | buttons, chips, pills, badges, avatars, icon buttons |
-| 12px | `rounded-xl` | cards, panels, images, media wells, empty states, form panels |
-| 8px | `rounded-lg` | inputs, selects, textareas, small tiles, code |
+| **2px** | `rounded-[2px]` | **everything rectangular** — buttons, cards, chips, inputs, panels, media wells, badges, tiles |
+| 50% | `rounded-full` | **circles only** — the division seals, the live dot, avatars, the logo mark, icon-only round buttons |
 
-`rounded-2xl` and larger are **banned** (playful caps card radius at 12px).
-`rounded-sm`/`rounded-md` are banned as decoration; `rounded` on a focus target
-is fine only where it is `rounded-full` or `rounded-lg`.
+⚠️ **This replaced a three-tier scale** (`rounded-full` pills / `rounded-xl`
+cards / `rounded-lg` inputs) across **103 class occurrences**. The approved
+mockup uses exactly two radii and no pills at all, and that is the point rather
+than an oversight: the 2026 field has moved hard away from "corporate soft UI",
+and a uniform generous radius on everything is a named AI-slop signature. A 2px
+corner reads as printed matter — a fixture list, a team sheet — which is the
+genre this site is in.
+
+⚠️ **`rounded-full` survives ONLY where the element is a circle.** The migration
+kept it on any element that also sizes itself square (`h-N w-N`,
+`aspect-square`) and squared everything else. Squaring a 7px live dot or a
+seal would be a bug, not a style. `rounded-2xl` and larger remain banned;
+`rounded-xl` / `rounded-lg` / `rounded-md` / `rounded-sm` are now banned too.
+
+⚠️ Scope is the **marketing shell only** — `base_public.html`, the section
+vocabulary, news, calendar, the guide chrome and the four error pages. The
+survey / check-in / member-pass templates deliberately carry none of the public
+design system and were left alone.
 
 ### 4.2 The four surfaces
 
@@ -1155,22 +1225,22 @@ sticky stack that is already mis-measured, so the strip is fixed and scrolls awa
 
 **Structure, top to bottom:**
 
-1. **Season chip** — *inside the bar, not a strip above it.* `font-mono
-   text-[0.68rem] uppercase tracking-[0.14em]`, separated from the wordmark by a
-   `border-l` hairline, carrying the live season and CTA state
-   (`2026 Fall · Waitlist open`). `hidden md:flex` — below `md` the bar has no
-   room and the state is the hero's job anyway.
+1. **No status strip, and no season chip.** The full-width
+   `bg-ecs-green-ink` strip is deleted — it was a fifth flat green rectangle
+   spending 32px of chrome on every page to say what the hero says louder.
 
-   ⚠️ **It is nested inside grid column 1, alongside the wordmark — not added as
-   a fourth grid child.** The bar's `grid-template-columns` is explicit and
-   three-wide; a fourth child wraps to a second row and doubles the bar's
-   height. This is the whole reason the chip lives in a flex row with the
-   wordmark rather than standing on its own.
+   ⚠️ A season chip briefly replaced it in the bar and was then **also**
+   removed. Two reasons, and the second is the real one. It duplicated: the hero
+   already opens with a `registration_status` block carrying the identical
+   string, so the chip was a third copy of one fact. And it did not fit: at 11px
+   mono with 0.14em tracking it is 224px beside a 256px wordmark, in a track
+   that a page-centred link cluster caps at 382.5px. Every attempt to make it
+   fit just moved the damage — it overlapped the nav links, then truncated the
+   wordmark to "ECS Pub …", then crushed the link track to 92px. **The layout
+   was right and the addition was wrong.** The mockup's nav has room for a chip
+   because its brand is "Pub League" and it carries no Log in, no Portal and no
+   theme toggle.
 
-   *(This replaces the full-width `bg-ecs-green-ink` status strip. The strip was
-   one more flat green rectangle on a site that already had four per page, and
-   it spent 32px of vertical chrome on every page to say what the hero says
-   louder.)*
 2. **Bar** — `sticky top-0 z-40 bg-paper/95 dark:bg-paper-dark/95 backdrop-blur-sm
    border-b-2 border-ecs-green-ink` · `h-16 sm:h-20`.
    - **Left:** logo mark `h-10 w-10` + wordmark at **W** in Big Shoulders, visible
@@ -1196,6 +1266,27 @@ sticky stack that is already mis-measured, so the strip is fixed and scrolls awa
    `max-h-[calc(100dvh-5rem)] overflow-y-auto overscroll-contain`.
 6. **Skip link** as the first child of `<body>`; `<main id="main" tabindex="-1">`.
 7. `<nav aria-label="Main">` / `aria-label="Mobile">`.
+
+#### 9.1a Two nav mechanics that are not taste
+
+⚠️ **Desktop-only controls use `max-lg:hidden`, never `hidden lg:inline-flex`.**
+`hidden` and `inline-flex` are both display utilities with identical
+specificity, so the built stylesheet's source order decides — and Tailwind emits
+`.inline-flex` **after** `.hidden`. `NAV_PILL` and `BTN_SM` both carry an
+unprefixed `inline-flex`, so composing them with `hidden lg:inline-flex` shipped
+`display:inline-flex` at every width: Log in, Portal and the CTA pill all
+rendered at 320px, eating ~174px of a 288px bar. Any element that composes a
+shared class constant containing a display utility has this hazard.
+
+⚠️ **Both outer nav tracks state a 0 minimum** —
+`minmax(0,1fr) auto minmax(0,1fr)`. A bare `1fr` or a bare `auto` will not
+shrink below its content; it overflows the grid instead, and `min-w-0` /
+`truncate` inside are then inert because there is no overflow to hide. With the
+0 minimum stated, an over-long admin-set site title degrades to an ellipsis
+instead of shoving the link cluster out of its own track. Tested at 41
+characters. The wordmark also holds 20px until `xl:` — the link cluster arrives
+at `lg:` and takes 419px out of the middle, leaving each outer track ~254px,
+which is 3px less than the wordmark needs at 24px.
 
 ### 9.2 Footer — **Ft8 Marquee + colophon.** Ft3 is deleted. ~~Ft5 Statement~~ is deleted too (2026-08-23).
 

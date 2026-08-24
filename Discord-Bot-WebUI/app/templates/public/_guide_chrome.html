@@ -28,14 +28,14 @@
   <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
     <div class="flex h-12 items-center gap-1 sm:gap-2">
       <button type="button" data-guide-toggle aria-expanded="false" aria-controls="guide-toc-panel"
-              class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark xl:hidden">
+              class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[2px] px-3 text-sm font-semibold text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark xl:hidden">
         <i class="ti ti-list-details text-base" aria-hidden="true"></i>
         <span class="sr-only sm:not-sr-only">Contents</span>
         <i class="ti ti-chevron-down text-xs transition-transform duration-150 ease-out motion-reduce:transition-none" aria-hidden="true" data-guide-chevron></i>
       </button>
       <span class="min-w-0 flex-1 truncate text-sm text-gray-600 dark:text-gray-300" aria-hidden="true" data-guide-current></span>
       <button type="button" data-guide-search-open aria-label="Search the guide"
-              class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-gray-600 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+              class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[2px] px-3 text-sm font-medium text-gray-600 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
         <i class="ti ti-search text-base" aria-hidden="true"></i>
         <span class="sr-only sm:not-sr-only">Search</span>
       </button>
@@ -46,13 +46,13 @@
       <div class="h-full w-0 bg-ecs-green dark:bg-ecs-green-300" data-guide-progress></div>
     </div>
     <div class="absolute inset-x-0 top-full hidden" id="guide-toc-panel" data-guide-panel>
-      <div class="mx-2 mt-1 overflow-hidden rounded-xl bg-white shadow-md ring-1 ring-inset ring-black/[0.07] sm:mx-4 dark:bg-paper-dark dark:shadow-none dark:ring-white/10">
+      <div class="mx-2 mt-1 overflow-hidden rounded-[2px] bg-white shadow-md ring-1 ring-inset ring-black/[0.07] sm:mx-4 dark:bg-paper-dark dark:shadow-none dark:ring-white/10">
         <div class="border-b border-ecs-green-ink/15 p-3 dark:border-white/10">
           <div class="relative">
             <i class="ti ti-search pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400" aria-hidden="true"></i>
             <input type="search" data-guide-search placeholder="Search the guide…"
                    aria-label="Search the guide" autocomplete="off"
-                   class="block min-h-11 w-full rounded-lg border-0 bg-white py-2.5 pl-10 pr-3.5 text-base text-gray-900 ring-1 ring-inset ring-gray-400/70 transition-[box-shadow] duration-150 ease-out placeholder:text-gray-500 hover:ring-gray-500 focus:outline-hidden focus:ring-2 focus:ring-ecs-blue-600 motion-reduce:transition-none dark:bg-white/[0.05] dark:text-white dark:ring-white/20 dark:placeholder:text-gray-400 dark:hover:ring-white/30 dark:focus:ring-ecs-green-300">
+                   class="block min-h-11 w-full rounded-[2px] border-0 bg-white py-2.5 pl-10 pr-3.5 text-base text-gray-900 ring-1 ring-inset ring-gray-400/70 transition-[box-shadow] duration-150 ease-out placeholder:text-gray-500 hover:ring-gray-500 focus:outline-hidden focus:ring-2 focus:ring-ecs-blue-600 motion-reduce:transition-none dark:bg-white/[0.05] dark:text-white dark:ring-white/20 dark:placeholder:text-gray-400 dark:hover:ring-white/30 dark:focus:ring-ecs-green-300">
           </div>
         </div>
         <div class="max-h-[60vh] overflow-y-auto overscroll-contain p-2" data-guide-list></div>

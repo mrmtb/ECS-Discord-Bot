@@ -70,7 +70,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | ur
 
 
 {% macro meta_row(e, prog, tm) %}
-{% set _badge = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1 min-h-6 text-xs font-bold uppercase tracking-[0.08em] ring-1 ring-inset' %}
+{% set _badge = 'inline-flex items-center gap-1.5 rounded-[2px] px-3 py-1 min-h-6 text-xs font-bold uppercase tracking-[0.08em] ring-1 ring-inset' %}
 {% set meta = tm.get(e.event_type, ('ti-calendar-event', 'Event', 'bg-gray-100 text-gray-800 ring-black/[0.08] dark:bg-white/[0.06] dark:text-gray-200 dark:ring-white/10')) %}
 <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
     <span class="{{ _badge }} {{ meta[2] }}"><i class="ti {{ meta[0] }}" aria-hidden="true"></i>{{ meta[1] }}</span>
@@ -96,12 +96,12 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | ur
     so it deliberately does NOT take the hover-lift — that signal belongs to
     click targets only (design.md § 8). -#}
 {% macro event_card(e, prog, tm, lead=False, with_month=False) %}
-{% set _card = 'group relative flex gap-4 overflow-hidden rounded-xl bg-white ring-1 ring-inset shadow-sm dark:bg-white/[0.045] dark:shadow-none' %}
-{% set _btn_sm = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2.5 min-h-11 text-sm font-semibold leading-none transition-[background-color,box-shadow,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:brightness-95' %}
+{% set _card = 'group relative flex gap-4 overflow-hidden rounded-[2px] bg-white ring-1 ring-inset shadow-sm dark:bg-white/[0.045] dark:shadow-none' %}
+{% set _btn_sm = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[2px] px-4 py-2.5 min-h-11 text-sm font-semibold leading-none transition-[background-color,box-shadow,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:brightness-95' %}
 {% set _ghost = 'text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300' %}
 <li class="{{ _card }} {{ 'ring-ecs-green-ink/30 dark:ring-ecs-green-300/25 p-5 sm:p-8' if lead else 'ring-black/[0.07] dark:ring-white/10 p-4 sm:p-6' }}">
     <time datetime="{{ e.start_datetime.strftime('%Y-%m-%d') }}"
-          class="flex shrink-0 flex-col items-center justify-center rounded-lg px-3 py-2.5 text-center ring-1 ring-inset {{ 'min-w-20 bg-ecs-green/[0.10] ring-ecs-green-ink/25 dark:bg-white/[0.06] dark:ring-white/15' if lead else 'min-w-16 bg-ecs-green/[0.06] ring-ecs-green-ink/15 dark:bg-white/[0.05] dark:ring-white/10' }}">
+          class="flex shrink-0 flex-col items-center justify-center rounded-[2px] px-3 py-2.5 text-center ring-1 ring-inset {{ 'min-w-20 bg-ecs-green/[0.10] ring-ecs-green-ink/25 dark:bg-white/[0.06] dark:ring-white/15' if lead else 'min-w-16 bg-ecs-green/[0.06] ring-ecs-green-ink/15 dark:bg-white/[0.05] dark:ring-white/10' }}">
         <span class="text-xs font-bold uppercase tracking-[0.08em] text-gray-600 dark:text-gray-300">{{ e.start_datetime.strftime('%a') }}</span>
         <span class="font-display font-extrabold tabular-nums leading-none text-gray-900 dark:text-white {{ 'text-4xl mt-1' if lead else 'text-2xl mt-0.5' }}">{{ e.start_datetime.strftime('%-d') }}</span>
         {% if with_month %}<span class="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-gray-600 dark:text-gray-300">{{ e.start_datetime.strftime('%b') }}</span>{% endif %}
@@ -133,11 +133,11 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | ur
 {% set e0 = row[0] %}
 {% set base = (e0.title or '').rstrip('0123456789 ') %}
 {% set blen = base | length %}
-{% set _card = 'group relative flex gap-4 overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none' %}
-{% set _chip = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink active:brightness-95 bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15' %}
+{% set _card = 'group relative flex gap-4 overflow-hidden rounded-[2px] bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none' %}
+{% set _chip = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[2px] px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink active:brightness-95 bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15' %}
 <li class="{{ _card }} p-4 sm:p-6">
     <time datetime="{{ e0.start_datetime.strftime('%Y-%m-%d') }}"
-          class="flex min-w-16 shrink-0 flex-col items-center justify-center rounded-lg bg-ecs-green/[0.06] px-3 py-2.5 text-center ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.05] dark:ring-white/10">
+          class="flex min-w-16 shrink-0 flex-col items-center justify-center rounded-[2px] bg-ecs-green/[0.06] px-3 py-2.5 text-center ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.05] dark:ring-white/10">
         <span class="text-xs font-bold uppercase tracking-[0.08em] text-gray-600 dark:text-gray-300">{{ e0.start_datetime.strftime('%a') }}</span>
         <span class="mt-0.5 font-display text-2xl font-extrabold tabular-nums leading-none text-gray-900 dark:text-white">{{ e0.start_datetime.strftime('%-d') }}</span>
         <span class="mt-1 text-xs font-semibold tabular-nums text-gray-600 dark:text-gray-300">+{{ row | length - 1 }}</span>
@@ -169,7 +169,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | ur
     centred icon, no "check back soon" — a headline, one sentence that says what
     will land here, and exactly one action supplied by the caller. -#}
 {% macro empty_state(title, body) %}
-<div class="rounded-xl bg-ecs-green/[0.05] p-8 text-left ring-1 ring-inset ring-ecs-green-ink/15 sm:p-10 dark:bg-white/[0.03] dark:ring-white/10">
+<div class="rounded-[2px] bg-ecs-green/[0.05] p-8 text-left ring-1 ring-inset ring-ecs-green-ink/15 sm:p-10 dark:bg-white/[0.03] dark:ring-white/10">
     <h3 class="font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words text-gray-900 dark:text-white">{{ title }}</h3>
     <p class="mt-3 max-w-[52ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200">{{ body }}</p>
     <div class="mt-6">{{ caller() }}</div>
@@ -179,15 +179,15 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | ur
 
 {% block content %}
 {#- design.md § 7.1: one button geometry, three variants, eight states. -#}
-{% set BTN = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 text-base font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95' %}
-{% set BTN_SM = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2.5 min-h-11 text-sm font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:brightness-95' %}
+{% set BTN = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[2px] px-6 py-3 min-h-11 text-base font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95' %}
+{% set BTN_SM = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[2px] px-4 py-2.5 min-h-11 text-sm font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:brightness-95' %}
 {% set BTN_PRIMARY = 'bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark' %}
 {% set BTN_GHOST = 'text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark' %}
 {% set BTN_ON_BRAND_PRIMARY = 'bg-white text-ecs-green-ink shadow-sm hover:bg-white/90 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink' %}
 {% set BTN_ON_BRAND_GHOST = 'text-white ring-1 ring-inset ring-white/60 hover:bg-white/15 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink' %}
 {#- design.md § 7.3: the shared chip classes live OUTSIDE the ternary, so an
     active chip can never lose its focus ring to the inactive branch. -#}
-{% set CHIP = 'inline-flex items-center gap-2 rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink active:brightness-95' %}
+{% set CHIP = 'inline-flex items-center gap-2 rounded-[2px] px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink active:brightness-95' %}
 {% set CHIP_OFF = 'bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15' %}
 {% set CHIP_ON = 'bg-ecs-green-ink text-white ring-ecs-green-ink' %}
 {% set D3 = 'font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words' %}
@@ -357,7 +357,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | ur
         </ul>
         {% endif %}
 
-        <div class="mt-8 hidden overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] sm:block dark:bg-white/[0.045] dark:ring-white/10">
+        <div class="mt-8 hidden overflow-hidden rounded-[2px] bg-white ring-1 ring-inset ring-black/[0.07] sm:block dark:bg-white/[0.045] dark:ring-white/10">
             <table class="w-full table-fixed border-collapse">
                 <caption class="sr-only">Public ECS Pub League events in {{ grid.label }}</caption>
                 <thead>
@@ -382,13 +382,13 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | ur
                         <td class="h-24 border-t border-r border-black/[0.06] p-1.5 align-top last:border-r-0 dark:border-white/10 {{ 'bg-white dark:bg-white/[0.03]' if _in else 'bg-ecs-green/[0.04] dark:bg-white/[0.01]' }}"
                             {% if day == grid.today %}aria-current="date"{% endif %}>
                             <span class="sr-only">{{ day.strftime('%A, %B %-d, %Y') }} — {{ _evs | length }} event{{ '' if _evs | length == 1 else 's' }}</span>
-                            <div aria-hidden="true" class="text-xs font-semibold tabular-nums {{ 'inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-ecs-green-ink px-1 text-white' if day == grid.today else ('text-gray-900 dark:text-white' if _in else 'text-gray-500 dark:text-gray-400') }}">{{ day.day }}</div>
+                            <div aria-hidden="true" class="text-xs font-semibold tabular-nums {{ 'inline-flex h-5 min-w-5 items-center justify-center rounded-[2px] bg-ecs-green-ink px-1 text-white' if day == grid.today else ('text-gray-900 dark:text-white' if _in else 'text-gray-500 dark:text-gray-400') }}">{{ day.day }}</div>
                             {% for e in _evs %}
                             {% set meta = type_meta.get(e.event_type, ('ti-calendar-event', 'Event', _tint_neutral)) %}
                             {% set prog = program_of.get(e.league_id) %}
                             {#- Time and title are VISIBLE text, not a title= tooltip;
                                 the tooltip survives only as extra detail for a mouse. -#}
-                            <div class="mt-1 rounded-lg px-1.5 py-1 text-[11px] leading-tight ring-1 ring-inset {{ meta[2] }}"
+                            <div class="mt-1 rounded-[2px] px-1.5 py-1 text-[11px] leading-tight ring-1 ring-inset {{ meta[2] }}"
                                  title="{{ e.title }} · {{ e.start_datetime.strftime('%-I:%M %p') }}{% if e.location %} · {{ e.location }}{% endif %}{% if prog %} · {{ prog.label }}{% endif %}">
                                 <span class="flex items-center gap-1">
                                     {% if prog %}<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background-color: {{ prog.color }};" aria-hidden="true"></span>{% endif %}
@@ -471,7 +471,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | ur
             than letting the list just stop. -#}
         {% if total >= 80 %}
         <p class="mt-12 text-sm font-normal leading-normal text-gray-600 dark:text-gray-300">
-            That is the next 80 events. <a href="{{ url_for('public.calendar', view='month', p=active_program or None) }}" class="font-medium text-ecs-green-ink underline decoration-1 decoration-ecs-green-ink/40 underline-offset-2 hover:decoration-2 hover:decoration-ecs-green-ink dark:text-ecs-green-300 dark:decoration-ecs-green-300/40 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Browse by month</a> for anything further out.
+            That is the next 80 events. <a href="{{ url_for('public.calendar', view='month', p=active_program or None) }}" class="font-medium text-ecs-green-ink underline decoration-1 decoration-ecs-green-ink/40 underline-offset-2 hover:decoration-2 hover:decoration-ecs-green-ink dark:text-ecs-green-300 dark:decoration-ecs-green-300/40 rounded-[2px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Browse by month</a> for anything further out.
         </p>
         {% endif %}
         {% endif %}
@@ -503,7 +503,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | ur
 {#- ----------------------------------------------------------------- CTA --- #}
 <section class="pt-14 pb-20 sm:pt-16 sm:pb-24">
     <div class="mx-auto {{ col }} px-4 sm:px-6 lg:px-8">
-        <div class="rounded-xl bg-ecs-green/[0.05] p-8 ring-1 ring-inset ring-ecs-green-ink/40 sm:p-10 dark:bg-ecs-green/10 dark:ring-white/15">
+        <div class="rounded-[2px] bg-ecs-green/[0.05] p-8 ring-1 ring-inset ring-ecs-green-ink/40 sm:p-10 dark:bg-ecs-green/10 dark:ring-white/15">
             <h2 class="{{ D3 }} text-gray-900 dark:text-white">{{ copy.cta_heading }}</h2>
             <p class="mt-4 max-w-[52ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200">{{ copy.cta_body }}</p>
             <a href="{{ url_for('public.register') }}" class="mt-7 {{ BTN }} {{ BTN_PRIMARY }}">

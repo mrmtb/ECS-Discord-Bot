@@ -11,7 +11,7 @@
 
   So: no `session`, no `csrf_token()`, no DB touched here. Only `url_for()` and
   `static_v()`. The design system still applies for real, because this links the
-  same compiled stylesheet and the same self-hosted Bricolage + Inter faces as
+  same compiled stylesheet and the same self-hosted Big Shoulders + Inter faces as
   every other public page — so every colour stays CSS-var-backed (C2), every
   `dark:` pair is class-based (C7) and nothing is hand-written CSS (C3).
 
@@ -49,7 +49,7 @@
 
   {# Same two self-hosted faces as base_public.html. NO fonts.googleapis.com —
      the public CSP blocks external font CDNs and the type system would fall back
-     silently to system-ui. Bricolage displays, Inter reads (design.md § 2). #}
+     silently to system-ui. Big Shoulders displays, Inter reads (design.md § 2). #}
   <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/inter/inter-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/big-shoulders/big-shoulders-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{ static_v('vendor/fonts/inter.css') }}">
@@ -65,12 +65,12 @@
 <body class="flex min-h-dvh flex-col overflow-x-clip bg-paper text-gray-800 antialiased dark:bg-paper-dark dark:text-gray-200">
 
   <a href="#main"
-     class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:inline-flex focus:min-h-11 focus:items-center focus:rounded-full focus:bg-ecs-blue-600 focus:px-5 focus:text-base focus:font-semibold focus:leading-none focus:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white">Skip to content</a>
+     class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:inline-flex focus:min-h-11 focus:items-center focus:rounded-[2px] focus:bg-ecs-blue-600 focus:px-5 focus:text-base focus:font-semibold focus:leading-none focus:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white">Skip to content</a>
 
   <header class="w-full border-b-2 border-ecs-green-ink">
     <div class="mx-auto flex h-16 max-w-5xl items-center px-4 sm:h-20 sm:px-6 lg:px-8">
       <a href="{{ url_for('public.home') }}" aria-label="{{ _site_title }} — home"
-         class="inline-flex min-h-11 shrink-0 items-center gap-3 rounded-full pr-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+         class="inline-flex min-h-11 shrink-0 items-center gap-3 rounded-[2px] pr-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
         <img src="{{ _logo_src }}" alt="" width="40" height="40" class="h-10 w-10 shrink-0 object-contain">
         <span class="font-display text-xl font-extrabold leading-none tracking-[-0.03em] text-gray-900 sm:text-2xl dark:text-white">{{ _site_title }}</span>
       </a>
@@ -79,7 +79,7 @@
 
   <main id="main" tabindex="-1" class="flex-1">
     <div class="mx-auto w-full max-w-2xl px-4 pt-14 pb-20 sm:px-6 sm:pt-20 sm:pb-28 lg:px-8">
-      <div class="rounded-xl bg-white p-6 ring-1 ring-black/[0.07] shadow-sm ring-inset sm:p-8 lg:p-10 dark:bg-white/[0.045] dark:shadow-none dark:ring-white/10">
+      <div class="rounded-[2px] bg-white p-6 ring-1 ring-black/[0.07] shadow-sm ring-inset sm:p-8 lg:p-10 dark:bg-white/[0.045] dark:shadow-none dark:ring-white/10">
 
         {# Left-aligned, NOT the centred eyebrow/headline/lede/CTA stack the four
            old error pages shared (design.md § 13.21). The status numeral is the
@@ -98,9 +98,9 @@
 
         <div class="mt-8 flex flex-wrap items-center gap-3 sm:gap-4">
           <a href="{{ url_for('public.contact') }}"
-             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">Ask us to open it</a>
+             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[2px] px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">Ask us to open it</a>
           <a href="{{ url_for('public.home') }}"
-             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 focus-visible:ring-ecs-green-ink dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300">Back to home</a>
+             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[2px] px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 focus-visible:ring-ecs-green-ink dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300">Back to home</a>
         </div>
 
         {# Wayfinding. Built from the admin-editable menu when the blueprint

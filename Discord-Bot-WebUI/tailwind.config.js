@@ -177,7 +177,7 @@ export default {
       },
       // Two faces, bound to the Appearance screen's font pair. `--font-heading`
       // / `--font-body` are emitted by public_theme.theme_vars() into the
-      // public shell's :root; the public default pair is Bricolage Grotesque
+      // public shell's :root; the public default pair is Big Shoulders Display
       // headings + Inter body, both self-hosted (app/static/vendor/fonts/).
       //
       // THE IN-var() FALLBACKS ARE LOAD-BEARING, not belt-and-braces. Portal

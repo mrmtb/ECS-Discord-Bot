@@ -41,15 +41,19 @@ Everything here is pure (no DB) so it's cheap to call per request and easy to
 test; the Appearance route reads the stored hexes/pair and passes them in.
 """
 
+from markupsafe import Markup
+
+
 # slug -> {label, heading stack, body stack}
 #
 # EVERY family named below must actually resolve on a visitor's machine: either
-# self-hosted (Bricolage Grotesque, Inter — see app/static/vendor/fonts/) or a
+# self-hosted (Big Shoulders Display, Inter, JetBrains Mono — see
+# app/static/vendor/fonts/) or a
 # system face, and always with a real fallback chain. Pointing a stack at a
 # webfont that is not self-hosted is a SILENT failure here: the public CSP
 # blocks font CDNs, so the page renders in system-ui with no error anywhere.
 FONT_PAIRS = {
-    # The default. Bricolage Grotesque is a warm, slightly irregular display
+    # The default. Big Shoulders Display is a condensed American-sign display
     # grotesk that gives the marketing site a voice Inter (a UI face) cannot;
     # Inter keeps the body copy, so the portal and the public site still read
     # as one product. Both are self-hosted variable fonts.
@@ -403,6 +407,39 @@ def theme_vars(primary_hex=None, accent_hex=None, font_pair=None):
 
 
 def css_var_block(vars_css):
-    """Render the theme CSS-var map into a ``:root{…}`` declaration string."""
-    decls = ' '.join(f'{k}: {v};' for k, v in vars_css.items() if v)
-    return f':root {{ {decls} }}'
+    """Render the theme CSS-var map into a ``:root{…}`` declaration.
+
+    ⚠️ RETURNS Markup, AND THAT IS THE WHOLE POINT. This block is emitted as
+    ``<style>{{ appearance.theme_css }}</style>`` in five templates. Jinja
+    autoescapes, and the font stacks contain single quotes, so a plain str came
+    out as::
+
+        --font-heading: &#39;Big Shoulders Display&#39;, &#39;Haettenschweiler&#39;, …
+
+    `<style>` is a RAW TEXT element: the CSS parser never decodes HTML entities,
+    so it reads those six characters literally. The custom property is still
+    *set* — to a garbage token stream — which means `var(--font-heading, …)`
+    does NOT fall back, because a fallback only applies to an UNSET property.
+    The resulting `font-family` is invalid at computed-value time and the whole
+    public site rendered in the browser's default serif. Colours were untouched,
+    because a colour triplet has no quotes in it — which is exactly why this
+    survived: the palette looked right, so nobody suspected the same block.
+
+    Every value here is generated (hex-validated colours, font stacks from the
+    fixed FONT_PAIRS table); none is admin free-text. The guard below keeps it
+    that way rather than trusting that to stay true.
+    """
+    safe = {}
+    for k, v in vars_css.items():
+        if not v:
+            continue
+        s = str(v)
+        # No way out of the <style> element, and no way to open a second rule.
+        if '<' in s or '>' in s or '{' in s or '}' in s:
+            # Silently dropped rather than logged: this module has no logger by
+            # design (it is imported at request time on the public path) and a
+            # dropped var falls back to the Tailwind config's own default.
+            continue
+        safe[k] = s
+    decls = ' '.join(f'{k}: {v};' for k, v in safe.items())
+    return Markup(f':root {{ {decls} }}')

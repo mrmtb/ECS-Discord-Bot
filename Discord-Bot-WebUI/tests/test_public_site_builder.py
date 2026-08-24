@@ -657,3 +657,74 @@ class TestGuideReaderChrome:
         assert "querySelector('[data-guide-bar]')" in js
         tpl = open('app/templates/public/_guide_chrome.html', encoding='utf-8').read()
         assert 'data-guide-bar' in tpl and 'data-guide-rail' in tpl
+
+
+class TestShellChrome:
+    """Two site-wide defects that rendered on every public page for months.
+
+    Both were invisible to review because the symptom looked like a
+    configuration choice rather than a bug.
+    """
+
+    def test_theme_css_survives_autoescaping(self):
+        """`<style>{{ appearance.theme_css }}</style>` must not be escaped.
+
+        Jinja autoescapes, the font stacks contain single quotes, and `<style>`
+        is a RAW TEXT element — the CSS parser never decodes HTML entities. So
+        an escaped block set --font-heading to a garbage token stream, which is
+        worse than leaving it unset: `var(--font-heading, fallback)` does not
+        fall back for a property that IS set, so `font-family` was invalid at
+        computed-value time and the entire public site rendered in the browser's
+        default serif. The colour triplets have no quotes, so the palette kept
+        working and hid it.
+        """
+        from markupsafe import Markup, escape
+        from app.services.public_theme import css_var_block, theme_vars
+        block = css_var_block(theme_vars()['css'])
+        assert isinstance(block, Markup), 'css_var_block must return Markup'
+        assert "'Big Shoulders Display'" in block
+        assert "'Big Shoulders Display'" in str(escape(block)), \
+            'theme_css does not survive autoescaping — fonts will break site-wide'
+        assert '&#39;' not in str(escape(block))
+
+    def test_theme_css_cannot_escape_the_style_element(self):
+        from app.services.public_theme import css_var_block
+        out = css_var_block({'--x': '</style><script>alert(1)</script>',
+                             '--y': 'red', '--z': 'a{}b'})
+        assert '<' not in out and '>' not in out
+        assert '{ --y: red; }' in out and '--z' not in out
+
+    def test_no_display_utility_fights_a_shared_constant(self):
+        """`hidden lg:inline-flex` + a constant carrying `inline-flex` loses.
+
+        Both are display utilities with equal specificity, so the built
+        stylesheet's source order decides — and Tailwind emits `.inline-flex`
+        after `.hidden`. Log in, Portal and the CTA pill were therefore visible
+        at 320px, eating ~174px of a 288px bar. Use `max-lg:hidden`, which lives
+        in a media block that comes later.
+        """
+        import re
+        src = open('app/templates/public/base_public.html', encoding='utf-8').read()
+        offenders = re.findall(r'class="hidden (?:sm|md|lg|xl):(?:inline-)?flex ', src)
+        assert not offenders, f'{len(offenders)} element(s) pair `hidden` with a ' \
+                              f'same-specificity display utility; use max-*:hidden'
+
+    def test_type_cascade_names_the_current_display_face(self):
+        """A font fallback chain is dead code that renders.
+
+        It named Bricolage for months after that font was deleted, so every
+        utility page (its context processor never sets --font-heading) set its
+        headings in Inter, silently.
+        """
+        from app.services.public_theme import FONT_PAIRS, DEFAULT_FONT_PAIR
+        head = FONT_PAIRS[DEFAULT_FONT_PAIR]['heading']
+        face = head.split(',')[0].strip().strip("'")
+        casc = open('app/templates/public/_type_cascade.html', encoding='utf-8').read()
+        assert face in casc, f'type cascade does not name {face!r}'
+        assert 'Bricolage' not in casc
+
+    def test_nav_carries_no_duplicate_season_chip(self):
+        """The hero already renders the season + registration state."""
+        src = open('app/templates/public/base_public.html', encoding='utf-8').read()
+        nav = src.split('{# =================== NAV')[1].split('</header>')[0]
+        assert 'font-mono' not in nav, 'nav re-grew a season chip; the hero owns that fact'
