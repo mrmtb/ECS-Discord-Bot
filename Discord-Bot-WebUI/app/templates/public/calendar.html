@@ -1,48 +1,279 @@
 {% extends "public/base_public.html" %}
 {% from 'public/_hero.html' import hero %}
 
+{#- ============================================================================
+    CALENDAR — macrostructure 04 "Stat-Led" (design.md § 12).
+
+    The hero is the NEXT PLOP, not the word "Calendar": the date is the giant
+    fact, what/when/where sit under it as a stat list, and the live
+    register/waitlist CTA closes it. When there is no upcoming PLOP — or you are
+    paging through a month, where "next" has no meaning — it falls back to the
+    admin-editable hero copy. Both branches render through the shared `hero()`
+    macro so this page opens exactly like every editor-built page (its masthead
+    slot is what carries the stats and the CTA).
+
+    Every direct child of <main> MUST be a <section>: base_public.html hangs the
+    site-wide section-rhythm selector off `main > section + section`, so a bare
+    <div> in that position silently disables the rule for the whole page. That is
+    why the subscribe cluster now lives in a <section> instead of floating over
+    the hero on a negative margin.
+
+    Colour is CSS-var-backed only, so the Appearance picker still re-skins the
+    site (C2). The one value that legitimately arrives as a raw colour is a
+    program's `p.color`; it survives as an 8px DOT and never as a text-bearing
+    fill, because white-on-arbitrary-hex has no contrast guarantee.
+    ============================================================================ -#}
+
+{#- Event type -> (icon, label, badge tint). The ICON carries the type
+    distinction; the palette is brand green for PLOP (the event we actually want
+    people to come to), semantic amber for the celebratory ones and neutral for
+    the rest. Seven hues was seven meanings nobody had defined — and three of
+    them (purple, pink, frozen blue stops) were outside the var-backed palette. -#}
+{% set _tint_neutral = 'bg-gray-100 text-gray-800 ring-black/[0.08] dark:bg-white/[0.06] dark:text-gray-200 dark:ring-white/10' %}
+{% set _tint_brand = 'bg-ecs-green/10 text-ecs-green-ink ring-ecs-green-ink/25 dark:bg-ecs-green/15 dark:text-ecs-green-300 dark:ring-white/10' %}
+{% set _tint_warm = 'bg-amber-100 text-amber-900 ring-amber-600/30 dark:bg-amber-400/15 dark:text-amber-200 dark:ring-white/10' %}
 {% set type_meta = {
-    'plop': ('ti-ball-football', 'PLOP', 'bg-ecs-green/10 text-ecs-green dark:text-ecs-blue-400'),
-    'party': ('ti-confetti', 'Party', 'bg-ecs-blue-500/20 text-ecs-blue-700 dark:text-ecs-blue-400'),
-    'social': ('ti-users-group', 'Social', 'bg-ecs-blue-100 text-ecs-blue-700 dark:bg-ecs-blue-900/40 dark:text-ecs-blue-300'),
-    'tournament': ('ti-trophy', 'Tournament', 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'),
-    'meeting': ('ti-calendar', 'Meeting', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'),
-    'fundraiser': ('ti-heart', 'Fundraiser', 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300'),
-    'other': ('ti-calendar-event', 'Event', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'),
+    'plop': ('ti-ball-football', 'PLOP', _tint_brand),
+    'party': ('ti-confetti', 'Party', _tint_warm),
+    'fundraiser': ('ti-heart', 'Fundraiser', _tint_warm),
+    'social': ('ti-users-group', 'Social', _tint_neutral),
+    'tournament': ('ti-trophy', 'Tournament', _tint_neutral),
+    'meeting': ('ti-calendar', 'Meeting', _tint_neutral),
+    'other': ('ti-calendar-event', 'Event', _tint_neutral),
 } %}
+
+{# grid.prev / grid.next are 'YYYY-MM' strings, so Prev/Next can name the month
+   they lead to without the route having to hand us a label. #}
+{% set _MONTH_NAMES = ['January','February','March','April','May','June',
+                       'July','August','September','October','November','December'] %}
 
 {# Defaults so the page still renders if a caller omits the program context. #}
 {% set programs = programs | default([], true) %}
 {% set program_of = program_of | default({}, true) %}
 {% set active_program = active_program | default('', true) %}
 
-{% block content %}
-{{ hero(copy.hero_title, copy.hero_subtitle) }}
+{# design.md § 5.2 "one page, one left edge": the hero, the toolbar, the list and
+   the closing band all sit on this column. The month grid needs the wider one. #}
+{% set col = 'max-w-5xl' if view == 'month' else 'max-w-3xl' %}
+{% set hero_width = 'normal' if view == 'month' else 'narrow' %}
 
-{# Subscribe / sync to your own calendar (like WordPress's export links) #}
-<div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 -mt-8 relative z-10">
-    <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center gap-3">
-        <div class="flex-1 text-sm font-medium text-gray-700 dark:text-gray-200"><i class="ti ti-calendar-plus text-ecs-green"></i> Add this calendar to your phone or computer</div>
-        <div class="flex flex-wrap gap-2">
-            {# The feed links carry the active program so subscribing from a
-               filtered view gives you that program's calendar, not everything. #}
-            {% set ics_url = url_for('public.calendar_ics', p=active_program or None) %}
-            <a href="webcal://{{ request.host }}{{ ics_url }}" class="inline-flex items-center gap-1.5 rounded-full bg-ecs-green px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50"><i class="ti ti-brand-apple"></i> Subscribe</a>
-            <a href="https://calendar.google.com/calendar/render?cid={{ ('webcal://' ~ request.host ~ ics_url) | urlencode }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-full border border-ecs-green/30 px-3.5 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green dark:border-ecs-green/25 dark:text-gray-200 dark:hover:bg-ecs-green/15 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50"><i class="ti ti-brand-google"></i> Google</a>
-            <a href="{{ ics_url }}" class="inline-flex items-center gap-1.5 rounded-full border border-ecs-green/30 px-3.5 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green dark:border-ecs-green/25 dark:text-gray-200 dark:hover:bg-ecs-green/15 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50"><i class="ti ti-download"></i> .ics</a>
-        </div>
-    </div>
+
+{#- --------------------------------------------------------------------------
+    Shared macros. The long class strings are re-declared inside each macro on
+    purpose: a macro that reaches out to a module-level {% set %} is one Jinja
+    scoping change away from a 500 on a live page.
+    -------------------------------------------------------------------------- -#}
+
+{%- macro gcal(e) -%}
+https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | urlencode }}&dates={{ e.start_datetime.strftime('%Y%m%dT%H%M%S') }}/{{ (e.end_datetime or e.start_datetime).strftime('%Y%m%dT%H%M%S') }}&location={{ (e.location or '') | urlencode }}
+{%- endmacro -%}
+
+
+{% macro meta_row(e, prog, tm) %}
+{% set _badge = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1 min-h-6 text-xs font-bold uppercase tracking-[0.08em] ring-1 ring-inset' %}
+{% set meta = tm.get(e.event_type, ('ti-calendar-event', 'Event', 'bg-gray-100 text-gray-800 ring-black/[0.08] dark:bg-white/[0.06] dark:text-gray-200 dark:ring-white/10')) %}
+<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <span class="{{ _badge }} {{ meta[2] }}"><i class="ti {{ meta[0] }}" aria-hidden="true"></i>{{ meta[1] }}</span>
+    {#- Which program this event belongs to. Absent for league-wide events
+        (league_id NULL), which are for everyone and need no badge. #}
+    {% if prog %}
+    <span class="{{ _badge }} bg-white text-gray-800 ring-black/[0.10] dark:bg-white/[0.06] dark:text-gray-200 dark:ring-white/15">
+        <span class="h-2 w-2 shrink-0 rounded-full" style="background-color: {{ prog.color }};" aria-hidden="true"></span>{{ prog.label }}</span>
+    {% endif %}
+    {% if e.is_all_day %}
+    <span class="text-sm font-normal leading-normal text-gray-600 dark:text-gray-300"><i class="ti ti-clock" aria-hidden="true"></i> All day</span>
+    {% else %}
+    <time datetime="{{ e.start_datetime.strftime('%Y-%m-%dT%H:%M') }}" class="text-sm font-normal leading-normal tabular-nums text-gray-600 dark:text-gray-300"><i class="ti ti-clock" aria-hidden="true"></i> {{ e.start_datetime.strftime('%-I:%M %p') }}{% if e.end_datetime %} – {{ e.end_datetime.strftime('%-I:%M %p') }}{% endif %}</time>
+    {% endif %}
 </div>
+{% endmacro %}
 
-<section class="py-14 sm:py-16">
-    <div class="mx-auto {{ 'max-w-5xl' if view == 'month' else 'max-w-3xl' }} px-4 sm:px-6 lg:px-8">
-        {# View toggle: Agenda | Month — carries the active program through #}
-        <div class="mb-4 flex flex-wrap items-center gap-3">
-            <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-sm">
-                <a href="{{ url_for('public.calendar', p=active_program or None) }}" class="px-4 py-2 inline-flex items-center gap-1.5 {{ 'bg-ecs-green text-white' if view != 'month' else 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800' }}"><i class="ti ti-list"></i> Agenda</a>
-                <a href="{{ url_for('public.calendar', view='month', p=active_program or None) }}" class="px-4 py-2 inline-flex items-center gap-1.5 {{ 'bg-ecs-green text-white' if view == 'month' else 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800' }}"><i class="ti ti-calendar-month"></i> Month</a>
-            </div>
+
+{#- One event, one card. `lead` is the first thing in the list when the hero is
+    not already showing that same event; `with_month` adds the month to the date
+    rail for the month view's small-screen list, where no month heading sits
+    above it. The card is not a whole-surface link (there is no per-event page),
+    so it deliberately does NOT take the hover-lift — that signal belongs to
+    click targets only (design.md § 8). -#}
+{% macro event_card(e, prog, tm, lead=False, with_month=False) %}
+{% set _card = 'group relative flex gap-4 overflow-hidden rounded-xl bg-white ring-1 ring-inset shadow-sm dark:bg-white/[0.045] dark:shadow-none' %}
+{% set _btn_sm = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2.5 min-h-11 text-sm font-semibold leading-none transition-[background-color,box-shadow,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:brightness-95' %}
+{% set _ghost = 'text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300' %}
+<li class="{{ _card }} {{ 'ring-ecs-green-ink/30 dark:ring-ecs-green-300/25 p-5 sm:p-8' if lead else 'ring-black/[0.07] dark:ring-white/10 p-4 sm:p-6' }}">
+    <time datetime="{{ e.start_datetime.strftime('%Y-%m-%d') }}"
+          class="flex shrink-0 flex-col items-center justify-center rounded-lg px-3 py-2.5 text-center ring-1 ring-inset {{ 'min-w-20 bg-ecs-green/[0.10] ring-ecs-green-ink/25 dark:bg-white/[0.06] dark:ring-white/15' if lead else 'min-w-16 bg-ecs-green/[0.06] ring-ecs-green-ink/15 dark:bg-white/[0.05] dark:ring-white/10' }}">
+        <span class="text-xs font-bold uppercase tracking-[0.08em] text-gray-600 dark:text-gray-300">{{ e.start_datetime.strftime('%a') }}</span>
+        <span class="font-display font-extrabold tabular-nums leading-none text-gray-900 dark:text-white {{ 'text-4xl mt-1' if lead else 'text-2xl mt-0.5' }}">{{ e.start_datetime.strftime('%-d') }}</span>
+        {% if with_month %}<span class="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-gray-600 dark:text-gray-300">{{ e.start_datetime.strftime('%b') }}</span>{% endif %}
+    </time>
+    <div class="min-w-0 flex-1">
+        {% if lead %}<p class="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-ecs-green-ink dark:text-ecs-green-300">Next up</p>{% endif %}
+        {{ meta_row(e, prog, tm) }}
+        <h3 class="mt-2 font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words text-gray-900 dark:text-white">{{ e.title }}</h3>
+        {% if e.location %}
+        <p class="mt-1.5 text-sm font-normal leading-normal break-words text-gray-600 dark:text-gray-300"><i class="ti ti-map-pin" aria-hidden="true"></i> {{ e.location }}</p>
+        {% endif %}
+        {% if e.description %}
+        <p class="mt-3 max-w-[65ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200 line-clamp-3">{{ e.description | striptags | trim }}</p>
+        {% endif %}
+        <a href="{{ gcal(e) }}" target="_blank" rel="noopener" class="mt-4 {{ _btn_sm }} {{ _ghost }}">
+            <i class="ti ti-calendar-plus" aria-hidden="true"></i> Add to calendar<span class="sr-only">: {{ e.title }}</span>
+        </a>
+    </div>
+</li>
+{% endmacro %}
+
+
+{#- A RUN: three or more consecutive events that are the same thing on repeat —
+    same type, same venue, same start time, same title bar a trailing number.
+    Eight "Fall Season Week N" rows repeating one venue line eight times is
+    noise, so the shared facts are stated once and every occurrence keeps its own
+    dated add-to-calendar link. Nothing is dropped. -#}
+{% macro run_card(row, prog, tm) %}
+{% set e0 = row[0] %}
+{% set base = (e0.title or '').rstrip('0123456789 ') %}
+{% set blen = base | length %}
+{% set _card = 'group relative flex gap-4 overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none' %}
+{% set _chip = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink active:brightness-95 bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15' %}
+<li class="{{ _card }} p-4 sm:p-6">
+    <time datetime="{{ e0.start_datetime.strftime('%Y-%m-%d') }}"
+          class="flex min-w-16 shrink-0 flex-col items-center justify-center rounded-lg bg-ecs-green/[0.06] px-3 py-2.5 text-center ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.05] dark:ring-white/10">
+        <span class="text-xs font-bold uppercase tracking-[0.08em] text-gray-600 dark:text-gray-300">{{ e0.start_datetime.strftime('%a') }}</span>
+        <span class="mt-0.5 font-display text-2xl font-extrabold tabular-nums leading-none text-gray-900 dark:text-white">{{ e0.start_datetime.strftime('%-d') }}</span>
+        <span class="mt-1 text-xs font-semibold tabular-nums text-gray-600 dark:text-gray-300">+{{ row | length - 1 }}</span>
+    </time>
+    <div class="min-w-0 flex-1">
+        {{ meta_row(e0, prog, tm) }}
+        <h3 class="mt-2 font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words text-gray-900 dark:text-white">{{ base }}<span class="sr-only">, {{ row | length }} dates</span></h3>
+        {% if e0.location %}
+        <p class="mt-1.5 text-sm font-normal leading-normal break-words text-gray-600 dark:text-gray-300"><i class="ti ti-map-pin" aria-hidden="true"></i> {{ e0.location }}</p>
+        {% endif %}
+        {% if e0.description %}
+        <p class="mt-3 max-w-[65ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200 line-clamp-3">{{ e0.description | striptags | trim }}</p>
+        {% endif %}
+        <p id="run-{{ e0.id }}" class="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-gray-600 dark:text-gray-300">{{ row | length }} dates — add one</p>
+        <ul class="mt-2 flex flex-wrap gap-2" aria-labelledby="run-{{ e0.id }}">
+            {% for e in row %}
+            {% set suffix = (e.title or '')[blen:] | trim %}
+            <li><a href="{{ gcal(e) }}" target="_blank" rel="noopener" class="{{ _chip }}">
+                <time datetime="{{ e.start_datetime.strftime('%Y-%m-%d') }}" class="tabular-nums">{{ e.start_datetime.strftime('%b %-d') }}</time>{% if suffix %}<span class="font-normal tabular-nums text-gray-600 dark:text-gray-300">· {{ suffix }}</span>{% endif %}
+                <span class="sr-only">— add {{ e.title }} to Google Calendar</span></a></li>
+            {% endfor %}
+        </ul>
+    </div>
+</li>
+{% endmacro %}
+
+
+{#- One empty state for both views (design.md § 7.7): no dashed border, no
+    centred icon, no "check back soon" — a headline, one sentence that says what
+    will land here, and exactly one action supplied by the caller. -#}
+{% macro empty_state(title, body) %}
+<div class="rounded-xl bg-ecs-green/[0.05] p-8 text-left ring-1 ring-inset ring-ecs-green-ink/15 sm:p-10 dark:bg-white/[0.03] dark:ring-white/10">
+    <h3 class="font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words text-gray-900 dark:text-white">{{ title }}</h3>
+    <p class="mt-3 max-w-[52ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200">{{ body }}</p>
+    <div class="mt-6">{{ caller() }}</div>
+</div>
+{% endmacro %}
+
+
+{% block content %}
+{#- design.md § 7.1: one button geometry, three variants, eight states. -#}
+{% set BTN = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 text-base font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95' %}
+{% set BTN_SM = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2.5 min-h-11 text-sm font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:brightness-95' %}
+{% set BTN_PRIMARY = 'bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark' %}
+{% set BTN_GHOST = 'text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark' %}
+{% set BTN_ON_BRAND_PRIMARY = 'bg-white text-ecs-green-ink shadow-sm hover:bg-white/90 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink' %}
+{% set BTN_ON_BRAND_GHOST = 'text-white ring-1 ring-inset ring-white/60 hover:bg-white/15 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink' %}
+{#- design.md § 7.3: the shared chip classes live OUTSIDE the ternary, so an
+    active chip can never lose its focus ring to the inactive branch. -#}
+{% set CHIP = 'inline-flex items-center gap-2 rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink active:brightness-95' %}
+{% set CHIP_OFF = 'bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15' %}
+{% set CHIP_ON = 'bg-ecs-green-ink text-white ring-ecs-green-ink' %}
+{% set D3 = 'font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words' %}
+{% set D4 = 'font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words' %}
+{% set D5 = 'font-display text-lg sm:text-xl font-bold leading-snug break-words' %}
+{% set EYEBROW = 'text-xs font-bold uppercase tracking-[0.14em]' %}
+
+{#- The next PLOP, taken from the agenda this page is already rendering. Month
+    view has no "next" (you may be looking at last March), so it falls through to
+    the editable hero copy. -#}
+{% set ns = namespace(next_plop=None) %}
+{% for _month, _evs in (grouped or {}).items() %}
+  {% for _e in _evs %}
+    {% if ns.next_plop is none and _e.event_type == 'plop' %}{% set ns.next_plop = _e %}{% endif %}
+  {% endfor %}
+{% endfor %}
+
+{#- ---------------------------------------------------------------- HERO ---
+    Rendered through the shared hero() macro, so padding, the D1 ramp, the
+    overlay treatment and the brand ground stay identical to section_hero. The
+    masthead slot carries the stat list and the CTA. hero_image / hero_size /
+    hero_align are read defensively: they are the admin-editable keys the
+    calendar route does not pass yet. -#}
+{% set hero_image = copy.hero_image | default('', true) %}
+{% set hero_size = copy.hero_size | default('md', true) %}
+{% set hero_align = copy.hero_align | default('left', true) %}
+{% if ns.next_plop %}
+{% set np = ns.next_plop %}
+{% call hero('Next PLOP — ' ~ np.start_datetime.strftime('%A, %B %-d'),
+             copy.hero_subtitle, size=hero_size, image=hero_image or None,
+             align=hero_align, width=hero_width) %}
+    <dl class="flex flex-wrap gap-x-10 gap-y-6 text-white {{ 'justify-center text-center' if hero_align == 'center' else '' }}">
+        <div class="min-w-0">
+            <dt class="{{ EYEBROW }} text-white">What</dt>
+            <dd class="mt-1.5 max-w-[30ch] {{ D5 }} text-white">Pub League Offseason Practice — a drop-in kickabout.</dd>
         </div>
+        <div class="min-w-0">
+            <dt class="{{ EYEBROW }} text-white">When</dt>
+            <dd class="mt-1.5 {{ D5 }} tabular-nums text-white">
+                {%- if np.is_all_day -%}All day
+                {%- else -%}
+                <time datetime="{{ np.start_datetime.strftime('%Y-%m-%dT%H:%M') }}">{{ np.start_datetime.strftime('%-I:%M %p') }}</time>{% if np.end_datetime %} – <time datetime="{{ np.end_datetime.strftime('%Y-%m-%dT%H:%M') }}">{{ np.end_datetime.strftime('%-I:%M %p') }}</time>{% endif %}
+                {%- endif -%}
+            </dd>
+        </div>
+        {% if np.location %}
+        <div class="min-w-0">
+            <dt class="{{ EYEBROW }} text-white">Where</dt>
+            <dd class="mt-1.5 max-w-[26ch] {{ D5 }} text-white">{{ np.location }}</dd>
+        </div>
+        {% endif %}
+    </dl>
+    <div class="mt-9 flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if hero_align == 'center' else '' }}">
+        <a href="{{ cta.url }}" class="{{ BTN }} {{ BTN_ON_BRAND_PRIMARY }}"><i class="ti ti-user-plus" aria-hidden="true"></i>{{ cta.label }}</a>
+        <a href="#calendar-feeds" class="{{ BTN }} {{ BTN_ON_BRAND_GHOST }}"><i class="ti ti-calendar-plus" aria-hidden="true"></i>Add to your calendar</a>
+    </div>
+{% endcall %}
+{% else %}
+{% call hero(copy.hero_title, copy.hero_subtitle, size=hero_size,
+             image=hero_image or None, align=hero_align, width=hero_width) %}
+    <div class="flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if hero_align == 'center' else '' }}">
+        <a href="{{ cta.url }}" class="{{ BTN }} {{ BTN_ON_BRAND_PRIMARY }}"><i class="ti ti-user-plus" aria-hidden="true"></i>{{ cta.label }}</a>
+        <a href="#calendar-feeds" class="{{ BTN }} {{ BTN_ON_BRAND_GHOST }}"><i class="ti ti-calendar-plus" aria-hidden="true"></i>Add to your calendar</a>
+    </div>
+{% endcall %}
+{% endif %}
+
+{#- ------------------------------------------------------------- TOOLBAR --- #}
+<section class="pt-10 pb-6 sm:pt-12 sm:pb-8">
+    <div class="mx-auto {{ col }} px-4 sm:px-6 lg:px-8">
+        <h2 class="sr-only">Choose a view and a program</h2>
+
+        {# View toggle: Agenda | Month — carries the active program through.
+           Selection is never colour-only: aria-current plus a check glyph. #}
+        <nav aria-label="Calendar view" class="flex flex-wrap items-center gap-2">
+            <a href="{{ url_for('public.calendar', p=active_program or None) }}"
+               {% if view != 'month' %}aria-current="page"{% endif %}
+               class="{{ CHIP }} {{ CHIP_ON if view != 'month' else CHIP_OFF }}">
+                <i class="ti ti-list" aria-hidden="true"></i>Agenda{% if view != 'month' %}<i class="ti ti-check" aria-hidden="true"></i>{% endif %}
+            </a>
+            <a href="{{ url_for('public.calendar', view='month', p=active_program or None) }}"
+               {% if view == 'month' %}aria-current="page"{% endif %}
+               class="{{ CHIP }} {{ CHIP_ON if view == 'month' else CHIP_OFF }}">
+                <i class="ti ti-calendar-month" aria-hidden="true"></i>Month{% if view == 'month' %}<i class="ti ti-check" aria-hidden="true"></i>{% endif %}
+            </a>
+        </nav>
 
         {# Program filter. Rendered from the program registry, so a new program
            appears here the moment it goes active — no template edit, and no
@@ -50,111 +281,233 @@
         {% if programs %}
         {# Changing the program keeps you on the month you were looking at. #}
         {% set month_arg = grid.self if view == 'month' else None %}
-        <div class="mb-6 flex flex-wrap items-center gap-2">
-            <span class="text-xs font-semibold uppercase tracking-wide text-gray-400">Program</span>
+        <nav aria-label="Filter by program" class="mt-4 flex flex-wrap items-center gap-2">
+            <span class="{{ EYEBROW }} mr-1 text-gray-600 dark:text-gray-300">Program</span>
             <a href="{{ url_for('public.calendar', view='month' if view == 'month' else None, m=month_arg) }}"
-               class="rounded-full px-3 py-1 text-xs font-semibold border {{ 'bg-ecs-green text-white border-ecs-green' if not active_program else 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800' }}">All</a>
+               {% if not active_program %}aria-current="page"{% endif %}
+               class="{{ CHIP }} {{ CHIP_ON if not active_program else CHIP_OFF }}">All{% if not active_program %}<i class="ti ti-check" aria-hidden="true"></i>{% endif %}</a>
             {% for p in programs %}
             <a href="{{ url_for('public.calendar', view='month' if view == 'month' else None, m=month_arg, p=p.key) }}"
-               class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border {{ 'text-white border-transparent' if active_program == p.key else 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800' }}"
-               {% if active_program == p.key %}style="background-color: {{ p.color }};"{% endif %}>
-                {% if active_program != p.key %}<span class="w-2 h-2 rounded-full" style="background-color: {{ p.color }};"></span>{% endif %}
-                {{ p.label }}
+               {% if active_program == p.key %}aria-current="page"{% endif %}
+               class="{{ CHIP }} {{ CHIP_ON if active_program == p.key else CHIP_OFF }}">
+                <span class="h-2 w-2 shrink-0 rounded-full {{ 'ring-1 ring-white/70' if active_program == p.key else '' }}" style="background-color: {{ p.color }};" aria-hidden="true"></span>{{ p.label }}{% if active_program == p.key %}<i class="ti ti-check" aria-hidden="true"></i>{% endif %}
             </a>
             {% endfor %}
-        </div>
+        </nav>
         {% if active_program %}
-        <p class="-mt-3 mb-6 text-xs text-gray-400">Showing {{ (programs | selectattr('key', 'equalto', active_program) | first).label }} events plus league-wide events.</p>
+        <p class="mt-3 text-sm font-normal leading-normal text-gray-600 dark:text-gray-300">Showing {{ (programs | selectattr('key', 'equalto', active_program) | first).label }} events plus league-wide events.</p>
         {% endif %}
         {% endif %}
+    </div>
+</section>
+
+{#- ---------------------------------------------------------------- LIST --- #}
+<section class="pt-8 pb-16 sm:pt-10 sm:pb-20">
+    <div class="mx-auto {{ col }} px-4 sm:px-6 lg:px-8">
 
         {% if view == 'month' %}
-        {# ---------------- MONTH GRID ---------------- #}
-        <div class="flex items-center justify-between mb-4">
-            <a href="{{ url_for('public.calendar', view='month', m=grid.prev, p=active_program or None) }}" class="inline-flex items-center gap-1 rounded-full border border-ecs-green/25 px-3.5 py-1.5 text-sm text-gray-600 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green dark:border-ecs-green/25 dark:text-gray-300 dark:hover:bg-ecs-green/15 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50"><i class="ti ti-chevron-left"></i> Prev</a>
-            <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ grid.label }}</h2>
-            <a href="{{ url_for('public.calendar', view='month', m=grid.next, p=active_program or None) }}" class="inline-flex items-center gap-1 rounded-full border border-ecs-green/25 px-3.5 py-1.5 text-sm text-gray-600 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green dark:border-ecs-green/25 dark:text-gray-300 dark:hover:bg-ecs-green/15 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">Next <i class="ti ti-chevron-right"></i></a>
+        {# ---------------- MONTH ---------------- #}
+        {% set _prev_label = _MONTH_NAMES[grid.prev[5:7] | int - 1] ~ ' ' ~ grid.prev[0:4] %}
+        {% set _next_label = _MONTH_NAMES[grid.next[5:7] | int - 1] ~ ' ' ~ grid.next[0:4] %}
+        {% set _is_this_month = grid.today.strftime('%Y-%m') == grid.self %}
+        <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <h2 class="{{ D3 }} tabular-nums text-gray-900 dark:text-white">{{ grid.label }}</h2>
+            <nav aria-label="Change month" class="flex flex-wrap items-center gap-2">
+                <a href="{{ url_for('public.calendar', view='month', m=grid.prev, p=active_program or None) }}"
+                   aria-label="Previous month, {{ _prev_label }}" class="{{ BTN_SM }} {{ BTN_GHOST }}">
+                    <i class="ti ti-chevron-left" aria-hidden="true"></i><span class="md:hidden" aria-hidden="true">Prev</span><span class="hidden md:inline" aria-hidden="true">{{ _prev_label }}</span>
+                </a>
+                {% if not _is_this_month %}
+                <a href="{{ url_for('public.calendar', view='month', p=active_program or None) }}" class="{{ BTN_SM }} {{ BTN_GHOST }}">Today</a>
+                {% endif %}
+                <a href="{{ url_for('public.calendar', view='month', m=grid.next, p=active_program or None) }}"
+                   aria-label="Next month, {{ _next_label }}" class="{{ BTN_SM }} {{ BTN_GHOST }}">
+                    <span class="md:hidden" aria-hidden="true">Next</span><span class="hidden md:inline" aria-hidden="true">{{ _next_label }}</span><i class="ti ti-chevron-right" aria-hidden="true"></i>
+                </a>
+            </nav>
         </div>
-        {# The 7-column grid needs ~640px to stay legible; below that it scrolls
-           sideways instead of crushing the day cells (full-bleed on phones). #}
-        <div class="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-        <div class="min-w-[640px] grid grid-cols-7 gap-px rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-200 dark:bg-gray-700">
-            {% for wd in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] %}
-            <div class="bg-gray-50 dark:bg-gray-800 px-2 py-1.5 text-center text-xs font-semibold text-gray-500 dark:text-gray-400">{{ wd }}</div>
+
+        {% if total == 0 %}
+        <div class="mt-8">
+            {% if active_program %}
+            {% call empty_state('Nothing from this program in ' ~ grid.label,
+                                'Other programs may still have something on this month — league-wide events show up under every filter.') %}
+            <a href="{{ url_for('public.calendar', view='month', m=grid.self) }}" class="{{ BTN }} {{ BTN_PRIMARY }}"><i class="ti ti-filter-off" aria-hidden="true"></i>Show all programs</a>
+            {% endcall %}
+            {% else %}
+            {% call empty_state('Nothing on the calendar for ' ~ grid.label ~ ' yet',
+                                'PLOPs, match days and socials land here as soon as they are scheduled. Get your name down and you will hear about the next one first.') %}
+            <a href="{{ cta.url }}" class="{{ BTN }} {{ BTN_PRIMARY }}"><i class="ti ti-user-plus" aria-hidden="true"></i>{{ cta.label }}</a>
+            {% endcall %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {#- Small screens get a real day-grouped list, not a 640px table dragged
+            sideways: a seven-column month squeezed into 320px is the SHAPE of a
+            calendar with none of its content. The grid returns at sm:, where the
+            cells are wide enough to read. -#}
+        {% if grid.by_day %}
+        <ul class="mt-8 space-y-4 sm:hidden">
+            {% for week in grid.weeks %}{% for day in week %}
+            {% for e in grid.by_day.get(day, []) %}
+            {{ event_card(e, program_of.get(e.league_id), type_meta, lead=False, with_month=True) }}
             {% endfor %}
-            {% for week in grid.weeks %}
-              {% for day in week %}
-              <div class="min-h-[92px] bg-white dark:bg-gray-900 p-1.5 {{ 'opacity-40' if day.month != grid.month else '' }}">
-                  <div class="text-xs {{ 'font-bold text-ecs-green dark:text-ecs-blue-400' if day == grid.today else 'text-gray-400' }}">{{ day.day }}</div>
-                  {% for e in grid.by_day.get(day, []) %}
-                  {% set meta = type_meta.get(e.event_type, ('ti-calendar-event', '', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200')) %}
-                  {% set prog = program_of.get(e.league_id) %}
-                  <div class="mt-1 rounded-sm px-1 py-0.5 text-[10px] leading-tight truncate {{ meta[2] }}{% if prog %} border-l-2{% endif %}"
-                       {% if prog %}style="border-left-color: {{ prog.color }};"{% endif %}
-                       title="{{ e.title }} · {{ e.start_datetime.strftime('%-I:%M %p') }}{% if e.location %} · {{ e.location }}{% endif %}{% if prog %} · {{ prog.label }}{% endif %}">{{ e.start_datetime.strftime('%-I%p')|lower }} {{ e.title }}</div>
-                  {% endfor %}
-              </div>
-              {% endfor %}
-            {% endfor %}
+            {% endfor %}{% endfor %}
+        </ul>
+        {% endif %}
+
+        <div class="mt-8 hidden overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] sm:block dark:bg-white/[0.045] dark:ring-white/10">
+            <table class="w-full table-fixed border-collapse">
+                <caption class="sr-only">Public ECS Pub League events in {{ grid.label }}</caption>
+                <thead>
+                    <tr>
+                        {% for wd in [('Sun','Sunday'),('Mon','Monday'),('Tue','Tuesday'),('Wed','Wednesday'),('Thu','Thursday'),('Fri','Friday'),('Sat','Saturday')] %}
+                        <th scope="col" class="border-b border-r border-black/[0.08] px-1 py-2.5 text-center text-xs font-bold uppercase tracking-[0.08em] text-gray-600 last:border-r-0 dark:border-white/10 dark:text-gray-300">
+                            <span aria-hidden="true">{{ wd[0] }}</span><span class="sr-only">{{ wd[1] }}</span>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for week in grid.weeks %}
+                    <tr>
+                        {% for day in week %}
+                        {% set _evs = grid.by_day.get(day, []) %}
+                        {% set _in = day.month == grid.month %}
+                        {#- Explicit in/out-of-month grounds. The old opacity-40
+                            rendered out-of-month cells BRIGHTER than in-month
+                            ones in dark mode, which read as "these are the real
+                            days" — exactly backwards. -#}
+                        <td class="h-24 border-t border-r border-black/[0.06] p-1.5 align-top last:border-r-0 dark:border-white/10 {{ 'bg-white dark:bg-white/[0.03]' if _in else 'bg-ecs-green/[0.04] dark:bg-white/[0.01]' }}"
+                            {% if day == grid.today %}aria-current="date"{% endif %}>
+                            <span class="sr-only">{{ day.strftime('%A, %B %-d, %Y') }} — {{ _evs | length }} event{{ '' if _evs | length == 1 else 's' }}</span>
+                            <div aria-hidden="true" class="text-xs font-semibold tabular-nums {{ 'inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-ecs-green-ink px-1 text-white' if day == grid.today else ('text-gray-900 dark:text-white' if _in else 'text-gray-500 dark:text-gray-400') }}">{{ day.day }}</div>
+                            {% for e in _evs %}
+                            {% set meta = type_meta.get(e.event_type, ('ti-calendar-event', 'Event', _tint_neutral)) %}
+                            {% set prog = program_of.get(e.league_id) %}
+                            {#- Time and title are VISIBLE text, not a title= tooltip;
+                                the tooltip survives only as extra detail for a mouse. -#}
+                            <div class="mt-1 rounded-lg px-1.5 py-1 text-[11px] leading-tight ring-1 ring-inset {{ meta[2] }}"
+                                 title="{{ e.title }} · {{ e.start_datetime.strftime('%-I:%M %p') }}{% if e.location %} · {{ e.location }}{% endif %}{% if prog %} · {{ prog.label }}{% endif %}">
+                                <span class="flex items-center gap-1">
+                                    {% if prog %}<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background-color: {{ prog.color }};" aria-hidden="true"></span>{% endif %}
+                                    <span class="font-bold tabular-nums">{% if e.is_all_day %}All day{% else %}{{ e.start_datetime.strftime('%-I:%M%p') | lower }}{% endif %}</span>
+                                </span>
+                                <span class="mt-0.5 block truncate font-medium">{{ e.title }}</span>
+                                {% if e.location %}<span class="sr-only">at {{ e.location }}</span>{% endif %}
+                                {% if prog %}<span class="sr-only">, {{ prog.label }}</span>{% endif %}
+                            </div>
+                            {% endfor %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
-        </div>
-        {% if total == 0 %}<p class="mt-4 text-center text-sm text-gray-400">No public events this month{% if active_program %} for this program — <a href="{{ url_for('public.calendar', view='month', m=grid.self) }}" class="text-ecs-green dark:text-ecs-blue-400 font-semibold">see all programs</a>{% endif %}.</p>{% endif %}
 
         {% else %}
         {# ---------------- AGENDA ---------------- #}
         {% if total == 0 %}
-        <div class="rounded-xl border border-dashed border-ecs-green/30 p-10 text-center text-gray-500 dark:border-ecs-green/25 dark:text-gray-400">
-            <i class="ti ti-calendar-off text-4xl"></i>
-            {% if active_program %}
-            <p class="mt-3">No upcoming public events for this program right now —
-               <a href="{{ url_for('public.calendar') }}" class="text-ecs-green dark:text-ecs-blue-400 font-semibold">see all programs</a>, or
-               <a href="{{ url_for('public.contact') }}" class="text-ecs-green dark:text-ecs-blue-400 font-semibold">reach out</a>.</p>
-            {% else %}
-            <p class="mt-3">No upcoming public events are posted right now — check back soon, or
-               <a href="{{ url_for('public.contact') }}" class="text-ecs-green dark:text-ecs-blue-400 font-semibold">reach out</a>.</p>
-            {% endif %}
-        </div>
+        {% if active_program %}
+        {% call empty_state('Nothing on this program’s calendar yet',
+                            'League-wide events show up under every filter, so the full calendar is the better place to look right now.') %}
+        <a href="{{ url_for('public.calendar') }}" class="{{ BTN }} {{ BTN_PRIMARY }}"><i class="ti ti-filter-off" aria-hidden="true"></i>Show all programs</a>
+        {% endcall %}
         {% else %}
-        {% for month, events in grouped.items() %}
-        <div class="{% if not loop.first %}mt-10{% endif %}">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-ecs-green dark:text-ecs-blue-400 mb-4">{{ month }}</h2>
-            <ul class="space-y-3">
-                {% for e in events %}
-                {% set meta = type_meta.get(e.event_type, ('ti-calendar-event', e.event_type|capitalize, 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200')) %}
-                <li class="flex gap-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-                    <div class="flex flex-col items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2 min-w-14 text-center">
-                        <span class="text-xs font-medium uppercase text-gray-400">{{ e.start_datetime.strftime('%a') }}</span>
-                        <span class="text-xl font-bold text-gray-900 dark:text-white leading-none">{{ e.start_datetime.strftime('%-d') }}</span>
-                        <span class="text-xs text-gray-400">{{ e.start_datetime.strftime('%b') }}</span>
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium {{ meta[2] }}"><i class="ti {{ meta[0] }}"></i> {{ meta[1] }}</span>
-                            {# Which program this event belongs to. Absent for
-                               league-wide events (league_id NULL), which are
-                               for everyone and need no badge. #}
-                            {% set prog = program_of.get(e.league_id) %}
-                            {% if prog %}<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold text-white" style="background-color: {{ prog.color }};">{{ prog.label }}</span>{% endif %}
-                            {% if not e.is_all_day %}<span class="text-xs text-gray-500 dark:text-gray-400"><i class="ti ti-clock"></i> {{ e.start_datetime.strftime('%-I:%M %p') }}{% if e.end_datetime %} – {{ e.end_datetime.strftime('%-I:%M %p') }}{% endif %}</span>{% endif %}
-                        </div>
-                        <h3 class="mt-1 font-semibold text-gray-900 dark:text-white">{{ e.title }}</h3>
-                        {% if e.location %}<p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400"><i class="ti ti-map-pin"></i> {{ e.location }}</p>{% endif %}
-                        {% if e.description %}<p class="mt-1 text-sm text-gray-600 dark:text-gray-400 line-clamp-3">{{ e.description | striptags | replace('\\n', ' ') | trim }}</p>{% endif %}
-                        <a href="https://calendar.google.com/calendar/render?action=TEMPLATE&text={{ e.title | urlencode }}&dates={{ e.start_datetime.strftime('%Y%m%dT%H%M%S') }}/{{ (e.end_datetime or e.start_datetime).strftime('%Y%m%dT%H%M%S') }}&location={{ (e.location or '') | urlencode }}" target="_blank" rel="noopener" class="mt-1.5 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-ecs-green"><i class="ti ti-calendar-plus"></i> Add to calendar</a>
-                    </div>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endfor %}
-        {% endif %}
+        {% call empty_state('Nothing on the calendar right now',
+                            'PLOPs, match days and socials land here as soon as they are scheduled. Get your name down and you will hear about the next one first.') %}
+        <a href="{{ cta.url }}" class="{{ BTN }} {{ BTN_PRIMARY }}"><i class="ti ti-user-plus" aria-hidden="true"></i>{{ cta.label }}</a>
+        {% endcall %}
         {% endif %}
 
-        <div class="mt-12 rounded-xl border border-ecs-green/15 bg-ecs-green/5 p-8 text-center dark:border-ecs-green/20 dark:bg-gray-900">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ copy.cta_heading }}</h3>
-            <p class="mt-2 text-gray-600 dark:text-gray-400">{{ copy.cta_body }}</p>
-            <a href="{{ url_for('public.register') }}" class="mt-4 inline-flex items-center gap-2 rounded-full bg-ecs-green px-5.5 py-2.5 text-sm font-semibold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-                <i class="ti ti-user-plus"></i> How to join
+        {% else %}
+        {% for month, events in grouped.items() %}
+        <section class="{% if not loop.first %}mt-14 sm:mt-16{% endif %}" aria-labelledby="cal-m{{ loop.index }}">
+            {% set outer = loop %}
+            {#- h2 = a month, h3 = an event, in BOTH views. Same semantic level,
+                same size, everywhere on the page. -#}
+            <h2 id="cal-m{{ loop.index }}" class="{{ D3 }} tabular-nums text-gray-900 dark:text-white">{{ month }}</h2>
+
+            {#- Collapse a RUN of the same repeating event into one card. Events
+                join a run only when their type, venue, start time AND
+                title-minus-a-trailing-number all match, so "Fall Season Week 9 –
+                Fun Week!" stays its own card and two differently-titled PLOPs are
+                never merged. Runs shorter than three render normally. -#}
+            {% set rows = [] %}
+            {% set rs = namespace(key=None, bucket=None) %}
+            {% for e in events %}
+              {% set k = (e.title or '').rstrip('0123456789 ') ~ '|' ~ (e.event_type or '') ~ '|' ~ (e.location or '') ~ '|' ~ ('allday' if e.is_all_day else e.start_datetime.strftime('%H:%M')) %}
+              {% if k == rs.key and rs.bucket is not none %}
+                {% set _ = rs.bucket.append(e) %}
+              {% else %}
+                {% set rs.bucket = [e] %}
+                {% set _ = rows.append(rs.bucket) %}
+                {% set rs.key = k %}
+              {% endif %}
+            {% endfor %}
+
+            <ul class="mt-6 space-y-4">
+                {% for row in rows %}
+                {% set rowloop = loop %}
+                {% if row | length >= 3 %}
+                {{ run_card(row, program_of.get(row[0].league_id), type_meta) }}
+                {% else %}
+                {% for e in row %}
+                {#- The first card leads the list — unless the hero is already
+                    showing that exact event, in which case leading it twice is
+                    just shouting the same thing at two sizes. -#}
+                {{ event_card(e, program_of.get(e.league_id), type_meta,
+                              lead=(outer.first and rowloop.first and loop.first and not (e is sameas ns.next_plop))) }}
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+            </ul>
+        </section>
+        {% endfor %}
+
+        {#- The agenda query is capped at 80 events. Terminate it visibly rather
+            than letting the list just stop. -#}
+        {% if total >= 80 %}
+        <p class="mt-12 text-sm font-normal leading-normal text-gray-600 dark:text-gray-300">
+            That is the next 80 events. <a href="{{ url_for('public.calendar', view='month', p=active_program or None) }}" class="font-medium text-ecs-green-ink underline decoration-1 decoration-ecs-green-ink/40 underline-offset-2 hover:decoration-2 hover:decoration-ecs-green-ink dark:text-ecs-green-300 dark:decoration-ecs-green-300/40 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Browse by month</a> for anything further out.
+        </p>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+    </div>
+</section>
+
+{#- --------------------------------------------------------------- FEEDS ---
+    Out of the hero's shadow and off the primary variant: subscribing to a feed
+    is a nice-to-have, not this page's ask. All three are outline pills, and each
+    one names the thing it actually does. -#}
+<section id="calendar-feeds" class="bg-ecs-green/[0.06] pt-12 pb-14 sm:pt-14 sm:pb-16 dark:bg-white/[0.03]">
+    <div class="mx-auto {{ col }} px-4 sm:px-6 lg:px-8">
+        <h2 class="{{ D4 }} text-gray-900 dark:text-white">Keep it on your phone</h2>
+        <p class="mt-3 max-w-[58ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200">
+            Subscribe once and every PLOP, match day and social turns up in the calendar you already use.
+        </p>
+        <div class="mt-6 flex flex-wrap gap-3">
+            {# The feed links carry the active program so subscribing from a
+               filtered view gives you that program's calendar, not everything. #}
+            {% set ics_url = url_for('public.calendar_ics', p=active_program or None) %}
+            <a href="webcal://{{ request.host }}{{ ics_url }}" class="{{ BTN_SM }} {{ BTN_GHOST }}"><i class="ti ti-brand-apple" aria-hidden="true"></i>Apple Calendar</a>
+            <a href="https://calendar.google.com/calendar/render?cid={{ ('webcal://' ~ request.host ~ ics_url) | urlencode }}" target="_blank" rel="noopener" class="{{ BTN_SM }} {{ BTN_GHOST }}"><i class="ti ti-brand-google" aria-hidden="true"></i>Google Calendar</a>
+            <a href="{{ ics_url }}" class="{{ BTN_SM }} {{ BTN_GHOST }}"><i class="ti ti-download" aria-hidden="true"></i>Download .ics</a>
+        </div>
+    </div>
+</section>
+
+{#- ----------------------------------------------------------------- CTA --- #}
+<section class="pt-14 pb-20 sm:pt-16 sm:pb-24">
+    <div class="mx-auto {{ col }} px-4 sm:px-6 lg:px-8">
+        <div class="rounded-xl bg-ecs-green/[0.05] p-8 ring-1 ring-inset ring-ecs-green-ink/40 sm:p-10 dark:bg-ecs-green/10 dark:ring-white/15">
+            <h2 class="{{ D3 }} text-gray-900 dark:text-white">{{ copy.cta_heading }}</h2>
+            <p class="mt-4 max-w-[52ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200">{{ copy.cta_body }}</p>
+            <a href="{{ url_for('public.register') }}" class="mt-7 {{ BTN }} {{ BTN_PRIMARY }}">
+                <i class="ti ti-user-plus" aria-hidden="true"></i>How to join
             </a>
         </div>
     </div>

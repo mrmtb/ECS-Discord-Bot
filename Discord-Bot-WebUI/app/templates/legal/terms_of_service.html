@@ -1,268 +1,265 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ECS FC - Terms of Service</title>
-    <style>
-        :root {
-            --primary: #5865F2;
-            --text: #1a1a1a;
-            --text-secondary: #666;
-            --bg: #ffffff;
-            --border: #e5e5e5;
-        }
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --text: #f0f0f0;
-                --text-secondary: #aaa;
-                --bg: #1a1a1a;
-                --border: #333;
-            }
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 40px 20px;
-            line-height: 1.7;
-            color: var(--text);
-            background: var(--bg);
-        }
-        h1 {
-            color: var(--primary);
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-        h2 {
-            color: var(--primary);
-            margin-top: 40px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--border);
-        }
-        h3 {
-            margin-top: 25px;
-            color: var(--text);
-        }
-        .subtitle {
-            color: var(--text-secondary);
-            font-size: 1.1em;
-            margin-bottom: 30px;
-        }
-        .last-updated {
-            color: var(--text-secondary);
-            font-style: italic;
-            margin-bottom: 40px;
-        }
-        .toc {
-            background: var(--border);
-            padding: 20px 30px;
-            border-radius: 8px;
-            margin: 30px 0;
-        }
-        .toc h3 { margin-top: 0; }
-        .toc ol { margin: 0; padding-left: 20px; }
-        .toc li { margin: 8px 0; }
-        .toc a { color: var(--primary); text-decoration: none; }
-        .toc a:hover { text-decoration: underline; }
-        ul, ol { padding-left: 25px; }
-        li { margin: 8px 0; }
-        .highlight {
-            background: rgba(88, 101, 242, 0.1);
-            padding: 15px 20px;
-            border-left: 4px solid var(--primary);
-            border-radius: 4px;
-            margin: 20px 0;
-        }
-        .contact-box {
-            background: var(--border);
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
-        a { color: var(--primary); }
-        footer {
-            margin-top: 60px;
-            padding-top: 20px;
-            border-top: 1px solid var(--border);
-            color: var(--text-secondary);
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-    <h1>Terms of Service</h1>
-    <p class="subtitle">ECS FC Mobile Application & Web Services</p>
-    <p class="last-updated"><strong>Effective Date:</strong> January 10, 2026 | <strong>Last Updated:</strong> January 10, 2026</p>
+{% extends "public/base_public.html" %}
+{#  ===========================================================================
+    Terms of Service — a DOCUMENT on the public site's shell.
 
-    <div class="highlight">
-        <strong>Summary:</strong> These terms govern your use of ECS FC services. By using our app or website, you agree to these terms. Use the service responsibly and respect other community members.
+    WHY THIS EXTENDS base_public.html (design.md § 1 C1/C7, work order O8 § 8.1)
+    ---------------------------------------------------------------------------
+    Same argument as privacy_policy.html, and for the same reason: this URL is
+    linked from the public footer of every marketing page. It used to be a
+    standalone document with a Discord-blurple (#5865F2) brand colour, a system
+    font stack, `prefers-color-scheme` dark mode that desyncs from the site's
+    class-based toggle (design.md § 13 #44), no focus states, no breakpoints and
+    no way back to the site. There is no degraded-state argument for a page
+    served on a healthy request, so it now renders inside the public shell.
+
+    /terms and /terms-of-service (the app-store alias) both render this file;
+    seo.canonical points both at /terms so they do not compete in search.
+
+    LEGAL TEXT IS UNTOUCHED — structure, hierarchy and presentation only. The
+    only glyph-level changes are straight → typographic quotes (design.md § 2.7)
+    and a hardcoded "/privacy" href replaced by url_for().
+    =========================================================================== #}
+
+{#  SHELL CONTEXT. base_public.html needs `nav_items`, `portal_url`, `cta`,
+    `appearance`, `imgs` and `discord_invite_url`. They come from
+    `_inject_public_context()` (app/public_site.py), which legal_bp now
+    registers as its own context processor (app/legal_routes.py), so this page
+    renders the SAME live values as every marketing page — including the real
+    registration/waitlist state behind the status strip and the nav CTA.
+    There is deliberately no local fallback for `cta`: a hardcoded
+    `mode: 'waitlist'` would make /privacy, /terms and /delete-account announce
+    "Waitlist open" while registration is actually open. #}
+
+{# Title separator is an em dash and the brand comes last (design.md § 10). #}
+{% set _brand = appearance.title if appearance and appearance.title else 'ECS Pub League' %}
+{% if seo is not defined %}
+{% set seo = {
+    'title': 'Terms of Service — ' ~ _brand,
+    'description': 'The terms that govern your use of the ECS FC mobile app and portal.ecsfc.com — eligibility, accounts, conduct, content and liability.',
+    'canonical': url_for('legal.terms_of_service', _external=True)
+} %}
+{% endif %}
+
+{% block head_extra %}
+    {# Legal pages are deliberately indexable: app stores and search both need
+       to reach this URL. #}
+    <meta name="robots" content="index, follow">
+{% endblock %}
+
+{% block content %}
+{#  Masthead. Carries its own ground so the `auto` section rhythm does not draw
+    a hairline into a seam a ground change already carries (design.md § 5.4). #}
+<section class="bg-ecs-green/[0.06] pt-16 pb-24 sm:pt-20 sm:pb-28 dark:bg-white/[0.03]">
+    <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+        <h1 class="font-display text-[2.75rem] font-extrabold leading-[1.02] tracking-[-0.035em] text-balance break-words text-gray-900 sm:text-6xl lg:text-7xl dark:text-white">Terms of Service</h1>
+        <p class="mt-5 max-w-[62ch] text-lg font-normal leading-[1.45] text-pretty text-gray-700 sm:text-xl lg:text-2xl dark:text-gray-200">ECS FC Mobile Application &amp; Web Services</p>
+        <p class="mt-6 text-sm font-normal leading-normal tabular-nums text-gray-600 dark:text-gray-300"><strong class="font-semibold text-gray-800 dark:text-gray-100">Effective Date:</strong> January 10, 2026 | <strong class="font-semibold text-gray-800 dark:text-gray-100">Last Updated:</strong> January 10, 2026</p>
     </div>
+</section>
 
-    <nav class="toc">
-        <h3>Table of Contents</h3>
-        <ol>
-            <li><a href="#acceptance">Acceptance of Terms</a></li>
-            <li><a href="#description">Description of Service</a></li>
-            <li><a href="#eligibility">Eligibility</a></li>
-            <li><a href="#accounts">User Accounts</a></li>
-            <li><a href="#conduct">User Conduct</a></li>
-            <li><a href="#content">User Content</a></li>
-            <li><a href="#intellectual-property">Intellectual Property</a></li>
-            <li><a href="#disclaimers">Disclaimers</a></li>
-            <li><a href="#limitation">Limitation of Liability</a></li>
-            <li><a href="#indemnification">Indemnification</a></li>
-            <li><a href="#termination">Termination</a></li>
-            <li><a href="#changes">Changes to Terms</a></li>
-            <li><a href="#governing-law">Governing Law</a></li>
-            <li><a href="#contact">Contact Us</a></li>
-        </ol>
-    </nav>
+<section class="pt-12 pb-20 sm:pt-16 sm:pb-24">
+    <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
 
-    <h2 id="acceptance">1. Acceptance of Terms</h2>
-    <p>By accessing or using the ECS FC mobile application (iOS and Android) and web platform at portal.ecsfc.com (collectively, the "Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use the Service.</p>
-    <p>These Terms constitute a legally binding agreement between you and ECS FC ("we," "our," or "us"). We may modify these Terms at any time, and such modifications will be effective immediately upon posting.</p>
+        {# Summary — the old .highlight, on the inset surface (design.md § 4.2). #}
+        <aside class="max-w-[62ch] rounded-xl bg-ecs-green/[0.05] p-6 ring-1 ring-inset ring-ecs-green-ink/15 sm:p-8 dark:bg-white/[0.02] dark:ring-white/10">
+            <p class="text-base font-normal leading-[1.7] text-gray-700 sm:text-lg dark:text-gray-200"><strong class="font-semibold text-gray-900 dark:text-white">Summary:</strong> These terms govern your use of ECS FC services. By using our app or website, you agree to these terms. Use the service responsibly and respect other community members.</p>
+        </aside>
 
-    <h2 id="description">2. Description of Service</h2>
-    <p>ECS FC provides a platform for soccer league management, including but not limited to:</p>
-    <ul>
-        <li>Team and player roster management</li>
-        <li>Match scheduling and RSVP tracking</li>
-        <li>Real-time match scoring and live reporting</li>
-        <li>Player statistics and league standings</li>
-        <li>Push notifications and team communications</li>
-        <li>Digital wallet passes for team identification</li>
-        <li>Integration with Discord for team coordination</li>
-    </ul>
-    <p>The Service is provided for the management and coordination of ECS FC soccer leagues and teams.</p>
+        {#  Table of contents. Two columns only from lg: — below that a single
+            column keeps every row one line and a 44px target (design.md § 11,
+            C8). These entries are short enough to survive the split at the
+            62ch measure (longest, "Limitation of Liability", ~221px in a
+            ~249px track); the privacy policy's are not, so that TOC stays one
+            column. Two columns is not a house rule here, it is a fit test. #}
+        <nav aria-labelledby="toc-heading" class="mt-10 max-w-[62ch] rounded-xl bg-ecs-green/[0.05] p-6 ring-1 ring-inset ring-ecs-green-ink/15 sm:p-8 dark:bg-white/[0.02] dark:ring-white/10">
+            <h2 id="toc-heading" class="font-display text-lg font-bold leading-snug tracking-normal break-words text-gray-900 sm:text-xl dark:text-white">Table of Contents</h2>
+            <ol class="mt-4 list-decimal list-inside tabular-nums marker:font-semibold marker:text-ecs-green-ink lg:columns-2 lg:gap-x-8 dark:marker:text-ecs-green-300">
+                <li class="break-inside-avoid"><a href="#acceptance" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Acceptance of Terms</a></li>
+                <li class="break-inside-avoid"><a href="#description" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Description of Service</a></li>
+                <li class="break-inside-avoid"><a href="#eligibility" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Eligibility</a></li>
+                <li class="break-inside-avoid"><a href="#accounts" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">User Accounts</a></li>
+                <li class="break-inside-avoid"><a href="#conduct" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">User Conduct</a></li>
+                <li class="break-inside-avoid"><a href="#content" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">User Content</a></li>
+                <li class="break-inside-avoid"><a href="#intellectual-property" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Intellectual Property</a></li>
+                <li class="break-inside-avoid"><a href="#disclaimers" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Disclaimers</a></li>
+                <li class="break-inside-avoid"><a href="#limitation" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Limitation of Liability</a></li>
+                <li class="break-inside-avoid"><a href="#indemnification" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Indemnification</a></li>
+                <li class="break-inside-avoid"><a href="#termination" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Termination</a></li>
+                <li class="break-inside-avoid"><a href="#changes" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Changes to Terms</a></li>
+                <li class="break-inside-avoid"><a href="#governing-law" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Governing Law</a></li>
+                <li class="break-inside-avoid"><a href="#contact" class="inline-flex min-h-11 items-center rounded-lg px-1.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Contact Us</a></li>
+            </ol>
+        </nav>
 
-    <h2 id="eligibility">3. Eligibility</h2>
-    <p>To use the Service, you must:</p>
-    <ul>
-        <li>Be at least 13 years of age (or 16 years of age in the European Union)</li>
-        <li>Have a valid Discord account for authentication</li>
-        <li>Be a current or prospective member of an ECS FC team or league</li>
-        <li>Provide accurate and complete information when creating your account</li>
-    </ul>
-    <p>By using the Service, you represent and warrant that you meet all eligibility requirements.</p>
+        {#  The document. Same wrapper contract as privacy_policy.html so both
+            legal pages render identically (design.md § 2.3 BL, § 2.6 rhythm).
+            No scroll-mt on the headings — base_public's @layer base sets
+            html{scroll-padding-top:var(--sticky-stack)} for every anchor. #}
+        <article class="mt-14 max-w-[62ch] text-base font-normal leading-[1.7] text-gray-700 sm:text-lg dark:text-gray-200
+                        [&_p]:mt-[1.15em] [&_p]:first:mt-0
+                        [&_ul]:mt-[1.15em] [&_ol]:mt-[1.15em] [&_li]:mt-[0.5em]
+                        [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5
+                        [&_li]:marker:text-ecs-green-ink dark:[&_li]:marker:text-ecs-green-300
+                        [&_strong]:font-semibold [&_strong]:text-gray-900 dark:[&_strong]:text-white
+                        [&_h2]:mt-[1.6em] [&_h2]:mb-[0.35em] [&_h2]:font-display [&_h2]:text-2xl [&_h2]:font-extrabold [&_h2]:leading-[1.1] [&_h2]:tracking-[-0.02em] [&_h2]:text-balance [&_h2]:break-words [&_h2]:text-gray-900 sm:[&_h2]:text-3xl lg:[&_h2]:text-4xl dark:[&_h2]:text-white [&>h2:first-child]:mt-0
+                        [&_h3]:mt-[1.4em] [&_h3]:mb-[0.3em] [&_h3]:font-display [&_h3]:text-xl [&_h3]:font-bold [&_h3]:leading-[1.15] [&_h3]:tracking-[-0.015em] [&_h3]:text-pretty [&_h3]:break-words [&_h3]:text-gray-900 sm:[&_h3]:text-2xl dark:[&_h3]:text-white
+                        [&_code]:rounded-lg [&_code]:bg-ecs-green/[0.08] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.9em] [&_code]:ring-1 [&_code]:ring-inset [&_code]:ring-ecs-green-ink/15 dark:[&_code]:bg-white/[0.06] dark:[&_code]:ring-white/10">
 
-    <h2 id="accounts">4. User Accounts</h2>
+            <h2 id="acceptance">1. Acceptance of Terms</h2>
+            <p>By accessing or using the ECS FC mobile application (iOS and Android) and web platform at portal.ecsfc.com (collectively, the "Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use the Service.</p>
+            <p>These Terms constitute a legally binding agreement between you and ECS FC ("we," "our," or "us"). We may modify these Terms at any time, and such modifications will be effective immediately upon posting.</p>
 
-    <h3>4.1 Account Creation</h3>
-    <p>To access most features of the Service, you must create an account using Discord OAuth authentication. You are responsible for:</p>
-    <ul>
-        <li>Maintaining the security of your Discord account</li>
-        <li>All activities that occur under your account</li>
-        <li>Notifying us immediately of any unauthorized use of your account</li>
-    </ul>
+            <h2 id="description">2. Description of Service</h2>
+            <p>ECS FC provides a platform for soccer league management, including but not limited to:</p>
+            <ul>
+                <li>Team and player roster management</li>
+                <li>Match scheduling and RSVP tracking</li>
+                <li>Real-time match scoring and live reporting</li>
+                <li>Player statistics and league standings</li>
+                <li>Push notifications and team communications</li>
+                <li>Digital wallet passes for team identification</li>
+                <li>Integration with Discord for team coordination</li>
+            </ul>
+            <p>The Service is provided for the management and coordination of ECS FC soccer leagues and teams.</p>
 
-    <h3>4.2 Account Information</h3>
-    <p>You agree to provide accurate, current, and complete information during registration and to update such information to keep it accurate, current, and complete.</p>
+            <h2 id="eligibility">3. Eligibility</h2>
+            <p>To use the Service, you must:</p>
+            <ul>
+                <li>Be at least 13 years of age (or 16 years of age in the European Union)</li>
+                <li>Have a valid Discord account for authentication</li>
+                <li>Be a current or prospective member of an ECS FC team or league</li>
+                <li>Provide accurate and complete information when creating your account</li>
+            </ul>
+            <p>By using the Service, you represent and warrant that you meet all eligibility requirements.</p>
 
-    <h3>4.3 Account Termination</h3>
-    <p>We reserve the right to suspend or terminate your account at our discretion, including for violation of these Terms or for any other reason we deem appropriate.</p>
+            <h2 id="accounts">4. User Accounts</h2>
 
-    <h2 id="conduct">5. User Conduct</h2>
-    <p>You agree not to:</p>
-    <ul>
-        <li>Use the Service for any unlawful purpose or in violation of any laws</li>
-        <li>Harass, abuse, or harm other users</li>
-        <li>Impersonate any person or entity or misrepresent your affiliation</li>
-        <li>Interfere with or disrupt the Service or servers</li>
-        <li>Attempt to gain unauthorized access to any part of the Service</li>
-        <li>Use automated systems (bots, scrapers) to access the Service without permission</li>
-        <li>Submit false or misleading information (including fake RSVPs)</li>
-        <li>Circumvent any security measures or access controls</li>
-        <li>Use the Service to spam or send unsolicited communications</li>
-    </ul>
+            <h3 id="account-creation">4.1 Account Creation</h3>
+            <p>To access most features of the Service, you must create an account using Discord OAuth authentication. You are responsible for:</p>
+            <ul>
+                <li>Maintaining the security of your Discord account</li>
+                <li>All activities that occur under your account</li>
+                <li>Notifying us immediately of any unauthorized use of your account</li>
+            </ul>
 
-    <h2 id="content">6. User Content</h2>
+            <h3 id="account-information">4.2 Account Information</h3>
+            <p>You agree to provide accurate, current, and complete information during registration and to update such information to keep it accurate, current, and complete.</p>
 
-    <h3>6.1 Your Content</h3>
-    <p>You retain ownership of any content you submit to the Service (including profile pictures, photos, and messages). By submitting content, you grant us a non-exclusive, worldwide, royalty-free license to use, display, and distribute such content in connection with the Service.</p>
+            <h3 id="account-termination">4.3 Account Termination</h3>
+            <p>We reserve the right to suspend or terminate your account at our discretion, including for violation of these Terms or for any other reason we deem appropriate.</p>
 
-    <h3>6.2 Content Standards</h3>
-    <p>You are solely responsible for the content you submit. Content must not:</p>
-    <ul>
-        <li>Be illegal, harmful, or offensive</li>
-        <li>Infringe on intellectual property rights of others</li>
-        <li>Contain viruses or malicious code</li>
-        <li>Violate the privacy of others</li>
-    </ul>
+            <h2 id="conduct">5. User Conduct</h2>
+            <p>You agree not to:</p>
+            <ul>
+                <li>Use the Service for any unlawful purpose or in violation of any laws</li>
+                <li>Harass, abuse, or harm other users</li>
+                <li>Impersonate any person or entity or misrepresent your affiliation</li>
+                <li>Interfere with or disrupt the Service or servers</li>
+                <li>Attempt to gain unauthorized access to any part of the Service</li>
+                <li>Use automated systems (bots, scrapers) to access the Service without permission</li>
+                <li>Submit false or misleading information (including fake RSVPs)</li>
+                <li>Circumvent any security measures or access controls</li>
+                <li>Use the Service to spam or send unsolicited communications</li>
+            </ul>
 
-    <h3>6.3 Content Removal</h3>
-    <p>We reserve the right to remove any content that violates these Terms or that we find objectionable for any reason.</p>
+            <h2 id="content">6. User Content</h2>
 
-    <h2 id="intellectual-property">7. Intellectual Property</h2>
-    <p>The Service and its original content (excluding user content), features, and functionality are owned by ECS FC and are protected by copyright, trademark, and other intellectual property laws.</p>
-    <p>You may not copy, modify, distribute, sell, or lease any part of the Service without our prior written consent.</p>
+            <h3 id="your-content">6.1 Your Content</h3>
+            <p>You retain ownership of any content you submit to the Service (including profile pictures, photos, and messages). By submitting content, you grant us a non-exclusive, worldwide, royalty-free license to use, display, and distribute such content in connection with the Service.</p>
 
-    <h2 id="disclaimers">8. Disclaimers</h2>
+            <h3 id="content-standards">6.2 Content Standards</h3>
+            <p>You are solely responsible for the content you submit. Content must not:</p>
+            <ul>
+                <li>Be illegal, harmful, or offensive</li>
+                <li>Infringe on intellectual property rights of others</li>
+                <li>Contain viruses or malicious code</li>
+                <li>Violate the privacy of others</li>
+            </ul>
 
-    <h3>8.1 "As Is" Service</h3>
-    <p>THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.</p>
+            <h3 id="content-removal">6.3 Content Removal</h3>
+            <p>We reserve the right to remove any content that violates these Terms or that we find objectionable for any reason.</p>
 
-    <h3>8.2 No Guarantee of Availability</h3>
-    <p>We do not guarantee that the Service will be uninterrupted, timely, secure, or error-free. We may modify, suspend, or discontinue the Service at any time without notice.</p>
+            <h2 id="intellectual-property">7. Intellectual Property</h2>
+            <p>The Service and its original content (excluding user content), features, and functionality are owned by ECS FC and are protected by copyright, trademark, and other intellectual property laws.</p>
+            <p>You may not copy, modify, distribute, sell, or lease any part of the Service without our prior written consent.</p>
 
-    <h3>8.3 Third-Party Services</h3>
-    <p>The Service integrates with third-party services (Discord, Firebase, etc.). We are not responsible for the availability, accuracy, or content of such third-party services.</p>
+            <h2 id="disclaimers">8. Disclaimers</h2>
 
-    <h2 id="limitation">9. Limitation of Liability</h2>
-    <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, ECS FC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS OR REVENUES, WHETHER INCURRED DIRECTLY OR INDIRECTLY, OR ANY LOSS OF DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES, RESULTING FROM:</p>
-    <ul>
-        <li>Your use or inability to use the Service</li>
-        <li>Any unauthorized access to or use of our servers and/or personal information</li>
-        <li>Any interruption or cessation of the Service</li>
-        <li>Any bugs, viruses, or other harmful code transmitted through the Service</li>
-        <li>Any errors or omissions in any content</li>
-    </ul>
+            <h3 id="as-is-service">8.1 "As Is" Service</h3>
+            <p>THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.</p>
 
-    <h2 id="indemnification">10. Indemnification</h2>
-    <p>You agree to indemnify, defend, and hold harmless ECS FC and its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including attorneys' fees) arising from:</p>
-    <ul>
-        <li>Your use of the Service</li>
-        <li>Your violation of these Terms</li>
-        <li>Your violation of any rights of another</li>
-        <li>Your user content</li>
-    </ul>
+            <h3 id="no-guarantee-of-availability">8.2 No Guarantee of Availability</h3>
+            <p>We do not guarantee that the Service will be uninterrupted, timely, secure, or error-free. We may modify, suspend, or discontinue the Service at any time without notice.</p>
 
-    <h2 id="termination">11. Termination</h2>
-    <p>We may terminate or suspend your access to the Service immediately, without prior notice or liability, for any reason, including breach of these Terms.</p>
-    <p>Upon termination:</p>
-    <ul>
-        <li>Your right to use the Service will immediately cease</li>
-        <li>We may delete your account and all associated data</li>
-        <li>Provisions of these Terms that should survive termination will remain in effect</li>
-    </ul>
+            <h3 id="disclaimer-third-party">8.3 Third-Party Services</h3>
+            <p>The Service integrates with third-party services (Discord, Firebase, etc.). We are not responsible for the availability, accuracy, or content of such third-party services.</p>
 
-    <h2 id="changes">12. Changes to Terms</h2>
-    <p>We reserve the right to modify these Terms at any time. When we make changes:</p>
-    <ul>
-        <li>We will update the "Last Updated" date at the top of this document</li>
-        <li>For significant changes, we will notify you via email or in-app notification</li>
-        <li>Your continued use of the Service after changes constitutes acceptance of the new Terms</li>
-    </ul>
-    <p>If you do not agree to the modified Terms, you must stop using the Service.</p>
+            <h2 id="limitation">9. Limitation of Liability</h2>
+            <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, ECS FC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS OR REVENUES, WHETHER INCURRED DIRECTLY OR INDIRECTLY, OR ANY LOSS OF DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES, RESULTING FROM:</p>
+            <ul>
+                <li>Your use or inability to use the Service</li>
+                <li>Any unauthorized access to or use of our servers and/or personal information</li>
+                <li>Any interruption or cessation of the Service</li>
+                <li>Any bugs, viruses, or other harmful code transmitted through the Service</li>
+                <li>Any errors or omissions in any content</li>
+            </ul>
 
-    <h2 id="governing-law">13. Governing Law</h2>
-    <p>These Terms shall be governed by and construed in accordance with the laws of the State of Washington, United States, without regard to its conflict of law provisions.</p>
-    <p>Any disputes arising from these Terms or the Service shall be resolved in the courts of King County, Washington.</p>
+            <h2 id="indemnification">10. Indemnification</h2>
+            <p>You agree to indemnify, defend, and hold harmless ECS FC and its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including attorneys' fees) arising from:</p>
+            <ul>
+                <li>Your use of the Service</li>
+                <li>Your violation of these Terms</li>
+                <li>Your violation of any rights of another</li>
+                <li>Your user content</li>
+            </ul>
 
-    <h2 id="contact">14. Contact Us</h2>
-    <p>If you have any questions about these Terms of Service, please contact us:</p>
+            <h2 id="termination">11. Termination</h2>
+            <p>We may terminate or suspend your access to the Service immediately, without prior notice or liability, for any reason, including breach of these Terms.</p>
+            <p>Upon termination:</p>
+            <ul>
+                <li>Your right to use the Service will immediately cease</li>
+                <li>We may delete your account and all associated data</li>
+                <li>Provisions of these Terms that should survive termination will remain in effect</li>
+            </ul>
 
-    <div class="contact-box">
-        <p><strong>ECS FC</strong></p>
-        <p><strong>Website:</strong> <a href="https://portal.ecsfc.com">portal.ecsfc.com</a></p>
-        <p><strong>Discord:</strong> <a href="https://discord.gg/weareecs" target="_blank">discord.gg/weareecs</a></p>
+            <h2 id="changes">12. Changes to Terms</h2>
+            <p>We reserve the right to modify these Terms at any time. When we make changes:</p>
+            <ul>
+                <li>We will update the "Last Updated" date at the top of this document</li>
+                <li>For significant changes, we will notify you via email or in-app notification</li>
+                <li>Your continued use of the Service after changes constitutes acceptance of the new Terms</li>
+            </ul>
+            <p>If you do not agree to the modified Terms, you must stop using the Service.</p>
+
+            <h2 id="governing-law">13. Governing Law</h2>
+            <p>These Terms shall be governed by and construed in accordance with the laws of the State of Washington, United States, without regard to its conflict of law provisions.</p>
+            <p>Any disputes arising from these Terms or the Service shall be resolved in the courts of King County, Washington.</p>
+
+            <h2 id="contact">14. Contact Us</h2>
+            <p>If you have any questions about these Terms of Service, please contact us:</p>
+
+            {# The old .contact-box, now the inset surface with a real <dl> (§ 7.6). #}
+            <aside class="mt-[1.15em] rounded-xl bg-ecs-green/[0.05] p-6 ring-1 ring-inset ring-ecs-green-ink/15 sm:p-8 dark:bg-white/[0.02] dark:ring-white/10">
+                <p class="font-display text-lg font-bold leading-snug tracking-normal break-words text-gray-900 sm:text-xl dark:text-white">ECS FC</p>
+                <dl class="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+                    <dt class="text-xs font-bold uppercase tracking-[0.14em] text-gray-600 sm:pt-2 dark:text-gray-300">Website</dt>
+                    <dd class="max-w-[62ch] text-base sm:text-lg"><a href="https://portal.ecsfc.com" class="rounded-lg font-medium text-ecs-green-ink underline decoration-ecs-green-ink/40 decoration-1 underline-offset-2 hover:decoration-2 hover:decoration-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:text-ecs-green-300 dark:decoration-ecs-green-300/40 dark:focus-visible:ring-offset-paper-dark">portal.ecsfc.com</a></dd>
+
+                    <dt class="text-xs font-bold uppercase tracking-[0.14em] text-gray-600 sm:pt-2 dark:text-gray-300">Discord</dt>
+                    <dd class="max-w-[62ch] text-base sm:text-lg"><a href="https://discord.gg/weareecs" target="_blank" rel="noopener noreferrer" class="rounded-lg font-medium text-ecs-green-ink underline decoration-ecs-green-ink/40 decoration-1 underline-offset-2 hover:decoration-2 hover:decoration-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:text-ecs-green-300 dark:decoration-ecs-green-300/40 dark:focus-visible:ring-offset-paper-dark">discord.gg/weareecs</a></dd>
+                </dl>
+            </aside>
+        </article>
+
+        {#  Document colophon. Was a nested <footer>, which would now be a second
+            footer landmark inside the shell's real one — demoted to a plain
+            colophon at the S tier. Wording unchanged; the /privacy href is now
+            url_for() so it survives a route move. #}
+        <p class="mt-14 max-w-[62ch] border-t border-ecs-green-ink/20 pt-6 text-sm font-normal leading-normal tabular-nums text-gray-600 dark:border-white/10 dark:text-gray-300">
+            &copy; 2026 ECS FC. All rights reserved.<br>
+            These terms of service were last updated on January 10, 2026.<br>
+            <a href="{{ url_for('legal.privacy_policy') }}" class="mt-2 inline-flex min-h-11 items-center rounded-lg font-medium text-ecs-green-ink underline decoration-ecs-green-ink/40 decoration-1 underline-offset-2 hover:decoration-2 hover:decoration-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:text-ecs-green-300 dark:decoration-ecs-green-300/40 dark:focus-visible:ring-offset-paper-dark">Privacy Policy</a>
+        </p>
     </div>
-
-    <footer>
-        <p>&copy; 2026 ECS FC. All rights reserved.</p>
-        <p>These terms of service were last updated on January 10, 2026.</p>
-        <p><a href="/privacy">Privacy Policy</a></p>
-    </footer>
-</body>
-</html>
+</section>
+{% endblock %}

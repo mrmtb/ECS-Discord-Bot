@@ -1,15 +1,40 @@
-{% extends "base_unauthenticated_flowbite.html" %}
+{#
+  Member pass not found — /m/<token> for a token that matches no wallet pass
+  (HTTP 404). Deliberately says nothing about whether the token exists.
 
-{% block title %}Member not found — ECS FC{% endblock %}
+  Context: none. Do not reference player_name / status here — the route renders
+  this template precisely because it has no player.
 
-{% block main_content %}
-<div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 text-center">
-    <div class="w-20 h-20 mx-auto rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center mb-4">
-        <i class="ti ti-question-mark text-4xl text-gray-400"></i>
-    </div>
-    <h1 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Member not found</h1>
-    <p class="text-sm text-gray-600 dark:text-gray-400">
-        This QR code doesn't match any active member pass.
-    </p>
+  design.md § 7.7 empty state: left-aligned, no dashed border, no centred grey
+  icon blob, and one way onward instead of a dead end.
+#}
+{% extends "public/base_public_minimal.html" %}
+
+{% block title %}Member pass not found{% endblock %}
+{% block content_width %}max-w-2xl{% endblock %}
+
+{% block page %}
+{%- set BTN_GHOST = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 text-base font-semibold leading-none text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 active:translate-y-px active:brightness-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark transition-[background-color,box-shadow,transform,color] duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none' -%}
+
+<span class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-ecs-green/10 text-ecs-green-ink dark:bg-ecs-green/15 dark:text-ecs-green-300">
+  <i class="ti ti-id-off text-2xl" aria-hidden="true"></i>
+</span>
+
+<h1 class="mt-5 font-display text-2xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words text-gray-900 sm:text-3xl lg:text-4xl dark:text-white">No pass behind this code</h1>
+
+<div class="mt-6 rounded-xl bg-ecs-green/[0.05] p-6 ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.02] dark:ring-white/10 sm:p-8">
+  <p class="max-w-[62ch] text-base font-normal leading-[1.65] text-gray-800 sm:text-lg dark:text-gray-200">
+    This QR code doesn&rsquo;t match a member pass. It may have been reissued, or the picture of it may be from an older season.
+  </p>
+  <p class="mt-4 max-w-[62ch] text-base font-normal leading-[1.65] text-gray-700 dark:text-gray-200">
+    Whoever it belongs to can open the ECS FC app and show a fresh one.
+  </p>
+  {% if endpoint_exists is defined and endpoint_exists('public.home') %}
+  <div class="mt-6">
+    <a href="{{ url_for('public.home') }}" class="{{ BTN_GHOST }}">
+      <i class="ti ti-arrow-left" aria-hidden="true"></i>ECS Pub League
+    </a>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

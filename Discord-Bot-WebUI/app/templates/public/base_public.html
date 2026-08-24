@@ -1,44 +1,65 @@
 {#
   Public marketing site base layout.
 
-  Full-width marketing shell (sticky nav + footer) for the rebuilt
-  ecspubleague.org site. Reuses the same head assets as the authenticated app
-  (Tailwind/Flowbite via Vite, self-hosted Inter, Tabler icons, dark mode) so
-  the public site is visually one system with the portal.
+  Full-width marketing shell (status strip + sticky nav + marquee/statement
+  footer) for the rebuilt ecspubleague.org site. Shares the head assets with the
+  authenticated app (Tailwind/Flowbite via Vite, Tabler icons, class-based dark
+  mode) so the public site is one system with the portal.
+
+  TYPE: two faces, per design.md § 2. Bricolage Grotesque displays (headings,
+  wordmark, marquee), Inter reads (body/UI). Both are SELF-HOSTED — the public
+  CSP blocks fonts.googleapis.com, so a CDN <link> would fall back to system-ui
+  with no error anywhere.
 
   SEO: every page supplies `seo` (dict) with title / description / canonical /
   og_image / and optional `json_ld` (a list of dicts rendered as
   application/ld+json). Views build these; see app/public_site.py.
 #}
 <!DOCTYPE html>
-{# Admin chrome = the h-12 admin bar (see _admin_bar.html). scroll-pt-4 adds
-   its extra 16px to every anchor jump: content headings carry scroll-mt-24
-   (96px), sized for the public header alone; with the bar the sticky stack is
-   112px, and scroll-padding stacks with scroll-margin to make up the gap. #}
+{# Admin chrome = the h-12 admin bar (see _admin_bar.html). Anchor clearance is
+   no longer hand-tuned per element: --sticky-stack (below, in <head>) is the
+   single source of truth for "how much chrome is pinned above the content", and
+   html{scroll-padding-top} derives every anchor jump from it. Content headings
+   therefore need no scroll-mt-* of their own. #}
 {% set _admin_chrome = is_site_admin and not edit_mode|default(false) %}
-<html lang="en" class="overflow-x-clip {{ 'dark' if session.get('theme', 'light') == 'dark' else '' }} {{ 'scroll-pt-4' if _admin_chrome else '' }}">
+<html lang="en" class="overflow-x-clip {{ 'dark' if session.get('theme', 'light') == 'dark' else '' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    {# ---- SEO: title + description + canonical ---- #}
+    {# ---- SEO: title + description + canonical ----
+
+       `appearance.tagline` is the admin-editable one-line description of the
+       league (Website -> Appearance -> `public_tagline`). design.md § 9.2 gives
+       it no VISIBLE home — the marquee band is short brand tokens and the footer
+       statement is a fixed display sentence — so its job here is the one a
+       tagline has always had: the site-wide fallback description a page inherits
+       when its own view supplies none (`_seo(description=None)` is common on the
+       dynamic pages). Without this the setting is a phantom: editable in admin,
+       read by nothing. Resolve it ONCE and reuse it for the OG + Twitter cards
+       so the three can never drift. ---- #}
+    {% set _meta_desc = seo.description if seo and seo.description else (appearance.tagline if appearance and appearance.tagline else None) %}
     <title>{{ seo.title if seo and seo.title else 'ECS Pub League — Radically Inclusive Adult Soccer in Seattle' }}</title>
-    {% if seo and seo.description %}<meta name="description" content="{{ seo.description }}">{% endif %}
+    {% if _meta_desc %}<meta name="description" content="{{ _meta_desc }}">{% endif %}
     {% if seo and seo.canonical %}<link rel="canonical" href="{{ seo.canonical }}">{% endif %}
+
+    {# Browser UI colour follows the admin-chosen primary, so it re-skins with
+       the Appearance picker instead of freezing a hex into the shell. #}
+    <meta name="theme-color" content="{{ appearance.primary_hex if appearance and appearance.primary_hex else '#40b050' }}">
 
     {# ---- Open Graph ---- #}
     <meta property="og:site_name" content="{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }}">
     <meta property="og:type" content="{{ seo.og_type if seo and seo.og_type else 'website' }}">
     <meta property="og:title" content="{{ seo.title if seo and seo.title else 'ECS Pub League' }}">
-    {% if seo and seo.description %}<meta property="og:description" content="{{ seo.description }}">{% endif %}
+    {% if _meta_desc %}<meta property="og:description" content="{{ _meta_desc }}">{% endif %}
     {% if seo and seo.canonical %}<meta property="og:url" content="{{ seo.canonical }}">{% endif %}
     {% if seo and seo.og_image %}<meta property="og:image" content="{{ seo.og_image }}">{% endif %}
 
     {# ---- Twitter Card ---- #}
     <meta name="twitter:card" content="{{ 'summary_large_image' if seo and seo.og_image else 'summary' }}">
     <meta name="twitter:title" content="{{ seo.title if seo and seo.title else 'ECS Pub League' }}">
-    {% if seo and seo.description %}<meta name="twitter:description" content="{{ seo.description }}">{% endif %}
+    {% if _meta_desc %}<meta name="twitter:description" content="{{ _meta_desc }}">{% endif %}
     {% if seo and seo.og_image %}<meta name="twitter:image" content="{{ seo.og_image }}">{% endif %}
 
     {# ---- Structured data (JSON-LD) ---- #}
@@ -50,29 +71,41 @@
 
     {# ---- Dark mode BEFORE any stylesheet loads, so the correct theme paints on
        the first frame (no flash of unstyled/light content). Must stay ahead of the
-       CSS links below. Uses the same 'theme' localStorage key as the toggle + the
-       portal's theme switcher, so it persists across pages and both sites. ---- #}
+       CSS links below.
+
+       KEY SPLIT (design.md § 2.8): the visitor's EXPLICIT choice lives in
+       'ecs-public-theme' — namespaced so the portal's theme switcher can't claim
+       it. When there is no explicit choice we resolve from the OS on EVERY load
+       and never write that resolution to the public key, so a visitor who never
+       chose keeps following their OS setting forever.
+
+       The mirror write to the legacy 'theme' key is LOAD-BEARING, not
+       persistence: simple-theme-switcher.js ships inside main-entry.js, and on
+       load it reads localStorage 'theme' with a hardcoded 'light' default and
+       re-applies it to <html>. Without this line it would flip the public site
+       back to light on every page. We recompute and overwrite the mirror on each
+       load, so it never becomes a sticky first-visit choice. ---- #}
     <script>
         (function () {
             try {
-                var t = localStorage.getItem('theme');
+                var KEY = 'ecs-public-theme';
+                var t = localStorage.getItem(KEY);
                 if (t !== 'dark' && t !== 'light') {
-                    // No explicit choice yet: resolve from system + PERSIST it, so the
-                    // portal's theme switcher (which defaults to light) can't flip it
-                    // back after load. This is what makes the theme stick per page.
                     t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                    localStorage.setItem('theme', t);
                 }
                 document.documentElement.classList.toggle('dark', t === 'dark');
+                localStorage.setItem('theme', t);
             } catch (e) {}
         })();
     </script>
 
     {% if appearance and appearance.favicon_url %}<link rel="icon" href="{{ appearance.favicon_url }}">{% endif %}
 
-    {# ---- Fonts / CSS / Icons (identical to the app shell) ---- #}
+    {# ---- Fonts / CSS / Icons ---- #}
     <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/inter/inter-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/bricolage/bricolage-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ static_v('vendor/fonts/inter.css') }}">
+    <link rel="stylesheet" href="{{ static_v('vendor/fonts/bricolage.css') }}">
     <link rel="stylesheet" href="{{ static_v('vite-dist/css/tailwind.css') }}">
     <link rel="stylesheet" href="{{ static_v('vendor/fonts/tabler-icons.css') }}">
 
@@ -89,14 +122,26 @@
     {% endif %}
 
     <style>
-        /* Public site link styling: no default underlines (cleaner, modern);
-           color carries the affordance. Prose bodies keep readable underlines. */
-        main a, header a, footer a { text-decoration: none; }
-        main a:hover, footer a:hover { text-decoration: none; }
-        .prose a { text-underline-offset: 2px; }
-        /* Theme typography cascades from the admin-chosen font pair. */
-        body { font-family: var(--font-body, 'Inter', system-ui, sans-serif); }
-        h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading, 'Inter', system-ui, sans-serif); }
+        /* The ONLY custom CSS on the public site (design.md C3). It carries two
+           things and must not grow into a stylesheet:
+
+           1. --sticky-stack: the height of everything pinned above the content
+              (public header, plus the admin bar when it is shown). Every anchor
+              jump and the mobile panel's max-height derive from it, so there is
+              one number to change instead of three hand-tuned magic values.
+           2. The @layer base cascade. This block used to be UNLAYERED, and an
+              unlayered declaration beats every Tailwind utility in @layer
+              utilities — which silently killed every `underline` and
+              `hover:underline` in the section vocabulary, the news templates and
+              the guide (design.md § 3.4). Inside @layer base a utility wins
+              again, so the reset is now scoped to nav chrome only. */
+        :root { --sticky-stack: calc(4rem + {{ '3rem' if _admin_chrome else '0px' }}); }
+        @media (min-width: 640px) { :root { --sticky-stack: calc(5rem + {{ '3rem' if _admin_chrome else '0px' }}); } }
+        @layer base {
+            html { scroll-padding-top: calc(var(--sticky-stack) + 1.5rem); }
+            header a, footer nav a, .nav-pill { text-decoration: none; }
+{% include 'public/_type_cascade.html' %}
+        }
     </style>
     {% if appearance and appearance.theme_css %}
     {# One admin-chosen palette + font pair re-skins the whole site: primary
@@ -117,109 +162,222 @@
 {# Admin bar shows when a site admin is viewing the live page, but NOT while
    editing inside the site-editor iframe (?edit=1) — the editor's own toolbar
    replaces it, and a second bar just steals canvas + confuses. #}
-<body class="overflow-x-clip bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200 antialiased min-h-screen flex flex-col {{ 'pt-12' if _admin_chrome else '' }}">
+<body class="overflow-x-clip bg-paper dark:bg-paper-dark text-gray-800 dark:text-gray-200 antialiased min-h-screen flex flex-col {{ 'pt-12' if _admin_chrome else '' }}">
+
+    <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:z-[110] focus:rounded-full focus:bg-ecs-blue-600 focus:px-5 focus:py-2.5 focus:font-semibold focus:text-white {{ 'focus:top-16' if _admin_chrome else 'focus:top-4' }}">Skip to content</a>
 
     {% if _admin_chrome %}{% include 'public/_admin_bar.html' %}{% endif %}
 
+    {# ---- Shared class strings (design.md § 7.1). One button geometry on the
+       whole site; the shell must not invent a second one. ---- #}
+    {% set BTN_BASE = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 text-base font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark active:translate-y-px active:shadow-none active:brightness-95 motion-reduce:transition-none motion-reduce:transform-none' %}
+    {% set BTN_SM = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2.5 min-h-11 text-sm font-semibold leading-none transition-[background-color,box-shadow,transform,color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark active:translate-y-px active:shadow-none active:brightness-95 motion-reduce:transition-none motion-reduce:transform-none' %}
+    {% set BTN_PRIMARY = 'bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600 aria-disabled:opacity-55 aria-disabled:pointer-events-none' %}
+    {% set BTN_GHOST = 'text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 focus-visible:ring-ecs-green-ink dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300' %}
+    {% set NAV_RING = 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300' %}
+    {% set NAV_PILL = 'nav-pill inline-flex items-center gap-1 rounded-full px-3.5 py-2 min-h-11 whitespace-nowrap text-[0.9375rem] font-semibold leading-none transition-colors duration-150 ease-out motion-reduce:transition-none ' ~ NAV_RING %}
+    {% set NAV_ON = 'bg-ecs-green/[0.10] text-ecs-green-ink font-bold dark:bg-ecs-green/15 dark:text-ecs-green-300' %}
+    {% set NAV_OFF = 'text-gray-700 hover:bg-ecs-green/10 hover:text-ecs-green-ink dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-white' %}
+    {% set nav_active = active_page | default('') %}
+
+    {# =================== STATUS STRIP =================== #}
+    {# The site's one live fact used to be 12px type buried inside the hero. It
+       belongs in the chrome. In NORMAL FLOW, not sticky: it states the season
+       state once and then scrolls away, so the sticky stack stays one bar tall
+       (design.md § 9.1). Below sm it truncates down to the state alone. #}
+    <div class="bg-ecs-green-ink text-white">
+        <div class="mx-auto flex min-h-11 max-w-7xl items-center justify-center gap-x-3 px-4 text-sm sm:px-6 lg:px-8">
+            <p class="flex min-w-0 items-center gap-x-2 truncate">
+                {% if season_name %}
+                <span class="hidden shrink-0 tabular-nums sm:inline">{{ season_name }}</span>
+                <span class="hidden shrink-0 sm:inline" aria-hidden="true">&middot;</span>
+                {% endif %}
+                <span class="shrink-0 font-semibold">{{ 'Waitlist open' if cta and cta.mode == 'waitlist' else 'Registration open' }}</span>
+                <span class="hidden shrink-0 sm:inline" aria-hidden="true">&middot;</span>
+                <span class="hidden truncate sm:inline">No experience needed.</span>
+            </p>
+            <a href="{{ url_for('public.register') }}"
+               class="inline-flex min-h-11 shrink-0 items-center font-semibold underline decoration-white/60 underline-offset-2 hover:decoration-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-ecs-green-ink">How joining works</a>
+        </div>
+    </div>
+
     {# =================== NAV =================== #}
-    {# ---- Confident, not brutal -----------------------------------------------
-       DELIBERATELY NOT Hallmark's N7 brutal slab, which is the playful genre's
-       default. N7 is for heavy/declarative brands; this league's job is converting
-       nervous BEGINNERS ("radically inclusive, beginner-friendly"), and all-caps
-       tracked nav over hard slabs reads competitive and in-group — the exact
-       feeling that loses that reader. Confidence here comes from SCALE, SPACE and
-       a thick BRAND-GREEN rule, not from shouting.
+    {# ---- N1b, canonical three-section, always-solid --------------------------
+       Previous nav: N1a (wordmark-left, six inline links right-grouped, filled
+       CTA hard-right) — the named AI fingerprint. This build is N1b: wordmark
+       left, the link cluster CENTRED, log-in + one filled action right, with the
+       live status strip above it.
+
+       Two things here are bug fixes, not taste:
+       * the desktop breakpoint is lg:, not md:. Measured content is ~940px
+         against 736px of bar at 768px — under overflow-x-clip the CTA simply
+         vanished with no visible error. The hamburger owns everything <1024px.
+       * submenus use the Flowbite dropdown, not group-hover/group-focus-within.
+         iOS Safari never fires :focus-within on a clicked <button>, so the old
+         submenus were unreachable on iPad.
        Unchanged behaviour: admin-editable nav_items + submenus, Flowbite mobile
        collapse, both theme toggles, the auth-aware CTA. #}
-    <header class="sticky {{ 'top-12' if _admin_chrome else 'top-0' }} z-40 w-full border-b-2 border-ecs-green bg-white dark:bg-gray-950">
-        <nav class="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:h-20 sm:px-6 lg:px-8">
-            <a href="{{ url_for('public.home') }}"
-               class="flex shrink-0 items-center gap-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-                <img src="{{ appearance.logo_url or imgs.logo }}" alt="{{ appearance.title }}" class="h-10 w-10 shrink-0 object-contain">
-                <span class="hidden text-lg font-extrabold leading-none tracking-tight text-gray-900 sm:inline dark:text-white">{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }}</span>
+    <header class="sticky {{ 'top-12' if _admin_chrome else 'top-0' }} z-40 w-full border-b-2 border-ecs-green-ink bg-paper/95 backdrop-blur-sm dark:bg-paper-dark/95">
+        {# TRACKS — no bare `1fr` anywhere (C8 / design.md § 6.1), but the two
+           halves of that rule are not the same fix:
+           * The WORDMARK track carries an image, so a bare `1fr`'s automatic
+             min-content floor is the overflow hazard the rule names →
+             `minmax(0,1fr)`, floor removed. (`min-w-0` + `truncate` inside make
+             it safe to collapse.)
+           * The CONTROL track carries shrink-0 buttons and NO image, where that
+             same automatic floor is the protection, not the hazard: with
+             `minmax(0,1fr)` the auto wordmark track can grow to its max-content
+             first and starve the hamburger to 0px at 320 with a long
+             admin-set site title — clipped silently under overflow-x-clip,
+             which is the exact failure mode the note above records. So it gets
+             `minmax(min-content,1fr)`: same computed behaviour as the `1fr` it
+             replaces, with the floor stated instead of implied. #}
+        <nav aria-label="Main" class="mx-auto grid h-16 max-w-7xl grid-cols-[minmax(0,auto)_minmax(min-content,1fr)] items-center gap-3 px-4 sm:h-20 sm:gap-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(min-content,1fr)] lg:px-8">
+            {# min-h-11: the link's height is otherwise driven by the h-10 logo,
+               which put the wordmark at 40px — the one control on the public
+               site under the 44px floor (C8). The row is h-16/sm:h-20, so
+               nothing moves. #}
+            <a href="{{ url_for('public.home') }}" aria-label="{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }} — home"
+               class="nav-pill flex min-h-11 min-w-0 items-center gap-2.5 justify-self-start rounded-full sm:gap-3 {{ NAV_RING }}">
+                <img src="{{ appearance.logo_url or imgs.logo }}" alt="" class="h-10 w-10 shrink-0 object-contain">
+                <span class="min-w-0 truncate font-display text-xl font-extrabold leading-none tracking-[-0.03em] text-gray-900 sm:text-2xl dark:text-white">{{ appearance.title if appearance and appearance.title else 'ECS Pub League' }}</span>
             </a>
 
-            {# Desktop links (admin-editable menu via Appearance -> Menus) #}
-            <div class="ml-auto hidden items-center gap-1 md:flex">
-                {% set nav_active = active_page | default('') %}
+            {# Centre cluster (admin-editable menu via Appearance -> Menus) #}
+            <div class="hidden items-center gap-1 justify-self-center lg:flex">
                 {% for item in nav_items %}
                 {% if item.children %}
-                <div class="relative group">
-                  <button type="button" class="inline-flex items-center gap-1 rounded-full px-3.5 py-2 text-[0.95rem] font-semibold text-gray-700 transition-colors group-hover:bg-ecs-green/10 group-hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-gray-200 dark:group-hover:bg-ecs-green/15 dark:group-hover:text-white">
-                    {{ item.label }} <i class="ti ti-chevron-down text-xs"></i>
+                <div class="relative">
+                  <button type="button" id="nav-dd-btn-{{ loop.index }}"
+                          data-dropdown-toggle="nav-dd-{{ loop.index }}" data-dropdown-placement="bottom" data-dropdown-offset-distance="10"
+                          aria-haspopup="true" aria-expanded="false" aria-controls="nav-dd-{{ loop.index }}"
+                          class="group {{ NAV_PILL }} {{ NAV_ON if nav_active == item.key else NAV_OFF }}">
+                    {{ item.label }}
+                    <i class="ti ti-chevron-down text-xs transition-transform duration-150 ease-out group-aria-expanded:rotate-180 motion-reduce:transition-none" aria-hidden="true"></i>
                   </button>
-                  {# Reveal on hover (mouse) AND focus-within (tap/keyboard focuses the
-                     button) so the submenu opens on touch at md width and via Tab. #}
-                  <div class="absolute left-0 top-full hidden min-w-[190px] pt-0 group-hover:block group-focus-within:block z-50">
-                    <div class="overflow-hidden rounded-xl border-2 border-ecs-green bg-white py-1.5 dark:bg-gray-950">
-                      <a href="{{ item.url }}" class="block px-4 py-2 text-[0.95rem] font-semibold text-gray-700 hover:bg-ecs-green hover:text-white dark:text-gray-200">{{ item.label }}</a>
-                      {% for child in item.children %}
-                      <a href="{{ child.url }}" class="block px-4 py-2 text-[0.95rem] text-gray-600 hover:bg-ecs-green hover:text-white dark:text-gray-300">{{ child.label }}</a>
-                      {% endfor %}
-                    </div>
+                  <div id="nav-dd-{{ loop.index }}" class="z-50 hidden min-w-48 rounded-xl bg-white p-1.5 shadow-md ring-1 ring-inset ring-black/[0.07] dark:bg-paper-dark dark:ring-white/10">
+                    <a href="{{ item.url }}" {% if nav_active == item.key %}aria-current="page"{% endif %} class="nav-pill flex min-h-11 items-center rounded-lg px-3.5 text-[0.9375rem] font-semibold leading-none text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none dark:text-gray-100 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">{{ item.label }}</a>
+                    {% for child in item.children %}
+                    <a href="{{ child.url }}" class="nav-pill flex min-h-11 items-center rounded-lg px-3.5 text-[0.9375rem] font-medium leading-none text-gray-700 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">{{ child.label }}</a>
+                    {% endfor %}
                   </div>
                 </div>
                 {% else %}
-                <a href="{{ item.url }}"
-                   class="rounded-full px-3.5 py-2 text-[0.95rem] transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50
-                          {{ 'bg-ecs-green font-semibold text-white' if nav_active == item.key
-                             else 'font-semibold text-gray-700 hover:bg-ecs-green/10 hover:text-ecs-green dark:text-gray-200 dark:hover:bg-ecs-green/15 dark:hover:text-white' }}">
-                    {{ item.label }}
-                </a>
+                <a href="{{ item.url }}" {% if nav_active == item.key %}aria-current="page"{% endif %}
+                   class="{{ NAV_PILL }} {{ NAV_ON if nav_active == item.key else NAV_OFF }}">{{ item.label }}</a>
                 {% endif %}
                 {% endfor %}
-                {% if current_user.is_authenticated %}
-                <a href="{{ portal_url('main.index') }}"
-                   class="ml-2 inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-ecs-green px-5 py-2.5 text-[0.95rem] font-bold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 motion-reduce:transform-none motion-reduce:transition-none">
-                    <i class="ti ti-layout-dashboard text-sm"></i> Portal
-                </a>
-                {% else %}
-                <a href="{{ portal_url('auth.login') }}"
-                   class="rounded-full px-3.5 py-2 text-[0.95rem] font-semibold text-gray-700 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-gray-200 dark:hover:text-white">
-                    Log in
-                </a>
-                <a href="{{ cta.url }}"
-                   class="ml-2 inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-ecs-green px-5 py-2.5 text-[0.95rem] font-bold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 motion-reduce:transform-none motion-reduce:transition-none">
-                    <i class="ti ti-user-plus text-sm"></i>{{ cta.label }}
-                </a>
-                {% endif %}
-                <button type="button" id="theme-toggle" aria-label="Toggle dark mode"
-                        class="ml-1 p-2 text-gray-500 transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-gray-400">
-                    <i class="ti ti-sun hidden dark:block"></i><i class="ti ti-moon block dark:hidden"></i>
-                </button>
             </div>
 
-            {# Mobile hamburger (Flowbite collapse) #}
-            <div class="ml-auto flex items-center gap-1 md:hidden">
-                <button type="button" id="theme-toggle-mobile" aria-label="Toggle dark mode"
-                        class="p-2 text-gray-500 transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-gray-400">
-                    <i class="ti ti-sun hidden dark:block"></i><i class="ti ti-moon block dark:hidden"></i>
+            {# Right: log in + the one filled action + theme toggle, then the
+               hamburger below lg. #}
+            <div class="flex items-center gap-1 justify-self-end sm:gap-2">
+                {% if current_user.is_authenticated %}
+                <a href="{{ portal_url('main.index') }}" class="hidden lg:inline-flex {{ BTN_SM }} {{ BTN_PRIMARY }}">
+                    <i class="ti ti-layout-dashboard text-base" aria-hidden="true"></i> Portal
+                </a>
+                {% else %}
+                <a href="{{ portal_url('auth.login') }}" class="hidden lg:inline-flex {{ NAV_PILL }} {{ NAV_OFF }}">Log in</a>
+                {# Nav label is the shortest rung of the CTA ladder (design.md
+                   § 10). The live state is APPENDED visually-hidden, never set as
+                   an aria-label: an aria-label REPLACES the accessible name, so
+                   with the waitlist closed the button read "Join" and answered to
+                   "Register" — a speech-input user saying "click Join" could not
+                   fire the site's primary CTA (WCAG 2.5.3 Label in Name). #}
+                <a href="{{ cta.url }}" class="hidden lg:inline-flex {{ BTN_SM }} {{ BTN_PRIMARY }}">
+                    <i class="ti ti-user-plus text-base" aria-hidden="true"></i> Join<span class="sr-only"> &mdash; {{ cta.label }}</span>
+                </a>
+                {% endif %}
+
+                <button type="button" id="theme-toggle"
+                        class="hidden h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-600 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none sm:inline-flex dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">
+                    <i class="ti ti-sun hidden text-xl dark:block" aria-hidden="true"></i><i class="ti ti-moon block text-xl dark:hidden" aria-hidden="true"></i>
+                    <span class="sr-only">Switch between light and dark theme</span>
                 </button>
+
                 <button type="button" data-collapse-toggle="mobile-menu" aria-controls="mobile-menu" aria-expanded="false"
-                        class="p-2 text-gray-700 transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-gray-200">
-                    <i class="ti ti-menu-2 text-xl"></i><span class="sr-only">Open menu</span>
+                        class="group inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none lg:hidden dark:text-gray-100 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">
+                    <i class="ti ti-menu-2 text-xl group-aria-expanded:hidden" aria-hidden="true"></i>
+                    <i class="ti ti-x hidden text-xl group-aria-expanded:block" aria-hidden="true"></i>
+                    <span class="sr-only group-aria-expanded:hidden">Open menu</span>
+                    <span class="sr-only hidden group-aria-expanded:inline">Close menu</span>
                 </button>
             </div>
         </nav>
 
-        {# Mobile menu panel #}
-        <div id="mobile-menu" class="hidden border-t-2 border-ecs-green bg-white md:hidden dark:bg-gray-950">
-            <div class="px-4 py-3">
-                {% for item in nav_items %}
-                <a href="{{ item.url }}" class="block rounded-lg px-2 py-2.5 text-base font-semibold text-gray-800 hover:bg-ecs-green/10 hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-gray-100">{{ item.label }}</a>
-                {% for child in item.children %}
-                <a href="{{ child.url }}" class="block rounded-lg px-2 py-2 pl-6 text-[0.95rem] text-gray-600 hover:bg-ecs-green/10 hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-gray-300">{{ child.label }}</a>
-                {% endfor %}
-                {% endfor %}
-                {% if current_user.is_authenticated %}
-                <a href="{{ portal_url('main.index') }}" class="mt-3 block rounded-full bg-ecs-green px-3 py-3 text-center text-base font-bold text-white">Go to Portal</a>
-                {% else %}
-                <a href="{{ portal_url('auth.login') }}" class="block rounded-lg px-2 py-2.5 text-base font-semibold text-gray-800 hover:bg-ecs-green/10 hover:text-ecs-green dark:text-gray-100">Log in</a>
-                <a href="{{ cta.url }}" class="mt-3 block rounded-full bg-ecs-green px-3 py-3 text-center text-base font-bold text-white">{{ cta.label }}</a>
-                {% endif %}
-            </div>
+        {# Mobile menu panel. max-h is derived from --sticky-stack so it can never
+           grow past the viewport on a short phone in landscape. #}
+        <div id="mobile-menu" class="hidden max-h-[calc(100dvh_-_var(--sticky-stack))] overflow-y-auto overscroll-contain border-t-2 border-ecs-green-ink bg-paper lg:hidden dark:bg-paper-dark">
+            <nav aria-label="Mobile" class="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+                <ul class="space-y-1">
+                    {% for item in nav_items %}
+                    <li>
+                        <a href="{{ item.url }}" {% if nav_active == item.key %}aria-current="page"{% endif %}
+                           class="nav-pill flex min-h-11 items-center rounded-lg px-3 text-base font-semibold leading-none transition-colors duration-150 ease-out motion-reduce:transition-none {{ NAV_ON if nav_active == item.key else NAV_OFF }} {{ NAV_RING }}">{{ item.label }}</a>
+                        {% if item.children %}
+                        <ul class="mt-1 space-y-1">
+                            {% for child in item.children %}
+                            <li><a href="{{ child.url }}"
+                                   class="nav-pill flex min-h-11 items-center rounded-lg pl-8 pr-3 text-[0.9375rem] font-medium leading-none text-gray-700 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white {{ NAV_RING }}">{{ child.label }}</a></li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                <div class="mt-4 flex flex-col gap-3 border-t border-ecs-green-ink/20 pt-4 dark:border-white/10">
+                    {% if current_user.is_authenticated %}
+                    <a href="{{ portal_url('main.index') }}" class="{{ BTN_BASE }} {{ BTN_PRIMARY }} w-full">
+                        <i class="ti ti-layout-dashboard text-base" aria-hidden="true"></i> Go to Portal
+                    </a>
+                    {% else %}
+                    <a href="{{ cta.url }}" class="{{ BTN_BASE }} {{ BTN_PRIMARY }} w-full">{{ cta.label }}</a>
+                    <a href="{{ portal_url('auth.login') }}" class="{{ BTN_BASE }} {{ BTN_GHOST }} w-full">Log in</a>
+                    {% endif %}
+                    {# Below sm the bar has no room for the toggle beside a 320px
+                       wordmark + hamburger, so it lives here instead. #}
+                    <button type="button" id="theme-toggle-mobile"
+                            class="{{ BTN_BASE }} {{ BTN_GHOST }} w-full sm:hidden">
+                        <i class="ti ti-sun hidden text-base dark:block" aria-hidden="true"></i><i class="ti ti-moon block text-base dark:hidden" aria-hidden="true"></i>
+                        Switch theme
+                    </button>
+                </div>
+            </nav>
         </div>
     </header>
+
+    {# =================== FLASH =================== #}
+    {# Server-rendered, in the page, dismissible. NOT a SweetAlert modal: a
+       marketing visitor should never be interrupted by a dialog titled
+       "Success" — the message is the content (design.md § 10). #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="mx-auto w-full max-w-5xl px-4 pt-6 sm:px-6 lg:px-8">
+        {% for category, message in messages %}
+        {# Three tones, and status colour is NOT a brand role — the Appearance
+           picker must never be able to re-skin an error (design.md § 3.1). #}
+        {% set _tone = 'error' if category in ('error', 'danger') else ('warning' if category == 'warning' else 'brand') %}
+        {% set _err = _tone != 'brand' %}
+        {% set _tone_cls = {
+             'error':   'bg-red-50 text-red-700 ring-red-600/40 dark:bg-red-400/10 dark:text-red-200 dark:ring-red-400/40',
+             'warning': 'bg-amber-50 text-amber-800 ring-amber-600/40 dark:bg-amber-400/10 dark:text-amber-200 dark:ring-amber-400/40',
+             'brand':   'bg-ecs-green/[0.06] text-gray-800 ring-ecs-green-ink/20 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/10'
+           }[_tone] %}
+        {% set _tone_icon = {'error': 'ti-alert-triangle', 'warning': 'ti-alert-circle', 'brand': 'ti-info-circle'}[_tone] %}
+        <div id="flash-{{ loop.index }}" role="{{ 'alert' if _err else 'status' }}"
+             class="mb-3 flex items-start gap-3 rounded-xl p-4 text-base ring-1 ring-inset {{ _tone_cls }}">
+            <i class="ti {{ _tone_icon }} mt-0.5 shrink-0 text-lg" aria-hidden="true"></i>
+            <p class="min-w-0 flex-1">{{ message }}</p>
+            <button type="button" data-dismiss-target="#flash-{{ loop.index }}"
+                    class="-my-1.5 -mr-1.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-150 ease-out hover:bg-black/[0.06] motion-reduce:transition-none dark:hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark {{ 'focus-visible:ring-red-600 dark:focus-visible:ring-red-400' if _tone == 'error' else ('focus-visible:ring-amber-600 dark:focus-visible:ring-amber-400' if _tone == 'warning' else 'focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300') }}">
+                <i class="ti ti-x text-base" aria-hidden="true"></i><span class="sr-only">Dismiss this message</span>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
 
     {# =================== MAIN =================== #}
     {# section_rhythm_classes comes from Website -> Appearance -> Page rhythm and is
@@ -228,106 +386,127 @@
        is CSS-positional: render_single_section() renders a one-section document for
        the editor's swap payload, so a Jinja index would always be 0 and a swapped
        section would flip appearance on edit. CSS re-evaluates against real DOM
-       position and stays correct. #}
-    <main class="flex-1 {{ appearance.section_rhythm_classes if appearance and appearance.section_rhythm_classes else '' }}">
+       position and stays correct.
+       The 'auto' rhythm selects on `section + section`, so every direct child of
+       <main> must be a <section> — page-level <script> tags belong in
+       {% block extra_js %}, not in {% block content %}. #}
+    <main id="main" tabindex="-1" class="flex-1 focus:outline-none {{ appearance.section_rhythm_classes if appearance and appearance.section_rhythm_classes else '' }}">
         {% block content %}{% endblock %}
     </main>
 
     {# =================== FOOTER =================== #}
-    {# ---- Ft8 Marquee scroll (Hallmark, playful genre default) ----------------
-       A kinetic repeating tagline band over a 2px brand rule, then the link
-       index. Replaces the four-column grey "docs index" (Ft3), which Hallmark
-       names as one of the two most-recognisable AI footer fingerprints.
-       Accessibility: the moving track is aria-hidden and DUPLICATED (two
-       identical spans) so translateX(-50%) loops seamlessly; a visually-hidden
-       copy carries the real text for screen readers. motion-reduce:animate-none
-       stops it outright for prefers-reduced-motion.
-       Every link from the previous footer is preserved below. #}
-    <footer class="border-t-2 border-ecs-green bg-white dark:bg-gray-950">
-        <div class="overflow-hidden border-b border-ecs-green/25 bg-ecs-green py-3.5 sm:py-4">
-            <div class="flex w-max animate-marquee-x whitespace-nowrap motion-reduce:animate-none" aria-hidden="true">
-                {% set _mark = appearance.title if appearance and appearance.title else 'ECS Pub League' %}
-                {% set _line = appearance.tagline if appearance and appearance.tagline else 'Radically inclusive, beginner-friendly adult soccer in Seattle.' %}
+    {# ---- Ft8 Marquee + Ft5 Statement -----------------------------------------
+       The previous footer stapled the marquee on top of the Ft3 index columns it
+       claimed to replace: "Explore" mirrored the nav 1:1, so half its links were
+       a copy of a bar the visitor can already see, and its three 12px <h2>
+       column heads polluted every page's document outline. Ft3 is deleted.
+       What is left is a brand band, one closing sentence, one action, one
+       colophon row.
+       Accessibility (do not "simplify" these): the moving track is aria-hidden
+       and DUPLICATED so translateX(-50%) loops seamlessly, a visually-hidden
+       copy carries the real text, motion-reduce:animate-none stops it outright,
+       hover/focus pause it, and the pause button satisfies WCAG 2.2.2 for
+       everyone else. #}
+    {% set _mark = appearance.title if appearance and appearance.title else 'ECS Pub League' %}
+    {# design.md § 9.2.1 fixes this band's content as SHORT BRAND TOKENS — not a
+       sentence — so the only admin-editable part of it is the wordmark. An
+       earlier draft read `appearance.marquee_words`, a key NO view produces
+       (`_appearance()` in app/public_site.py returns no such entry), so the
+       "editable" list was permanently the fallback and the real editable string,
+       `appearance.tagline`, went unrendered. The tagline now drives the site
+       description in <head>; the band stays an honest literal. #}
+    {% set _words = [_mark, 'No experience needed', 'Everyone plays', 'Seattle'] %}
+    <footer>
+        <div class="relative overflow-hidden bg-ecs-green-ink text-white">
+            <div id="footer-marquee" class="flex w-max animate-marquee-x whitespace-nowrap py-3.5 hover:[animation-play-state:paused] focus-within:[animation-play-state:paused] motion-reduce:animate-none sm:py-4" aria-hidden="true">
                 {% for _ in range(2) %}
-                <span class="flex shrink-0 gap-10 pr-10 text-sm font-extrabold uppercase tracking-[0.14em] text-white sm:text-base">
-                    {% for _r in range(4) %}<span>{{ _mark }}</span><span aria-hidden="true">&middot;</span><span>{{ _line }}</span><span aria-hidden="true">&middot;</span>{% endfor %}
+                <span class="flex shrink-0 items-center gap-6 pr-6 text-xs font-bold uppercase tracking-[0.14em]">
+                    {% for _r in range(4) %}{% for _w in _words %}<span>{{ _w }}</span><span aria-hidden="true">&middot;</span>{% endfor %}{% endfor %}
                 </span>
                 {% endfor %}
             </div>
-            <p class="sr-only">{{ _mark }} &mdash; {{ _line }}</p>
+            <p class="sr-only">{{ _words | join(' · ') }}</p>
+            <button type="button" id="footer-marquee-pause" aria-pressed="false"
+                    class="group absolute right-2 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-ecs-green-ink text-white ring-1 ring-inset ring-white/40 transition-colors duration-150 ease-out hover:bg-ecs-green-ink hover:ring-white motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-ecs-green-ink">
+                <i class="ti ti-player-pause text-base group-aria-pressed:hidden" aria-hidden="true"></i>
+                <i class="ti ti-player-play hidden text-base group-aria-pressed:block" aria-hidden="true"></i>
+                <span class="sr-only group-aria-pressed:hidden">Pause the scrolling banner</span>
+                <span class="sr-only hidden group-aria-pressed:inline">Resume the scrolling banner</span>
+            </button>
         </div>
 
-        <div class="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-            <div class="grid gap-10 sm:grid-cols-3">
-                <div>
-                    <h2 class="text-xs font-extrabold uppercase tracking-[0.14em] text-ecs-green dark:text-ecs-blue-400">Explore</h2>
-                    <ul class="mt-4 space-y-2.5 text-sm text-gray-700 dark:text-gray-300">
-                        {% for item in nav_items %}
-                        <li><a href="{{ item.url }}" class="transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">{{ item.label }}</a></li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                <div>
-                    <h2 class="text-xs font-extrabold uppercase tracking-[0.14em] text-ecs-green dark:text-ecs-blue-400">Get involved</h2>
-                    <ul class="mt-4 space-y-2.5 text-sm text-gray-700 dark:text-gray-300">
-                        <li><a href="{{ cta.url }}" class="font-semibold text-ecs-green transition-colors hover:text-ecs-green-dark focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-ecs-blue-400 dark:hover:text-white">{{ cta.label }}</a></li>
-                        <li><a href="{{ url_for('public.register') }}" class="transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">How to join</a></li>
-                        <li><a href="{{ portal_url('auth.login') }}" class="transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">Member log in</a></li>
-                        <li><a href="{{ url_for('public.contact') }}" class="transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">Contact us</a></li>
-                    </ul>
-                </div>
-                <div>
-                    <h2 class="text-xs font-extrabold uppercase tracking-[0.14em] text-ecs-green dark:text-ecs-blue-400">Connect</h2>
-                    <ul class="mt-4 space-y-2.5 text-sm text-gray-700 dark:text-gray-300">
-                        <li><a href="mailto:ecspubleague@gmail.com" class="inline-flex items-center gap-2 transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white"><i class="ti ti-mail text-base text-ecs-green/70"></i> Email</a></li>
-                        <li><a href="{{ discord_invite_url | default('#') }}" class="inline-flex items-center gap-2 transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white"><i class="ti ti-brand-discord text-base text-ecs-green/70"></i> Discord</a></li>
-                    </ul>
-                </div>
+        <div class="mx-auto max-w-7xl px-4 pt-16 pb-10 sm:px-6 sm:pt-20 lg:px-8">
+            <p class="max-w-[38ch] font-display text-3xl font-extrabold leading-[1.06] tracking-[-0.025em] text-balance break-words text-gray-900 sm:text-4xl lg:text-5xl dark:text-white">No experience needed. Seriously.</p>
+            <div class="mt-8">
+                {# Footer is the last rung of the ladder (design.md § 10): one
+                   word. As in the nav, the fuller live label is appended
+                   sr-only rather than set as an aria-label, so the accessible
+                   name always CONTAINS the visible one by construction instead
+                   of by coincidence of the two branches matching up. #}
+                <a href="{{ cta.url }}" class="{{ BTN_BASE }} {{ BTN_PRIMARY }}">{{ 'Waitlist' if cta and cta.mode == 'waitlist' else 'Register' }}<span class="sr-only"> &mdash; {{ cta.label }}</span></a>
             </div>
         </div>
 
-        <div class="border-t border-ecs-green/25">
-            <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-6 text-xs text-gray-500 sm:flex-row sm:px-6 lg:px-8 dark:text-gray-400">
-                <span>&copy; {{ current_year }} Emerald City Supporters Pub League. All rights reserved.</span>
-                <span class="flex items-center gap-4">
-                    <a href="{{ url_for('legal.privacy_policy') }}" class="transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">Privacy</a>
-                    <a href="{{ url_for('legal.terms_of_service') }}" class="transition-colors hover:text-ecs-green focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:hover:text-white">Terms</a>
-                </span>
-            </div>
+        <div class="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+            <nav aria-label="Site information"
+                 class="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-black/[0.08] pt-4 text-sm text-gray-600 dark:border-white/10 dark:text-gray-300">
+                {% set _colo = 'nav-pill inline-flex min-h-11 items-center rounded-lg transition-colors duration-150 ease-out hover:text-ecs-green-ink motion-reduce:transition-none dark:hover:text-ecs-green-300 ' ~ NAV_RING %}
+                <a href="{{ url_for('public.contact') }}" class="{{ _colo }}">Contact</a>
+                <a href="{{ discord_invite_url }}" class="{{ _colo }} gap-2"><i class="ti ti-brand-discord text-base" aria-hidden="true"></i>Discord</a>
+                <a href="mailto:ecspubleague@gmail.com" class="{{ _colo }} gap-2"><i class="ti ti-mail text-base" aria-hidden="true"></i>Email</a>
+                <a href="{{ url_for('legal.privacy_policy') }}" class="{{ _colo }}">Privacy</a>
+                <a href="{{ url_for('legal.terms_of_service') }}" class="{{ _colo }}">Terms</a>
+                {# `current_year` comes from _inject_public_context(). It reaches
+                   legal.* only because legal_bp now registers that same processor;
+                   guard it anyway — this shell is extended by more than one
+                   blueprint and an unguarded {{ current_year }} renders a
+                   copyright line with a hole in it, silently. Same guard as
+                   base_public_minimal.html. #}
+                <span class="text-gray-500 tabular-nums dark:text-gray-400">{% if current_year is defined and current_year %}&copy; {{ current_year }} {% else %}&copy; {% endif %}Emerald City Supporters Pub League</span>
+                <span class="text-gray-500 dark:text-gray-400">Seattle, WA</span>
+            </nav>
         </div>
     </footer>
 
-    {# Flash messages via SweetAlert (bundled in the Vite build) #}
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}{% for category, message in messages %}
-            if (window.Swal) Swal.fire({
-                title: '{{ "Error" if category == "error" else "Success" if category == "success" else "Info" }}',
-                text: {{ message | tojson }},
-                icon: '{{ "error" if category == "error" else "success" if category == "success" else "info" }}',
-                confirmButtonColor: '{{ appearance.primary_hex if appearance and appearance.primary_hex else "#40b050" }}'
-            });
-            {% endfor %}{% endif %}
-            {% endwith %}
-
+        document.addEventListener('DOMContentLoaded', function () {
+            // Theme toggle. Writes BOTH keys: 'ecs-public-theme' records the
+            // visitor's explicit choice for this site, and the legacy 'theme'
+            // mirror keeps simple-theme-switcher.js (bundled in main-entry.js)
+            // from re-applying its own hardcoded 'light' default on the next
+            // load. See the pre-paint script in <head>.
             function toggleTheme() {
-                if (document.documentElement.classList.contains('dark')) {
-                    document.documentElement.classList.remove('dark');
-                    localStorage.setItem('theme', 'light');
-                } else {
-                    document.documentElement.classList.add('dark');
-                    localStorage.setItem('theme', 'dark');
-                }
+                var dark = !document.documentElement.classList.contains('dark');
+                document.documentElement.classList.toggle('dark', dark);
+                try {
+                    localStorage.setItem('ecs-public-theme', dark ? 'dark' : 'light');
+                    localStorage.setItem('theme', dark ? 'dark' : 'light');
+                } catch (e) {}
             }
-            ['theme-toggle', 'theme-toggle-mobile'].forEach(function(id) {
+            ['theme-toggle', 'theme-toggle-mobile'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.addEventListener('click', toggleTheme);
             });
+
+            // WCAG 2.2.2: the marquee needs a control anyone can operate, not
+            // just a hover state and prefers-reduced-motion.
+            var track = document.getElementById('footer-marquee');
+            var pause = document.getElementById('footer-marquee-pause');
+            if (track && pause) {
+                pause.addEventListener('click', function () {
+                    var paused = track.style.animationPlayState === 'paused';
+                    // '' clears the inline declaration rather than pinning
+                    // 'running', so the hover/focus pause keeps working after a
+                    // manual resume.
+                    track.style.animationPlayState = paused ? '' : 'paused';
+                    pause.setAttribute('aria-pressed', paused ? 'false' : 'true');
+                });
+            }
         });
     </script>
 
-    {# Main Vite bundle (Flowbite for the mobile-menu collapse, SweetAlert, etc.) #}
+    {# Main Vite bundle (Flowbite for the mobile-menu collapse, nav dropdowns and
+       flash dismiss; SweetAlert for the portal, unused here). #}
     {% if vite_production_mode is defined and vite_production_mode() %}
     {{ vite_asset('js/main-entry.js') }}
     {% elif vite_dev_mode is defined and vite_dev_mode() %}

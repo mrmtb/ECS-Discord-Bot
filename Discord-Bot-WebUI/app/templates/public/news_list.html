@@ -1,97 +1,171 @@
 {% extends "public/base_public.html" %}
 {% from 'public/_hero.html' import hero %}
+{% from 'public/_news_card.html' import news_card %}
+
+{# The news ARCHIVE — macrostructure 20 "Ecosystem Index" (design.md §12).
+   The masthead absorbs the category rail and the result count; a lead card
+   opens the grid; posts group under a sticky year rail so the archive has real
+   structure before anybody ever tags a post. Everything below `<main>` is a
+   <section> so the site's `auto` section rhythm (design.md §5.4) still applies. #}
 
 {% block content %}
-{{ hero(copy.hero_title, copy.hero_subtitle) }}
 
-<section class="py-16 sm:py-20">
-    <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-        {% if categories %}
-        <div class="mb-8 flex flex-wrap gap-2">
-            <a href="{{ url_for('public.news_list') }}" class="rounded-full px-3.5 py-1.5 text-sm font-medium {{ 'bg-ecs-green text-white' if not active_category else 'bg-ecs-green/10 text-gray-700 hover:bg-ecs-green/20 hover:text-ecs-green dark:bg-ecs-green/15 dark:text-gray-300 dark:hover:bg-ecs-green/25 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50' }}">All</a>
-            {% for cat in categories %}
-            <a href="{{ url_for('public.news_list', category=cat) }}" class="rounded-full px-3.5 py-1.5 text-sm font-medium {{ 'bg-ecs-green text-white' if active_category == cat else 'bg-ecs-green/10 text-gray-700 hover:bg-ecs-green/20 hover:text-ecs-green dark:bg-ecs-green/15 dark:text-gray-300 dark:hover:bg-ecs-green/25 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50' }}">{{ cat }}</a>
-            {% endfor %}
-        </div>
-        {% endif %}
-        {% if active_tag %}
-        <div class="mb-8 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-            <span>Filtered by tag: <span class="font-semibold text-gray-900 dark:text-white">#{{ active_tag }}</span></span>
-            <a href="{{ url_for('public.news_list', category=active_category or None) }}" class="inline-flex items-center gap-1 text-ecs-green dark:text-ecs-blue-400 hover:underline"><i class="ti ti-x"></i> Clear</a>
-        </div>
-        {% endif %}
-        {% if not posts %}
-        <div class="rounded-xl border border-dashed border-ecs-green/30 p-10 text-center text-gray-500 dark:border-ecs-green/25 dark:text-gray-400">
-            <i class="ti ti-news text-4xl"></i>
-            <p class="mt-3">No news posts yet — check back soon.</p>
-        </div>
-        {% else %}
-        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {% for post in posts %}
-            {# A tag chip must be independently clickable, so the card can no
-               longer be one giant <a> (nesting an <a> inside an <a> is
-               invalid HTML and unreliable to click) — the image, title and
-               "Read more" are each their own link instead. #}
-            <div class="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs transition duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none dark:border-gray-800 dark:bg-gray-950">
-                <a href="{{ url_for('public.news_detail', slug=post.slug) }}" class="block">
-                {% set info = imgs.get(post.featured_image_url) if imgs is defined and imgs else none %}
-                {% if info %}
-                {# Media-library asset: responsive variants + WebP (same
-                   pipeline as the section renderer's images). #}
-                <picture>
-                    {% if info.webp_srcset %}<source type="image/webp" srcset="{{ info.webp_srcset }}" sizes="(min-width: 1024px) 350px, (min-width: 640px) 50vw, 100vw">{% endif %}
-                    <img src="{{ info.url }}" {% if info.srcset %}srcset="{{ info.srcset }}" sizes="(min-width: 1024px) 350px, (min-width: 640px) 50vw, 100vw"{% endif %}
-                         {% if info.width and info.height %}width="{{ info.width }}" height="{{ info.height }}"{% endif %}
-                         alt="{{ post.title }}" class="h-48 w-full object-cover" loading="lazy">
-                </picture>
-                {% elif post.featured_image_url %}
-                <img src="{{ post.featured_image_url }}" alt="{{ post.title }}" class="h-48 w-full object-cover" loading="lazy">
-                {% else %}
-                <div class="h-48 w-full bg-linear-to-br from-ecs-green to-ecs-green-dark flex items-center justify-center"><i class="ti ti-news text-4xl text-white/40"></i></div>
-                {% endif %}
-                </a>
-                <div class="flex flex-col flex-1 p-5">
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ post.display_date.strftime('%B %-d, %Y') if post.display_date else '' }}{% if post.category %} · <span class="text-ecs-green dark:text-ecs-blue-400 font-medium">{{ post.category }}</span>{% endif %}</p>
-                    <h2 class="mt-1 font-semibold text-lg text-gray-900 dark:text-white">
-                        <a href="{{ url_for('public.news_detail', slug=post.slug) }}" class="rounded transition-colors group-hover:text-ecs-green dark:group-hover:text-ecs-blue-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">{{ post.title }}</a>
-                    </h2>
-                    {% if post.excerpt %}<p class="mt-2 text-sm text-gray-600 dark:text-gray-400 line-clamp-3">{{ post.excerpt }}</p>{% endif %}
-                    {% if post.tags %}
-                    <div class="mt-3 flex flex-wrap gap-1.5">
-                        {% for raw_tag in post.tags.split(',') %}
-                        {% set post_tag = raw_tag.strip() %}
-                        {% if post_tag %}
-                        <a href="{{ url_for('public.news_list', tag=post_tag) }}"
-                           class="rounded-full px-2.5 py-1 text-xs font-medium {{ 'bg-ecs-green text-white' if active_tag and active_tag.lower() == post_tag.lower() else 'bg-ecs-green/10 text-gray-700 hover:bg-ecs-green/20 hover:text-ecs-green dark:bg-ecs-green/15 dark:text-gray-300 dark:hover:bg-ecs-green/25 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50' }}">#{{ post_tag }}</a>
-                        {% endif %}
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    <a href="{{ url_for('public.news_detail', slug=post.slug) }}" class="mt-4 inline-flex items-center gap-1.5 rounded text-sm font-semibold text-ecs-green hover:underline dark:text-ecs-blue-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">Read more <i class="ti ti-arrow-right transition-transform duration-150 ease-out group-hover:translate-x-0.5 motion-reduce:transform-none"></i></a>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
+{# ---- Masthead ------------------------------------------------------------
+   Admin-editable copy (public_news_hero_title / _subtitle via _dynamic_copy)
+   with the shipped default when blank — unchanged. #}
+{% call hero(copy.hero_title, copy.hero_subtitle, size='sm', width='normal') %}
+  {% if categories %}
+  <nav aria-label="Filter news by category" class="flex flex-wrap gap-2">
+    {# design.md §7.3 — the shared chip classes live OUTSIDE the ternary so an
+       active chip can never lose its focus ring. This hero is a brand band, so
+       the chips use the on-colour pair from §3.3 / §7.1's "on brand ground"
+       column rather than the off-colour one. #}
+    {% set chip = 'inline-flex items-center gap-2 rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink' %}
+    {% set chip_on = 'bg-white text-ecs-green-ink ring-white' %}
+    {% set chip_off = 'bg-white/15 text-white ring-white/45 hover:bg-white/25' %}
+    <a href="{{ url_for('public.news_list') }}"
+       class="{{ chip }} {{ chip_on if not active_category else chip_off }}"
+       {% if not active_category %}aria-current="page"{% endif %}>
+      {% if not active_category %}<i class="ti ti-check" aria-hidden="true"></i>{% endif %}Everything
+    </a>
+    {% for cat in categories %}
+    <a href="{{ url_for('public.news_list', category=cat) }}"
+       class="{{ chip }} {{ chip_on if active_category == cat else chip_off }}"
+       {% if active_category == cat %}aria-current="page"{% endif %}>
+      {% if active_category == cat %}<i class="ti ti-check" aria-hidden="true"></i>{% endif %}{{ cat }}
+    </a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {% if active_tag %}
+  <p class="{{ 'mt-4' if categories else '' }} flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-normal leading-normal text-white">
+    <span>Tagged <span class="font-semibold">#{{ active_tag }}</span></span>
+    <a href="{{ url_for('public.news_list', category=active_category or None) }}"
+       class="inline-flex items-center gap-1.5 rounded-full px-3 py-2 min-h-11 font-semibold text-white underline decoration-white/60 underline-offset-2 transition-colors duration-150 ease-out motion-reduce:transition-none hover:bg-white/15 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink">
+      <i class="ti ti-x" aria-hidden="true"></i> Clear the tag
+    </a>
+  </p>
+  {% endif %}
+
+  {% if posts %}
+  <p class="{{ 'mt-4' if categories or active_tag else '' }} text-sm font-normal leading-normal tabular-nums text-white">
+    {% if total_pages and total_pages > 1 %}Page {{ page_num }} of {{ total_pages }}{% else %}{{ posts | length }} post{{ '' if posts | length == 1 else 's' }}{% endif %}
+  </p>
+  {% endif %}
+{% endcall %}
+
+{# ---- The archive --------------------------------------------------------- #}
+<section class="pt-14 pb-20 sm:pt-16 sm:pb-24">
+  <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+
+    {% if not posts %}
+    {# design.md §7.7 — no dashed border, no "check back soon", exactly one
+       action, and the copy branches on WHY the list is empty. #}
+    <div class="rounded-xl bg-ecs-green/[0.05] p-8 sm:p-10 text-left ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.03] dark:ring-white/10">
+      {% if active_tag or active_category %}
+      <h2 class="font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words text-gray-900 dark:text-white">Nothing filed under {% if active_tag %}#{{ active_tag }}{% else %}{{ active_category }}{% endif %} yet.</h2>
+      <p class="mt-3 max-w-[65ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200">That filter is empty for now. The rest of the archive is not.</p>
+      <a href="{{ url_for('public.news_list') }}"
+         class="mt-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">
+        <i class="ti ti-arrow-back-up" aria-hidden="true"></i> Show every post
+      </a>
+      {% else %}
+      <h2 class="font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words text-gray-900 dark:text-white">The first post lands here.</h2>
+      <p class="mt-3 max-w-[65ch] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200">Team reveals, season dates and the odd match report get posted here before anywhere else. Put your name down and you won’t miss one.</p>
+      <a href="{{ cta.url }}"
+         class="mt-6 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">
+        <i class="ti ti-user-plus" aria-hidden="true"></i> {{ cta.label }}
+      </a>
+      {% endif %}
     </div>
+
+    {% else %}
+    {# Derived grouping: the year each post carries. Needs no taxonomy work and
+       degrades to a single ungrouped run when one year is on screen. The years
+       arrive in publication order (newest first) because `posts` already is. #}
+    {% set _years = posts | map(attribute='display_date.year') | select | unique | list %}
+    {% set _grouped = (_years | length) > 1 %}
+    {# design.md §4.5 — the first row is the LCP row: eager + high priority,
+       everything after it lazy. #}
+    {% set _eager_slugs = posts[:3] | map(attribute='slug') | list %}
+
+    {% for y in _years %}
+    {% set _first_group = loop.first %}
+    <div class="{{ '' if loop.first else 'mt-14 sm:mt-16' }}">
+      {% if _grouped %}
+      <h2 class="sticky top-[var(--sticky-stack,4rem)] z-20 -mx-4 mb-6 border-b border-ecs-green-ink/20 bg-paper/95 px-4 py-3 font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] tabular-nums text-gray-900 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 dark:border-white/10 dark:bg-paper-dark/95 dark:text-white">{{ y }}</h2>
+      {% else %}
+      {# One year on screen is a run, not a rail — but the heading still has to
+         exist or the page outline jumps h1 → h3. #}
+      <h2 class="sr-only">Posts from {{ y }}</h2>
+      {% endif %}
+      <ul class="grid gap-6 sm:grid-cols-2 sm:gap-8 lg:grid-cols-3">
+        {% for post in posts if post.display_date and post.display_date.year == y %}
+        {% set _is_lead = _first_group and loop.first %}
+        <li class="grid {{ 'sm:col-span-2' if _is_lead }}">
+          {{ news_card(post,
+                       size='lead' if _is_lead else 'standard',
+                       info=(imgs.get(post.featured_image_url) if imgs and post.featured_image_url else none),
+                       eager=(post.slug in _eager_slugs)) }}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+  </div>
 </section>
 
-{# ---- Pagination ---- #}
+{# ---- Pagination — design.md §7.8 ----------------------------------------
+   Both end slots are always occupied (an `invisible` twin holds the space) so
+   the page label never slides sideways between pages. Wrapped in a <section>
+   so it does not break the site's `auto` section rhythm selector. #}
 {% if total_pages and total_pages > 1 %}
-<nav class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-16 flex items-center justify-center gap-2" aria-label="News pages">
-    {% if page_num > 1 %}
-    <a href="{{ url_for('public.news_list', page=page_num - 1, category=active_category or None, tag=active_tag or None) }}"
-       class="inline-flex items-center gap-1 rounded-full border border-ecs-green/25 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green dark:border-ecs-green/25 dark:text-gray-200 dark:hover:bg-ecs-green/15 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-        <i class="ti ti-chevron-left"></i> Newer
-    </a>
-    {% endif %}
-    <span class="text-sm text-gray-500 dark:text-gray-400">Page {{ page_num }} of {{ total_pages }}</span>
-    {% if page_num < total_pages %}
-    <a href="{{ url_for('public.news_list', page=page_num + 1, category=active_category or None, tag=active_tag or None) }}"
-       class="inline-flex items-center gap-1 rounded-full border border-ecs-green/25 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green dark:border-ecs-green/25 dark:text-gray-200 dark:hover:bg-ecs-green/15 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-        Older <i class="ti ti-chevron-right"></i>
-    </a>
-    {% endif %}
-</nav>
+{% set page_pill = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-5 py-2.5 min-h-11 text-sm font-semibold ring-1 ring-inset transition-[background-color,box-shadow,color,outline-color] duration-150 ease-out motion-reduce:transition-none active:translate-y-px active:brightness-95 text-ecs-green-ink ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark' %}
+<section class="pb-20 sm:pb-24">
+  <nav class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8" aria-label="News archive pages">
+    <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-4">
+      <div class="justify-self-start">
+        {% if page_num > 1 %}
+        <a href="{{ url_for('public.news_list', page=page_num - 1, category=active_category or None, tag=active_tag or None) }}" class="{{ page_pill }}">
+          <i class="ti ti-chevron-left" aria-hidden="true"></i> Newer
+        </a>
+        {% else %}
+        <span class="{{ page_pill }} invisible" aria-hidden="true"><i class="ti ti-chevron-left"></i> Newer</span>
+        {% endif %}
+      </div>
+      <p class="text-sm font-semibold leading-normal tabular-nums text-gray-600 dark:text-gray-300">Page {{ page_num }} of {{ total_pages }}</p>
+      <div class="justify-self-end">
+        {% if page_num < total_pages %}
+        <a href="{{ url_for('public.news_list', page=page_num + 1, category=active_category or None, tag=active_tag or None) }}" class="{{ page_pill }}">
+          Older <i class="ti ti-chevron-right" aria-hidden="true"></i>
+        </a>
+        {% else %}
+        <span class="{{ page_pill }} invisible" aria-hidden="true">Older <i class="ti ti-chevron-right"></i></span>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+</section>
+{% endif %}
+
+{# ---- Closing band — the archive ends on the one action ------------------- #}
+{% if posts %}
+<section class="bg-ecs-green-ink pt-20 pb-28 sm:pt-24 sm:pb-36">
+  <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+    <div class="max-w-2xl">
+      <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-[1.06] tracking-[-0.025em] text-balance break-words text-white">Reading about it is the easy part.</h2>
+      <p class="mt-3 max-w-[65ch] text-lg sm:text-xl lg:text-2xl font-normal leading-[1.45] text-pretty text-white">No experience needed. Turn up, get put on a team, play on Sunday.</p>
+      <div class="mt-8 flex flex-wrap items-center gap-3 sm:gap-4">
+        <a href="{{ cta.url }}"
+           class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-white text-ecs-green-ink shadow-sm hover:bg-white/90 focus-visible:ring-white focus-visible:ring-offset-ecs-green-ink">
+          <i class="ti ti-user-plus" aria-hidden="true"></i> {{ cta.label }}
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
 {% endif %}
 {% endblock %}

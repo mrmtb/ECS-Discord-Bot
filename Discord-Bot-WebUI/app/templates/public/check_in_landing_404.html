@@ -1,17 +1,48 @@
-{% extends "base_unauthenticated_flowbite.html" %}
+{#
+  Venue check-in code not usable — /check-in/<token> for an unknown, revoked or
+  expired token (HTTP 404).
 
-{% block title %}Check-in unavailable — ECS FC{% endblock %}
+  Context (app/routes/check_in_public.py):
+    ios_app_store_url / android_play_store_url — passed to this template and,
+    until now, never rendered. They are the only real action available to
+    someone standing at the pitch, so they belong here (design.md § 7.7: an
+    empty state offers exactly one action, never "check back soon").
 
-{% block main_content %}
-<div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 text-center">
-    <div class="w-20 h-20 mx-auto rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center mb-4">
-        <i class="ti ti-clock-x text-4xl text-gray-400"></i>
-    </div>
-    <h1 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Check-in unavailable</h1>
-    <p class="mx-auto max-w-sm text-sm text-gray-600 dark:text-gray-400">
-        This check-in code is no longer valid. Codes expire after the match
-        window closes. Ask a coach or organizer to pull up the current match QR
-        and try again.
-    </p>
+  Not a full-viewport centred hero and not a grey icon blob: § 13.21 / § 13.37.
+  The old `text-gray-400 on bg-gray-100` icon was 2.53:1.
+#}
+{% extends "public/base_public_minimal.html" %}
+
+{% block title %}Check-in code isn&rsquo;t live{% endblock %}
+{% block content_width %}max-w-2xl{% endblock %}
+
+{% block page %}
+{%- set BTN_GHOST = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 text-base font-semibold leading-none text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 active:translate-y-px active:brightness-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark transition-[background-color,box-shadow,transform,color] duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none' -%}
+
+<span class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-ecs-green/10 text-ecs-green-ink dark:bg-ecs-green/15 dark:text-ecs-green-300">
+  <i class="ti ti-clock-x text-2xl" aria-hidden="true"></i>
+</span>
+
+<h1 class="mt-5 font-display text-2xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words text-gray-900 sm:text-3xl lg:text-4xl dark:text-white">This check-in code isn&rsquo;t live</h1>
+
+<div class="mt-6 rounded-xl bg-ecs-green/[0.05] p-6 ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.02] dark:ring-white/10 sm:p-8">
+  <p class="max-w-[62ch] text-base font-normal leading-[1.65] text-gray-800 sm:text-lg dark:text-gray-200">
+    Codes expire once the match window closes, so a printed sign from an earlier week lands here. Ask a coach or an organiser to pull up today&rsquo;s match QR and scan that one instead.
+  </p>
+  <p class="mt-4 max-w-[62ch] text-base font-normal leading-[1.65] text-gray-700 dark:text-gray-200">
+    Nothing is wrong with your phone and nothing was recorded against you.
+  </p>
 </div>
+
+<section class="mt-8" aria-label="Get the app">
+  <p class="text-xs font-bold uppercase tracking-[0.14em] text-ecs-green-ink dark:text-ecs-green-300">Don&rsquo;t have the app?</p>
+  <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <a href="{{ ios_app_store_url }}" class="{{ BTN_GHOST }}">
+      <i class="ti ti-brand-apple text-lg" aria-hidden="true"></i>App Store
+    </a>
+    <a href="{{ android_play_store_url }}" class="{{ BTN_GHOST }}">
+      <i class="ti ti-brand-google-play text-lg" aria-hidden="true"></i>Google Play
+    </a>
+  </div>
+</section>
 {% endblock %}

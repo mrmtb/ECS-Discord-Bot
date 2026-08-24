@@ -240,8 +240,11 @@ document.addEventListener('DOMContentLoaded', function () {
   function refresh() {
     var primary = document.getElementById('primary_hex').value;
     var accent = document.getElementById('accent_hex').value;
-    var pairSlug = (document.querySelector('input[name=font_pair]:checked') || {}).value || 'modern';
-    var pair = FONT_PAIRS[pairSlug] || FONT_PAIRS.modern;
+    {# Fall back to the server's DEFAULT_FONT_PAIR, not a frozen slug, so this
+       live preview can never disagree with what the public site actually renders. #}
+    var DEFAULT_PAIR = {{ default_font_pair | tojson }};
+    var pairSlug = (document.querySelector('input[name=font_pair]:checked') || {}).value || DEFAULT_PAIR;
+    var pair = FONT_PAIRS[pairSlug] || FONT_PAIRS[DEFAULT_PAIR];
     paintContrast('primary-contrast', primary);
     paintContrast('accent-contrast', accent);
     document.getElementById('pv-primary').style.backgroundColor = primary;

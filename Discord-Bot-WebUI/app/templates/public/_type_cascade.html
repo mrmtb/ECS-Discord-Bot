@@ -1,0 +1,22 @@
+{#
+  The public site's TYPE CASCADE — the two rules that bind the admin-chosen font
+  pair (public_theme.theme_vars -> --font-heading / --font-body) onto the page.
+
+  ONE COPY, TWO SHELLS. base_public.html (marketing) and base_public_minimal.html
+  (surveys / check-in / member pass) both carry a small `@layer base` block, and
+  these two rules are the only part they genuinely share. They were duplicated,
+  which meant changing the display face silently updated one shell and not the
+  other. Include this INSIDE each shell's existing `@layer base { ... }`.
+
+  WHY THE var() FALLBACKS MATTER: `appearance.theme_css` (which defines
+  --font-heading/--font-body) is only in scope when a public context processor
+  ran. The utility pages live on their own blueprints where it does not, so the
+  fallback chain here is what actually renders — it must name Bricolage
+  explicitly, not just Inter.
+
+  WHY @layer base: an UNLAYERED font-family rule beats every Tailwind utility in
+  @layer utilities, which is how a previous unlayered version of this block
+  silently killed `font-display`/`font-sans` overrides. Keep it layered.
+#}
+            body { font-family: var(--font-body, 'Inter', system-ui, -apple-system, sans-serif); }
+            h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading, 'Bricolage Grotesque', 'Inter', system-ui, sans-serif); }

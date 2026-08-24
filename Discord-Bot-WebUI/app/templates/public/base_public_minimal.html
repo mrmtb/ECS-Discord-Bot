@@ -1,0 +1,191 @@
+{#
+  Public UTILITY shell — surveys, event check-in, the member pass.
+
+  These pages are reached from a Discord link or a printed QR code, almost
+  always on a phone, often outdoors in bad light. They are NOT marketing pages:
+  there is nothing to browse and nothing to sell, so this shell is deliberately
+  quieter than public/base_public.html — brand bar, content column, colophon.
+
+  WHY THIS FILE EXISTS (design.md, work order O7.1): the seven utility templates
+  used to extend `base_unauthenticated_flowbite.html`, the PORTAL LOGIN shell.
+  That shell is shared with the portal and must not be restyled, and it carries
+  none of the public design system (no Bricolage, no paper ground, no tokens, an
+  unlabelled floating theme toggle, a hardcoded #1a472a in its SweetAlert calls).
+  Re-parenting here is the single change that pulls all seven into the system.
+
+  IMPORTANT — CONTEXT INDEPENDENCE. `survey_public_bp` and `check_in_public_bp`
+  are their OWN blueprints, so `public_bp`'s context processor never runs for
+  them: `nav_items`, `cta`, `imgs`, `current_year` and `appearance` are all
+  UNDEFINED here. Every reference below is therefore guarded. Do not add an
+  unguarded `{{ appearance.x }}` or `{% for i in nav_items %}` — attribute access
+  and iteration on Undefined raise, and that is a 500 on a live QR-code landing.
+  If a public context processor is ever added to those two blueprints, this file
+  starts honouring the admin palette and logo with no further change.
+
+  Colour: every value is CSS-var-backed (C2) so the Appearance picker still
+  re-skins these pages. Dark mode is class-based (C7).
+#}
+<!DOCTYPE html>
+<html lang="en" class="overflow-x-clip {{ 'dark' if session.get('theme', 'light') == 'dark' else '' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}ECS Pub League{% endblock %}</title>
+
+    {# Every page under this shell is reached by a private token (survey access
+       token, wallet barcode, venue check-in code). None of them should ever be
+       indexed, and the member pass carries a name and a photo. #}
+    <meta name="robots" content="noindex, nofollow">
+
+    {# ---- Theme BEFORE any stylesheet, so the right ground paints on frame 1.
+       A visitor who has never chosen follows their OS and we do NOT persist that
+       choice (design.md § 3.5) — only the toggle writes to localStorage. ---- #}
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('theme');
+                var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                document.documentElement.classList.toggle('dark', dark);
+            } catch (e) {}
+        })();
+    </script>
+
+    {% if appearance is defined and appearance and appearance.favicon_url %}<link rel="icon" href="{{ appearance.favicon_url }}">{% endif %}
+
+    {# ---- Fonts. Bricolage Grotesque displays, Inter reads (design.md § 2).
+       Both are self-hosted: the public CSP blocks fonts.googleapis.com, so a
+       <link> to a font CDN would fall back to system-ui with no error. Preload
+       hrefs must byte-match the url() inside the two .css files (bare, no ?v=). ---- #}
+    <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/inter/inter-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/bricolage/bricolage-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{ static_v('vendor/fonts/inter.css') }}">
+    <link rel="stylesheet" href="{{ static_v('vendor/fonts/bricolage.css') }}">
+    <link rel="stylesheet" href="{{ static_v('vite-dist/css/tailwind.css') }}">
+    <link rel="stylesheet" href="{{ static_v('vendor/fonts/tabler-icons.css') }}">
+
+    <style>
+        /* @layer base, NOT unlayered: an unlayered rule beats every Tailwind
+           utility, which is exactly the bug that killed `underline` across the
+           public site (design.md § 3.4). Layered here, a font-display or
+           font-sans utility can still win. */
+        @layer base {
+{% include 'public/_type_cascade.html' %}
+            header a { text-decoration: none; }
+            html { scroll-padding-top: 1.5rem; }
+        }
+    </style>
+    {% if appearance is defined and appearance and appearance.theme_css %}
+    {# Present only when a public context processor is in scope. Without it the
+       Tailwind var fallbacks (the shipped ECS palette) apply — never a hardcoded
+       hex in this file. #}
+    <style>{{ appearance.theme_css }}</style>
+    {% endif %}
+
+    {% block extra_css %}{% endblock %}
+    {% block head_extra %}{% endblock %}
+</head>
+<body class="flex min-h-screen flex-col overflow-x-clip bg-paper text-gray-800 antialiased dark:bg-paper-dark dark:text-gray-200">
+
+    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:inline-flex focus:min-h-11 focus:items-center focus:rounded-full focus:bg-ecs-blue-600 focus:px-5 focus:text-base focus:font-semibold focus:leading-none focus:text-white">Skip to content</a>
+
+    {% set brand = appearance.title if appearance is defined and appearance and appearance.title else 'ECS Pub League' %}
+    {% set home_url = url_for('public.home') if endpoint_exists is defined and endpoint_exists('public.home') else none %}
+    {% set logo_src = appearance.logo_url if appearance is defined and appearance and appearance.logo_url
+                      else (imgs.logo if imgs is defined and imgs and imgs.logo
+                            else url_for('static', filename='img/publeague/2025-02__ECSPL-4-Color-With-Outline-transparent.png')) %}
+
+    {# ---- Brand bar. Deliberately NOT sticky: a single-screen utility page read
+       one-handed outdoors should give its vertical space to the content, and
+       there is nothing here to navigate back to mid-scroll. The 2px green rule is
+       the shared signature that says "same site" without the marketing nav. ---- #}
+    <header class="border-b-2 border-ecs-green-ink bg-paper dark:bg-paper-dark">
+        <div class="mx-auto flex h-16 max-w-3xl items-center gap-3 px-4 sm:h-20 sm:px-6 lg:px-8">
+            {% if home_url %}
+            <a href="{{ home_url }}" aria-label="{{ brand }} &mdash; home"
+               class="flex min-w-0 items-center gap-3 rounded-full py-1 pr-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+                <img src="{{ logo_src }}" alt="" width="40" height="40" class="h-10 w-10 shrink-0 object-contain">
+                <span class="truncate font-display text-xl font-extrabold leading-none tracking-[-0.03em] text-gray-900 sm:text-2xl dark:text-white">{{ brand }}</span>
+            </a>
+            {% else %}
+            <span class="flex min-w-0 items-center gap-3">
+                <img src="{{ logo_src }}" alt="" width="40" height="40" class="h-10 w-10 shrink-0 object-contain">
+                <span class="truncate font-display text-xl font-extrabold leading-none tracking-[-0.03em] text-gray-900 sm:text-2xl dark:text-white">{{ brand }}</span>
+            </span>
+            {% endif %}
+
+            <button type="button" id="theme-toggle"
+                    class="ml-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-600 transition-colors duration-150 ease-out hover:bg-ecs-green/10 hover:text-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-ecs-green-300 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+                <i class="ti ti-sun hidden text-xl dark:block" aria-hidden="true"></i><i class="ti ti-moon block text-xl dark:hidden" aria-hidden="true"></i>
+                <span class="sr-only">Switch between light and dark</span>
+            </button>
+        </div>
+    </header>
+
+    <main id="main" tabindex="-1" class="flex-1 focus:outline-hidden">
+        <div class="mx-auto w-full {% block content_width %}max-w-3xl{% endblock %} px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+
+            {# Flash messages render INLINE, not through a SweetAlert modal titled
+               "Success"/"Error"/"Info" — a modal is the wrong register for a page
+               someone opened from a QR code, and the message is the content
+               (design.md § 10). #}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="mb-8 space-y-3">
+                {% for category, message in messages %}
+                <p role="{{ 'alert' if category == 'error' else 'status' }}"
+                   class="rounded-xl bg-white p-4 text-base leading-[1.65] shadow-sm ring-1 ring-inset dark:bg-white/[0.045] dark:shadow-none
+                          {{ 'text-red-700 ring-red-600 dark:text-red-400 dark:ring-red-400' if category == 'error'
+                             else 'text-gray-800 ring-black/[0.07] dark:text-gray-200 dark:ring-white/10' }}">{{ message }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+
+            {% block page %}{% endblock %}
+        </div>
+    </main>
+
+    <footer class="border-t border-ecs-green-ink/20 dark:border-white/10">
+        <div class="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:px-8">
+            <p class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm leading-normal text-gray-600 dark:text-gray-300">
+                {% if endpoint_exists is defined and endpoint_exists('legal.privacy_policy') %}
+                <a href="{{ url_for('legal.privacy_policy') }}"
+                   class="inline-flex min-h-11 items-center font-medium text-ecs-green-ink underline decoration-1 decoration-ecs-green-ink/40 underline-offset-2 transition-[text-decoration-color] duration-150 ease-out hover:decoration-2 hover:decoration-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-ecs-green-300 dark:decoration-ecs-green-300/40 dark:hover:decoration-ecs-green-300 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Privacy</a>
+                {% endif %}
+                {% if endpoint_exists is defined and endpoint_exists('legal.terms_of_service') %}
+                <a href="{{ url_for('legal.terms_of_service') }}"
+                   class="inline-flex min-h-11 items-center font-medium text-ecs-green-ink underline decoration-1 decoration-ecs-green-ink/40 underline-offset-2 transition-[text-decoration-color] duration-150 ease-out hover:decoration-2 hover:decoration-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-ecs-green-300 dark:decoration-ecs-green-300/40 dark:hover:decoration-ecs-green-300 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Terms</a>
+                {% endif %}
+                <span class="inline-flex min-h-11 items-center">{% if current_year is defined and current_year %}&copy; {{ current_year }} {% endif %}Emerald City Supporters Pub League</span>
+                <span class="inline-flex min-h-11 items-center">Seattle, WA</span>
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var el = document.getElementById('theme-toggle');
+            if (!el) return;
+            el.addEventListener('click', function () {
+                var root = document.documentElement;
+                var dark = !root.classList.contains('dark');
+                root.classList.toggle('dark', dark);
+                try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch (e) {}
+            });
+        });
+    </script>
+
+    {# Main Vite bundle (Flowbite, vendor globals) — kept so behaviour matches the
+       shell these pages used to extend. #}
+    {% if vite_production_mode is defined and vite_production_mode() %}
+    {{ vite_asset('js/main-entry.js') }}
+    {% elif vite_dev_mode is defined and vite_dev_mode() %}
+    {{ vite_asset('js/main-entry.js') }}
+    {% else %}
+    <script type="module" src="{{ url_for('static', filename='js/main-entry.js') }}"></script>
+    {% endif %}
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

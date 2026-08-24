@@ -23,6 +23,12 @@ from app.utils.task_session_manager import task_session
 from app.models import MLSMatch, ScheduledTask, TaskType, TaskState, MatchStatus
 from app.models.live_reporting_session import LiveReportingSession
 
+# How late a scheduled task must be before the recovery net treats it as missed.
+# The net runs every 5 minutes and the tasks it audits are scheduled on the same
+# round times, so without this it races the real scheduler and wins by
+# milliseconds -- firing duplicates and reporting a failure that never happened.
+RECOVERY_GRACE = timedelta(seconds=90)
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,10 +94,19 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
             # ===================================================================
             logger.debug("\n📋 Step 1: Checking for missing thread creations...")
 
+            # RECOVERY_GRACE, not `now`. This task runs on crontab(*/5) and the
+            # tasks it audits are themselves scheduled on round times, so both
+            # fire in the SAME second -- and a task scheduled for 16:25:00.000
+            # looked "overdue" at 16:25:00.211. Every recovery in the logs was a
+            # photo finish of this kind (overdue by 41ms, 74ms, 80ms, 102ms),
+            # each one dispatching a DUPLICATE of a task the scheduler was
+            # already running, under a WARNING claiming "something upstream
+            # failed to schedule these". Nothing had failed. A safety net must
+            # only act on work that is meaningfully late.
             pending_thread_tasks = ScheduledTask.get_pending_tasks(
                 session,
                 task_type=TaskType.THREAD_CREATION,
-                now=now
+                now=now - RECOVERY_GRACE
             )
 
             logger.debug(f"Found {len(pending_thread_tasks)} overdue thread creation tasks")
@@ -139,7 +154,7 @@ def recover_missing_tasks(self, session) -> Dict[str, Any]:
             pending_reporting_tasks = ScheduledTask.get_pending_tasks(
                 session,
                 task_type=TaskType.LIVE_REPORTING_START,
-                now=now
+                now=now - RECOVERY_GRACE   # see RECOVERY_GRACE above
             )
 
             logger.debug(f"Found {len(pending_reporting_tasks)} overdue live reporting tasks")
@@ -342,9 +357,17 @@ def monitor_stalled_sessions(self, session) -> Dict[str, Any]:
         age = (now - started_at).total_seconds() if started_at else 0
         since_update = (now - last_update).total_seconds() if last_update else None
 
+        # Gate on last_update, NOT update_count. update_count counts updates
+        # SENT, and a session legitimately sends nothing between creation
+        # (~20min before kickoff) and the first live event -- so the old
+        # `update_count == 0` test called every healthy pre-match session
+        # "never polled" at ERROR every 2 minutes, while the service was in
+        # fact polling ESPN every 10s. last_update is now stamped on every
+        # successful poll (see realtime_reporting_service._touch_session_poll),
+        # so its absence really does mean nothing is servicing this session.
         issue = None
-        if (s.update_count or 0) == 0 and age > 180:
-            issue = f"never polled (age={age:.0f}s, update_count=0)"
+        if last_update is None and age > 180:
+            issue = f"no successful poll recorded (age={age:.0f}s)"
         elif since_update is not None and since_update > 300:
             issue = f"polling stalled (last_update={since_update:.0f}s ago)"
 

@@ -8,11 +8,22 @@
    ctx.resolve_link(), ctx.dyn() are pure prefetched lookups — macros never
    query the database).
 
-   Design vocabulary (Hallmark pass, 2026-08-21 — genre: playful, macrostructure:
-   Split Studio applied as a section-type vocabulary): max-w-7xl px-4 sm:px-6 lg:px-8
-   containers, py-16 sm:py-20 rhythm, gray-* + dark: pairs, ecs-green / ecs-blue-600
-   accents driven ENTIRELY by the Appearance panel's CSS vars, rounded-xl cards with a
-   hover-lift when linked, pill buttons, prose measure on body copy, Tabler icons.
+   DESIGN SYSTEM: /design.md is authoritative for every value in this file.
+   Genre playful; two faces (Bricolage displays via font-display, Inter reads);
+   blue is ACTION, green is BRAND (ecs-green never carries text — ecs-green-ink
+   does); three radii (rounded-full / rounded-xl / rounded-lg); three motion
+   primitives (lift on cards only, tint on controls, nudge on trailing arrows);
+   every colour utility carries a dark: pair.
+
+   Two rules that bite silently if you forget them:
+   - TAILWIND PURGE (C4) scans this file as TEXT. A class name assembled from
+     fragments at render time is never emitted into the stylesheet. Every class
+     below is a literal token in the source; only whole literal strings are
+     concatenated.
+   - NO JINJA-INDEX-DEPENDENT STYLING (C6). render_single_section() renders a
+     one-section document for the editor's swap payload, so a loop index is
+     always 0 there. Anything positional is CSS (`+`, `:only-child`,
+     `[data-btype=…]+[data-btype=…]`), never a Jinja index.
 
    The previous note here claimed "golden-test parity with the old home.html". That is
    no longer true and was already historical: home.html was removed at the sections
@@ -20,58 +31,198 @@
 
    In edit mode, sections/blocks carry data-sid / data-bid / data-btype /
    data-editable annotations the site editor's overlay targets. Server only
-   emits edit_mode markup for authenticated site editors.
+   emits edit_mode markup for authenticated site editors. data-btype is now
+   emitted on the PUBLIC page too — the relational rhythm in RHYTHM below is a
+   sibling selector keyed on block type, and it must work for real visitors.
 #}
+
+{# ONE news card, shared with the /news archive so a post looks identical in
+   both places. Agreed handoff signature: news_card(post, size='standard');
+   the partial tolerates both the NewsPost model and the plain dict
+   site_renderer builds for the news_latest block. #}
+{% from 'public/_news_card.html' import news_card %}
+
+{# ---------- the type ramp (design.md § 2.3) ----------
+   Complete strings. Never add tracking/leading/balance on top of a tier —
+   it is already in the string. #}
+{% set TYPE = {
+    'D1': 'font-display text-[2.75rem] sm:text-6xl lg:text-7xl font-extrabold leading-[1.02] tracking-[-0.035em] text-balance break-words',
+    'D2': 'font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-[1.06] tracking-[-0.025em] text-balance break-words',
+    'D3': 'font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words',
+    'D4': 'font-display text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words',
+    'D5': 'font-display text-lg sm:text-xl font-bold leading-snug tracking-normal break-words',
+    'L':  'text-lg sm:text-xl lg:text-2xl font-normal leading-[1.45] text-pretty',
+    'B':  'text-base sm:text-lg font-normal leading-[1.65]',
+    'BL': 'text-base sm:text-lg font-normal leading-[1.7]',
+    'S':  'text-sm font-normal leading-normal',
+    'E':  'text-xs font-bold uppercase tracking-[0.14em]'
+} %}
+
+{# D1 is the only tier with a headline-length step-down (design.md § 2.5). The
+   bucket is derived from the RENDERED text length, which is content-derived and
+   therefore C6-safe. xl:text-8xl exists in exactly one bucket. #}
+{% set D1_BASE = 'font-display font-extrabold leading-[1.02] tracking-[-0.035em] text-balance break-words' %}
+{% set D1_SIZE = {
+    'xs': 'text-[2.75rem] sm:text-6xl lg:text-7xl xl:text-8xl',
+    'sm': 'text-[2.75rem] sm:text-6xl lg:text-7xl',
+    'md': 'text-[2.25rem] sm:text-5xl lg:text-6xl',
+    'lg': 'text-[2rem] sm:text-4xl lg:text-5xl'
+} %}
 
 {# ---------- shared lookups ---------- #}
 
+{# design.md § 4.2. Every theme has a real, distinct dark pair — two themes
+   resolving to the same dark colour is the bug this table fixes. 'brand' is
+   ecs-green-INK, never ecs-green: plain green under white text is 2.78:1. #}
 {% set THEME_SECTION = {
     'inherit': '',
-    'light':   'bg-ecs-green/[0.06] dark:bg-gray-900',
-    'dark':    'bg-gray-900',
-    'brand':   'bg-ecs-green'
+    'light':   'bg-ecs-green/[0.06] dark:bg-white/[0.03]',
+    'dark':    'bg-gray-900 dark:bg-black/40 dark:ring-1 dark:ring-inset dark:ring-white/5',
+    'brand':   'bg-ecs-green-ink'
 } %}
+
+{# Bottom-weighted section padding (design.md § 5.1): a section's headline sits
+   closer to the section above it than its own tail does to the section below,
+   which is what stops every band reading as an identical slab. #}
 {% set PAD = {
-    'sm': 'py-10 sm:py-12',
-    'md': 'py-16 sm:py-20',
-    'lg': 'py-20 sm:py-28',
-    'xl': 'py-24 sm:py-32'
+    'sm': 'pt-10 pb-14 sm:pt-12 sm:pb-16',
+    'md': 'pt-14 pb-20 sm:pt-16 sm:pb-24',
+    'lg': 'pt-20 pb-28 sm:pt-24 sm:pb-36',
+    'xl': 'pt-24 pb-32 sm:pt-28 sm:pb-40'
 } %}
+
+{% set WIDTHS = {'narrow': 'max-w-3xl', 'normal': 'max-w-5xl', 'wide': 'max-w-7xl'} %}
+
+{# Relational internal rhythm (design.md § 5.3). A flat space-y-6 puts a 26px
+   status badge the same distance from a 72px headline as two buttons sit from
+   each other. These are sibling selectors keyed on data-btype — CSS-positional,
+   so the editor's single-section swap renders identically to the full page. #}
+{% set RHYTHM = 'flex flex-col [&>*+*]:mt-6 [&>[data-btype=heading]+[data-btype=richtext]]:mt-3 [&>[data-btype=richtext]+[data-btype=heading]]:mt-10 [&>[data-btype=button]+[data-btype=button]]:mt-0 [&>[data-btype=cta\_live]+[data-btype=button]]:mt-0 [&>[data-btype=registration\_status]+*]:mt-5' %}
+
+{# A card that is the only block in a column stretches to the column height, so
+   the mt-auto CTAs line up across a grid row. CSS-positional (C6-safe). #}
+{% set COL_RHYTHM = 'min-w-0 [&>[data-btype=card]:only-child]:grow' %}
+
+{# The § 4.4 card contract — one shape for block_card, the news tile and the
+   FAQ row. Elevation in dark mode is LIGHTNESS, never shadow. #}
+{% set CARD = 'group relative flex flex-col overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none transition-[transform,box-shadow,background-color] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none' %}
+{% set CARD_LIFT = 'hover:-translate-y-0.5 hover:shadow-md dark:hover:bg-white/[0.07] focus-within:-translate-y-0.5' %}
+
+{#- The SAME card on a brand/photo ground. The dark surface in CARD is
+    translucent (dark:bg-white/[0.045]) — over paper-dark it composites to a real
+    dark card, but over ecs-green-ink it composites to a mid-green and every ink
+    calibrated for paper-dark collapses to 2-3.5:1. On a brand ground the card is
+    therefore OPAQUE WHITE IN BOTH THEMES, and the inks inside it stay at their
+    light-mode values (see _card_*_ink below). -#}
+{% set CARD_ON = 'group relative flex flex-col overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm transition-[transform,box-shadow] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none' %}
+{% set CARD_ON_LIFT = 'hover:-translate-y-0.5 hover:shadow-md focus-within:-translate-y-0.5' %}
+{% set CARD_MEDIA = 'aspect-video w-full overflow-hidden bg-ecs-green/[0.06] dark:bg-white/[0.04]' %}
+
+{#- Inks for anything sitting ON a card surface. Off a brand ground the card
+    flips with the theme, so the ink takes a dark: pair; on a brand ground the
+    card is white in both themes, so it must NOT. -#}
+{%- macro _card_title_ink(section) -%}
+{%- if _on_color(section) -%}text-gray-900{%- else -%}text-gray-900 dark:text-white{%- endif -%}
+{%- endmacro -%}
+{%- macro _card_body_ink(section) -%}
+{%- if _on_color(section) -%}text-gray-700{%- else -%}text-gray-700 dark:text-gray-200{%- endif -%}
+{%- endmacro -%}
+{%- macro _card_muted_ink(section) -%}
+{%- if _on_color(section) -%}text-gray-600{%- else -%}text-gray-600 dark:text-gray-300{%- endif -%}
+{%- endmacro -%}
+{%- macro _card_brand_ink(section) -%}
+{%- if _on_color(section) -%}text-ecs-green-ink{%- else -%}text-ecs-green-ink dark:text-ecs-green-300{%- endif -%}
+{%- endmacro -%}
+{%- macro _card_tile(section) -%}
+{%- if _on_color(section) -%}bg-ecs-green/10 text-ecs-green-ink{%- else -%}bg-ecs-green/10 text-ecs-green-ink dark:bg-ecs-green/15 dark:text-ecs-green-300{%- endif -%}
+{%- endmacro -%}
+{%- macro _card_prose_link(section) -%}
+{%- if _on_color(section) -%}[&_a]:text-ecs-green-ink [&_a]:decoration-ecs-green-ink/40 hover:[&_a]:decoration-ecs-green-ink{%- else -%}[&_a]:text-ecs-green-ink [&_a]:decoration-ecs-green-ink/40 hover:[&_a]:decoration-ecs-green-ink dark:[&_a]:text-ecs-green-300 dark:[&_a]:decoration-ecs-green-300/40{%- endif -%}
+{%- endmacro -%}
+
+{# The form-field spec (design.md § 7.2). border-0 + ring so focus never shifts
+   layout; text-base because below 16px iOS Safari zooms the viewport on focus.
+   NO transition: with border-0 the field's whole visual state — hover ring,
+   focus ring, invalid ring — is the box-shadow the ring is drawn with, so any
+   transition here is a focus ring that fades in (design.md § 8, DO-NOT #30). #}
+{% set FIELD = 'block w-full rounded-lg min-h-11 px-3.5 py-2.5 text-base bg-white text-gray-900 placeholder:text-gray-500 dark:bg-white/[0.05] dark:text-white dark:placeholder:text-gray-400 border-0 ring-1 ring-inset ring-gray-400/70 dark:ring-white/20 hover:ring-gray-500 dark:hover:ring-white/30 focus:outline-hidden focus:ring-2 focus:ring-ecs-blue-600 dark:focus:ring-ecs-green-300 aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-red-600 dark:aria-[invalid=true]:ring-red-400 disabled:opacity-55 disabled:cursor-not-allowed' %}
+
+{# Chips (design.md § 7.3). The shared half lives OUTSIDE the ternary so an
+   active chip can never lose its focus ring to the branch it isn't in. #}
+{% set CHIP = 'inline-flex items-center gap-2 rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none' %}
 
 {# A section renders light text on a dark/brand ground when it's a hero, an
    explicitly dark/brand section, OR a band on its default (brand) ground.
    A band explicitly set to 'light' keeps dark text on a light ground. #}
 {%- macro _on_color(section) -%}{{ 'true' if section.theme in ('dark', 'brand') or section.type == 'hero' or (section.type == 'band' and section.theme in ('inherit', 'brand', 'dark')) else '' }}{%- endmacro -%}
 
+{# Server-rendered slug for a heading/question id, so every answer and every
+   subsection is linkable. Pure Jinja: no slugify filter is registered app-wide. #}
+{%- macro _slug(text) -%}
+{%- set t = (text | striptags | lower) -%}
+{%- set ns = namespace(out='') -%}
+{%- for ch in t -%}
+{%- if ch in 'abcdefghijklmnopqrstuvwxyz0123456789' -%}{%- set ns.out = ns.out ~ ch -%}
+{%- elif ns.out and not ns.out.endswith('-') -%}{%- set ns.out = ns.out ~ '-' -%}
+{%- endif -%}
+{%- endfor -%}
+{%- set s = ns.out[:64] -%}{{ s[:-1] if s.endswith('-') else s }}
+{%- endmacro -%}
+
 {# Placeholder shown in the editor for an unconfigured block; nothing public. #}
 {%- macro _placeholder(edit_mode, block, label) -%}
 {%- if edit_mode -%}
-<div class="flex items-center justify-center rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 p-8 text-sm text-gray-400"{{ _edit_attrs(block, edit_mode) }}><i class="ti ti-photo mr-1.5"></i> {{ label }}</div>
+<div class="flex items-center justify-center rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 p-8 text-sm text-gray-500 dark:text-gray-400"{{ _edit_attrs(block, edit_mode) }}><i class="ti ti-photo mr-1.5" aria-hidden="true"></i> {{ label }}</div>
 {%- endif -%}
 {%- endmacro -%}
 
+{#- The on-brand-ground text rules live in these four helpers and nowhere else.
+    Never inline a colour at a call site — the Appearance picker re-skins the
+    whole site through these vars and a hardcoded value silently opts out. -#}
 {%- macro _heading_color(section) -%}
 {%- if _on_color(section) -%}text-white{%- else -%}text-gray-900 dark:text-white{%- endif -%}
 {%- endmacro -%}
 
+{#- On a brand band body copy is text-white, NOT text-white/90: the ink drops
+    4.8 -> 4.2 and fails. (design.md § 3.3) -#}
 {%- macro _body_color(section) -%}
-{%- if _on_color(section) -%}text-white/90{%- else -%}text-gray-600 dark:text-gray-300{%- endif -%}
+{%- if _on_color(section) -%}text-white{%- else -%}text-gray-700 dark:text-gray-200{%- endif -%}
+{%- endmacro -%}
+
+{#- There is no legal "muted white" on a brand band. text-white/90 is 4.2:1 and
+    text-white/80 is 3.69:1 — both fail against ecs-green-ink. The demotion is
+    carried by SIZE and WEIGHT (these call sites are 12px eyebrows and 14px
+    captions), never by opacity. (design.md § 3.3) -#}
+{%- macro _muted_color(section) -%}
+{%- if _on_color(section) -%}text-white{%- else -%}text-gray-600 dark:text-gray-300{%- endif -%}
 {%- endmacro -%}
 
 {%- macro _link_color(section) -%}
-{%- if _on_color(section) -%}text-white underline{%- else -%}text-ecs-green dark:text-ecs-blue-400{%- endif -%}
+{%- if _on_color(section) -%}text-white{%- else -%}text-ecs-green-ink dark:text-ecs-green-300{%- endif -%}
 {%- endmacro -%}
 
+{#- data-btype is emitted ALWAYS (RHYTHM is a [data-btype] sibling selector and
+    must work on the public page). data-bid / data-editable stay edit-mode only. -#}
 {%- macro _edit_attrs(block, edit_mode) -%}
-{%- if edit_mode %} data-bid="{{ block.id }}" data-btype="{{ block.type }}"{% if block.type in ('heading', 'richtext', 'quote') %} data-editable="html"{% endif %}{% endif -%}
+{{ ' ' }}data-btype="{{ block.type }}"{% if edit_mode %} data-bid="{{ block.id }}"{% if block.type in ('heading', 'richtext', 'quote') %} data-editable="html"{% endif %}{% endif -%}
 {%- endmacro -%}
 
+{#- `hidden` wins on mobile; the sm: token has to RESTORE the container's own
+    display or the block silently becomes a stack of full-width rows at >=640px.
+    One macro per display value — sm:block on a flex/grid container is the bug
+    these three exist to prevent. -#}
 {%- macro _hide_mobile(block) -%}{{ 'hidden sm:block' if block.hide_mobile else '' }}{%- endmacro -%}
+{%- macro _hide_mobile_flex(block) -%}{{ 'hidden sm:flex' if block.hide_mobile else '' }}{%- endmacro -%}
+{%- macro _hide_mobile_grid(block) -%}{{ 'hidden sm:grid' if block.hide_mobile else '' }}{%- endmacro -%}
 
 
 {# ---------- image helper ---------- #}
-{# ctx.image(ref) -> {url, srcset, sizes, alt, focal_css, width, height} or none #}
-{% macro _img_tag(ref, ctx, class='', sizes='100vw', loading='lazy', alt_override=None) %}
+{# ctx.image(ref) -> {url, srcset, sizes, alt, focal_css, width, height} or none
+   priority=True is the LCP contract (design.md § 4.5): fetchpriority high,
+   decoding async, and NO loading attribute at all.
+   alt_fallback keeps a content photograph from silently shipping alt="" when
+   the media-library row has no alt text — the caption stands in. #}
+{% macro _img_tag(ref, ctx, class='', sizes='100vw', loading='lazy', alt_override=None, priority=False, alt_fallback='') %}
 {%- set info = ctx.image(ref) -%}
 {%- if info -%}
 {%- if info.webp_srcset %}<picture>
@@ -79,14 +230,99 @@
 {% endif -%}
 <img src="{{ info.url }}"
      {% if info.srcset %}srcset="{{ info.srcset }}" sizes="{{ sizes }}"{% endif %}
-     alt="{{ alt_override if alt_override is not none else info.alt }}"
+     alt="{{ alt_override if alt_override is not none else (info.alt or alt_fallback) }}"
      class="{{ class }}"
      style="object-position: {{ info.focal_css }};"
      {% if info.width and info.height %}width="{{ info.width }}" height="{{ info.height }}"{% endif %}
-     loading="{{ loading }}">
+     {% if priority %}fetchpriority="high" decoding="async"{% else %}loading="{{ loading }}" decoding="async"{% endif %}>
 {%- if info.webp_srcset %}</picture>{% endif -%}
 {%- endif -%}
 {% endmacro %}
+
+
+{#- ---------- focus ring ----------
+    Ground-aware and NEVER animated (a ring that fades in is a ring you miss).
+    ring-offset-transparent on a coloured ground lets the band show through the
+    offset gap, which is what gives the white ring its >=3:1 separation. -#}
+{%- macro _ring(section) -%}
+focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 {{ 'focus-visible:ring-white focus-visible:ring-offset-transparent' if _on_color(section) else 'focus-visible:ring-ecs-green-ink focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark' }}
+{%- endmacro -%}
+
+{#- The same ring for a control that sits ON A CARD rather than on the section
+    ground. _ring's on-colour branch is ring-WHITE, which is invisible the moment
+    the thing under it is a white card — so a card-interior focus target takes
+    the brand ink instead, and only takes a dark: pair when the card itself flips
+    with the theme (i.e. NOT on a brand ground, where the card is white in both). -#}
+{%- macro _ring_card(section) -%}
+focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-white {{ '' if _on_color(section) else 'dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark' }}
+{%- endmacro -%}
+
+{#- And the INSET version, for a focus target that fills its card edge-to-edge.
+    ring-2 is a box-shadow, so a ring drawn outside such a target is clipped away
+    by the card's own overflow-hidden and the row gets no visible focus at all
+    (WCAG 2.4.7). ring-inset paints inside the clip box. -#}
+{%- macro _ring_card_inset(section) -%}
+focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecs-green-ink {{ '' if _on_color(section) else 'dark:focus-visible:ring-ecs-green-300' }}
+{%- endmacro -%}
+
+
+{#- ---------- one button geometry ----------
+    There is exactly one button shape on this site (design.md § 7.1). Every
+    button-like thing — block_button, block_cta_live, the form submit — renders
+    from _btn_base + _btn_variant. No transform on hover: the lift belongs to
+    cards, and a button that lifts flattens the feedback vocabulary.
+
+    box-shadow is deliberately OUT of the transition list: focus-visible:ring-2
+    is drawn as a box-shadow, so naming box-shadow here would fade the focus ring
+    in over 150ms (design.md § 8, DO-NOT #30). The hover shadow step snapping is
+    the price, and it is the cheap half. -#}
+{%- macro _btn_base(section, size='md') -%}
+inline-flex items-center justify-center whitespace-nowrap rounded-full min-h-11 font-semibold leading-none
+{{ 'px-4 py-2.5 text-sm gap-1.5' if size == 'sm' else 'px-6 py-3 text-base gap-2' }}
+transition-[background-color,transform,color] duration-150 ease-out
+active:translate-y-px active:shadow-none active:brightness-95
+disabled:opacity-55 disabled:cursor-not-allowed disabled:shadow-none disabled:pointer-events-none
+aria-disabled:opacity-55 aria-disabled:cursor-not-allowed aria-disabled:pointer-events-none
+aria-[busy=true]:pointer-events-none
+motion-reduce:transition-none motion-reduce:transform-none
+{{ _ring(section) }}
+{%- endmacro -%}
+
+{#- Colour only. The focus ring comes from _btn_base/_ring so two competing
+    ring-* utilities can never fight over stylesheet order. -#}
+{%- macro _btn_variant(style, on_color) -%}
+{%- if style == 'primary' -%}
+{%- if on_color %}bg-white text-ecs-green-ink shadow-sm hover:bg-white/90{% else %}bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md{% endif -%}
+{%- elif style == 'secondary' -%}
+{%- if on_color %}bg-white/20 text-white ring-1 ring-inset ring-white/70 hover:bg-white/30{% else %}bg-ecs-green-ink text-white shadow-sm hover:bg-ecs-green-ink/90 hover:shadow-md{% endif -%}
+{%- else -%}
+{%- if on_color %}text-white ring-1 ring-inset ring-white/60 hover:bg-white/15{% else %}text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10{% endif -%}
+{%- endif -%}
+{%- endmacro -%}
+
+{#- Kept for compatibility: site_renderer/editor call macros by name and older
+    call sites may still reach for this. It is _btn_variant. -#}
+{%- macro _button_classes(style, on_color) -%}{{ _btn_variant(style, on_color) }}{%- endmacro -%}
+
+{#- Consecutive button/cta_live blocks sit in a ROW, not a column: two stacked
+    equally-weighted centred buttons is banned (design.md § 5.3). -#}
+{%- macro _btn_row(section) -%}
+flex flex-wrap items-center gap-3 sm:gap-4 {{ 'justify-center' if section.settings.align == 'center' else ('justify-end' if section.settings.align == 'right' else '') }}
+{%- endmacro -%}
+
+{#- Renders a block list, collecting runs of button/cta_live into one _btn_row.
+    Grouping is derived from block TYPE adjacency, not a loop index, so the
+    editor's one-section swap renders exactly what the full page renders. -#}
+{%- macro _render_blocks(blocks, ctx, section, edit_mode) -%}
+{%- for b in blocks -%}
+{%- set is_btn = b.type in ('button', 'cta_live') -%}
+{%- set prev_btn = loop.previtem is defined and loop.previtem.type in ('button', 'cta_live') -%}
+{%- set next_btn = loop.nextitem is defined and loop.nextitem.type in ('button', 'cta_live') -%}
+{%- if is_btn and not prev_btn %}<div class="{{ _btn_row(section) }}">{% endif -%}
+{{ render_block(b, ctx, section, edit_mode) }}
+{%- if is_btn and not next_btn %}</div>{% endif -%}
+{%- endfor -%}
+{%- endmacro -%}
 
 
 {# =====================================================================
@@ -94,30 +330,68 @@
    ===================================================================== #}
 
 {% macro block_heading(block, ctx, section, edit_mode) %}
+{# Two h2 tiers (design.md § 2.4): prominence 'lead' carries the page's
+   argument at D2, everything else is supporting material at D3. That, not a
+   seventh type size, is what turns ten equal announcements into a hierarchy. #}
 {% set lvl = block.level or 2 %}
-{% set size = {
-    1: 'text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-extrabold',
-    2: 'text-3xl sm:text-4xl lg:text-5xl font-extrabold',
-    3: 'text-2xl sm:text-3xl font-bold',
-    4: 'text-lg font-semibold'
-}.get(lvl, 'text-3xl sm:text-4xl font-bold') %}
+{% set txt = block.html | striptags | trim %}
+{% set n = txt | length %}
+{% if lvl == 1 %}
+    {% set bucket = 'xs' if n <= 24 else ('sm' if n <= 55 else ('md' if n <= 90 else 'lg')) %}
+    {% set size = D1_BASE ~ ' ' ~ D1_SIZE[bucket] %}
+{% elif lvl == 2 %}
+    {% set size = (TYPE.D2 if n <= 55 else TYPE.D3) if block.prominence == 'lead' else TYPE.D3 %}
+{% elif lvl == 3 %}
+    {% set size = TYPE.D4 %}
+{% elif lvl == 4 %}
+    {% set size = TYPE.D5 %}
+{% else %}
+    {% set size = TYPE.D3 %}
+{% endif %}
 {% set align = {'left': '', 'center': 'text-center', 'right': 'text-right'}.get(block.align, '') %}
-<h{{ lvl }} class="{{ size }} tracking-[-0.03em] text-balance break-words {{ _heading_color(section) }} {{ align }} {{ _hide_mobile(block) }} {{ 'drop-shadow-xs' if section.type == 'hero' }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</h{{ lvl }}>
+{% set anchor = block.anchor or _slug(txt) %}
+<h{{ lvl }} {% if anchor %}id="{{ anchor }}"{% endif %} class="{{ size }} {{ _heading_color(section) }} {{ align }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</h{{ lvl }}>
 {% endmacro %}
 
 
 {% macro block_richtext(block, ctx, section, edit_mode) %}
 {# Rich prose: paragraphs, lists, and — for long-form content like the Guide —
-   headings, anchor targets (scroll-mt so a jump-link clears the sticky nav),
-   and definition lists (the lexicon). #}
-<div class="text-lg {{ _body_color(section) }}
-            [&_p]:mt-3 [&_p]:first:mt-0
-            [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:mt-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mt-1
-            [&_h2]:mt-12 [&_h2]:mb-2 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:scroll-mt-24 [&_h3]:mt-8 [&_h3]:mb-1 [&_h3]:text-xl [&_h3]:font-semibold [&_h4]:mt-6 [&_h4]:font-semibold
-            {{ '[&_h2]:text-white [&_h3]:text-white' if _on_color(section) else '[&_h2]:text-gray-900 dark:[&_h2]:text-white [&_h3]:text-gray-900 dark:[&_h3]:text-white' }}
-            [&_dl]:mt-4 [&_dt]:mt-4 [&_dt]:font-semibold {{ '[&_dt]:text-white' if _on_color(section) else '[&_dt]:text-gray-900 dark:[&_dt]:text-white' }} [&_dd]:mt-0.5 [&_dd]:text-base
-            [&_a]:font-medium {{ '[&_a]:text-white [&_a]:underline' if _on_color(section) else '[&_a]:text-ecs-green dark:[&_a]:text-ecs-blue-400' }}
-            {{ 'drop-shadow-sm' if section.type == 'hero' else 'max-w-prose' }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</div>
+   headings and definition lists (the lexicon).
+
+   The same semantic level must render at the same size whichever block authored
+   it, so [&_h2] is D3, [&_h3] is D4 and [&_h4] is D5 — the ramp, not a second
+   private scale. Paragraph rhythm is em-based so it tracks the type instead of
+   collapsing to 0.43 of a line at long-form leading.
+
+   Anchor clearance comes from the shell's scroll-padding-top (--sticky-stack);
+   scroll-mt-* on individual headings is gone.
+
+   <table> and <pre> are in the sanitizer allowlist and TinyMCE emits both, so
+   they get an overflow container here. html/body are overflow-x-CLIP, so an
+   unhandled wide table is not a page scrollbar — it is content the reader can
+   never reach. break-words does the same job for an unbroken URL. #}
+{% set body = block.html | striptags %}
+{% set longform = (body | length) > 900 %}
+<div class="{{ TYPE.L if section.type == 'hero' else (TYPE.BL if longform else TYPE.B) }} {{ _body_color(section) }}
+            {{ '' if section.type == 'hero' else 'max-w-[65ch]' }} break-words
+            [&_p]:mt-[1.15em] [&_p]:first:mt-0
+            [&_ul]:mt-[1.15em] [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:mt-[1.15em] [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mt-[0.5em]
+            [&_h2]:font-display [&_h2]:text-2xl sm:[&_h2]:text-3xl lg:[&_h2]:text-4xl [&_h2]:font-extrabold [&_h2]:leading-[1.1] [&_h2]:tracking-[-0.02em] [&_h2]:text-balance [&_h2]:break-words [&_h2]:mt-[1.6em] [&_h2]:mb-[0.35em]
+            [&_h3]:font-display [&_h3]:text-xl sm:[&_h3]:text-2xl [&_h3]:font-bold [&_h3]:leading-[1.15] [&_h3]:tracking-[-0.015em] [&_h3]:text-pretty [&_h3]:break-words [&_h3]:mt-[1.4em] [&_h3]:mb-[0.3em]
+            [&_h4]:font-display [&_h4]:text-lg sm:[&_h4]:text-xl [&_h4]:font-bold [&_h4]:leading-snug [&_h4]:break-words [&_h4]:mt-[1.2em] [&_h4]:mb-[0.25em]
+            {{ '[&_h2]:text-white [&_h3]:text-white [&_h4]:text-white' if _on_color(section) else '[&_h2]:text-gray-900 dark:[&_h2]:text-white [&_h3]:text-gray-900 dark:[&_h3]:text-white [&_h4]:text-gray-900 dark:[&_h4]:text-white' }}
+            [&_dl]:mt-[1.15em] [&_dt]:mt-[1.15em] [&_dt]:font-semibold {{ '[&_dt]:text-white' if _on_color(section) else '[&_dt]:text-gray-900 dark:[&_dt]:text-white' }}
+            [&_dd]:mt-[0.25em] [&_dd]:text-base [&_dd]:leading-[1.6] [&_dd]:max-w-[62ch] {{ '[&_dd]:text-white' if _on_color(section) else '[&_dd]:text-gray-700 dark:[&_dd]:text-gray-200' }}
+            [&_.lead]:text-xl sm:[&_.lead]:text-2xl [&_.lead]:leading-snug [&_.lead]:text-pretty {{ '[&_.lead]:text-white' if _on_color(section) else '[&_.lead]:text-gray-800 dark:[&_.lead]:text-gray-100' }}
+            [&_strong]:font-semibold {{ '[&_strong]:text-white' if _on_color(section) else '[&_strong]:text-gray-900 dark:[&_strong]:text-white' }}
+            [&_a]:font-medium [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 hover:[&_a]:decoration-2
+            {{ '[&_a]:text-white [&_a]:decoration-white/60 hover:[&_a]:decoration-white' if _on_color(section) else '[&_a]:text-ecs-green-ink [&_a]:decoration-ecs-green-ink/40 hover:[&_a]:decoration-ecs-green-ink dark:[&_a]:text-ecs-green-300 dark:[&_a]:decoration-ecs-green-300/40' }}
+            [&_table]:mt-[1.15em] [&_table]:block [&_table]:w-full [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:tabular-nums
+            [&_th]:py-2 [&_th]:pr-4 [&_th]:text-left [&_th]:align-top [&_th]:font-semibold [&_td]:py-2 [&_td]:pr-4 [&_td]:align-top
+            {{ '[&_tr]:border-b [&_tr]:border-white/25' if _on_color(section) else '[&_tr]:border-b [&_tr]:border-black/[0.08] dark:[&_tr]:border-white/10' }}
+            [&_pre]:mt-[1.15em] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:text-sm
+            {{ '[&_pre]:bg-black/20' if _on_color(section) else '[&_pre]:bg-ecs-green/[0.06] dark:[&_pre]:bg-white/[0.05]' }}
+            {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>{{ block.html | safe }}</div>
 {% endmacro %}
 
 
@@ -128,37 +402,22 @@
 {% set aspects = {'natural': '', '16:9': 'aspect-video', '4:3': 'aspect-4/3', '1:1': 'aspect-square'} %}
 {% set asp = aspects.get(block.aspect, '') %}
 <figure class="{{ widths.get(block.size, 'max-w-3xl') }} {{ aligns.get(block.align, 'mx-auto') }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
-    {% set inner %}{{ _img_tag(block.image, ctx, class='w-full rounded-xl shadow-xs object-cover ' + asp, sizes='(min-width: 1024px) 768px, 100vw') }}{% endset %}
+    {# The wrapper reserves the box, so a media row with no width/height can
+       never shift the layout underneath it (design.md § 4.5). #}
+    {% set inner %}<div class="overflow-hidden rounded-xl shadow-sm dark:shadow-none bg-ecs-green/[0.06] dark:bg-white/[0.04] {{ asp }}">{{ _img_tag(block.image, ctx, class='w-full ' + ('h-full object-cover' if asp else ''), sizes='(min-width: 1024px) 768px, 100vw', alt_fallback=block.caption or '') }}</div>{% endset %}
     {% set href = ctx.resolve_link(block.link) if block.link else none %}
-    {% if href %}<a href="{{ href }}">{{ inner }}</a>{% else %}{{ inner }}{% endif %}
-    {% if block.caption %}<figcaption class="mt-2 text-center text-sm {{ 'text-white/70' if _on_color(section) else 'text-gray-500 dark:text-gray-400' }}">{{ block.caption }}</figcaption>{% endif %}
+    {% if href %}<a href="{{ href }}" class="block rounded-xl {{ _ring(section) }}">{{ inner }}</a>{% else %}{{ inner }}{% endif %}
+    {% if block.caption %}<figcaption class="mt-2.5 {{ TYPE.S }} {{ _muted_color(section) }}">{{ block.caption }}</figcaption>{% endif %}
 </figure>
 {% endif %}
 {% endmacro %}
 
 
-{#- Focus ring, ground-aware: a green ring disappears on a brand/dark section,
-    so colored grounds get a white ring instead. Never animated (rings must appear
-    instantly on focus). -#}
-{%- macro _ring(section) -%}
-focus-visible:outline-hidden focus-visible:ring-2 {{ 'focus-visible:ring-white/70' if _on_color(section) else 'focus-visible:ring-ecs-green/50' }}
-{%- endmacro -%}
-
-{%- macro _button_classes(style, on_color) -%}
-{%- if style == 'primary' -%}
-bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
-{%- elif style == 'secondary' -%}
-{%- if on_color %}bg-white/15 text-white ring-1 ring-inset ring-white/40 hover:bg-white/25{% else %}bg-ecs-green text-white hover:bg-ecs-green-dark{% endif -%}
-{%- else -%}
-{%- if on_color %}bg-white/10 text-white ring-1 ring-inset ring-white/25 hover:bg-white/20{% else %}ring-1 ring-inset ring-gray-300 dark:ring-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-800{% endif -%}
-{%- endif -%}
-{%- endmacro -%}
-
 {% macro block_button(block, ctx, section, edit_mode) %}
 {% set aligns = {'left': '', 'center': 'text-center', 'right': 'text-right'} %}
 <div class="{{ aligns.get(block.align, '') }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     <a href="{{ ctx.resolve_link(block.link) or '#' }}"
-       class="inline-flex items-center justify-center gap-2 rounded-full px-6.5 py-3 text-base font-semibold transition duration-150 ease-out hover:-translate-y-px hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 motion-reduce:transform-none motion-reduce:transition-none {{ _button_classes(block.style, _on_color(section)) }}">
+       class="{{ _btn_base(section, block.size or 'md') }} {{ _btn_variant(block.style, _on_color(section)) }}">
         {{ block.label }}
     </a>
 </div>
@@ -167,40 +426,85 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 {% macro block_cta_live(block, ctx, section, edit_mode) %}
 {# LIVE portal-state CTA: label + destination derive from registration/waitlist
-   flags at render time — the block that keeps the public site truthful. #}
+   flags at render time — the block that keeps the public site truthful. It is
+   an ordinary button: same geometry, same eight states, same focus ring. #}
 {% set d = ctx.dyn(block.id) %}
 {% set aligns = {'left': '', 'center': 'text-center', 'right': 'text-right'} %}
 <div class="{{ aligns.get(block.align, '') }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="cta_live">
     <a href="{{ d.url }}"
-       class="inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-bold transition {{ _button_classes(block.style, _on_color(section)) }}">
-        <i class="ti {{ d.icon or 'ti-user-plus' }} text-lg"></i> {{ d.label }}
+       class="{{ _btn_base(section, block.size or 'md') }} {{ _btn_variant(block.style, _on_color(section)) }}">
+        <i class="ti {{ d.icon or 'ti-user-plus' }} text-lg" aria-hidden="true"></i> {{ d.label }}
     </a>
 </div>
 {% endmacro %}
 
 
 {% macro block_card(block, ctx, section, edit_mode) %}
+{# The § 4.4 card. ONE real link per card: the title carries a stretched <a>
+   whose ::after covers the whole surface, so a card is a single tab stop with
+   one accessible name instead of three links to the same URL.
+
+   The card is a CARD_ON (opaque white, light-mode inks, brand-ink focus ring)
+   whenever the section under it is a brand/dark/hero ground — see CARD_ON. #}
 {% set href = ctx.resolve_link(block.link) if block.link else none %}
-<div class="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs dark:border-gray-800 dark:bg-gray-950 {{ 'transition duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none' if href }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+{% set on = _on_color(section) %}
+<div class="{{ CARD_ON if on else CARD }} {{ (CARD_ON_LIFT if on else CARD_LIFT) if href }} {{ _hide_mobile_flex(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     {% if block.image %}
-    <div class="aspect-video w-full overflow-hidden bg-gray-100 dark:bg-gray-900">
-        {{ _img_tag(block.image, ctx, class='h-full w-full object-cover', sizes='(min-width: 1024px) 640px, 100vw') }}
+    <div class="{{ CARD_MEDIA }}">
+        {{ _img_tag(block.image, ctx, class='h-full w-full object-cover', sizes='(min-width: 1024px) 640px, 100vw', alt_override='' if href else none, alt_fallback=block.title or '') }}
     </div>
     {% endif %}
     <div class="flex flex-1 flex-col p-6 lg:p-8">
         {% if block.icon %}
-        <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-ecs-green/10 text-ecs-green dark:text-ecs-blue-400">
-            <i class="ti ti-{{ block.icon }} text-2xl"></i>
+        <div class="flex h-11 w-11 items-center justify-center rounded-lg {{ _card_tile(section) }}">
+            <i class="ti ti-{{ block.icon }} text-2xl" aria-hidden="true"></i>
         </div>
         {% endif %}
-        {% if block.title %}<h3 class="{{ 'mt-4' if block.icon }} text-lg lg:text-2xl font-semibold lg:font-bold text-gray-900 dark:text-white">{{ block.title }}</h3>{% endif %}
-        {% if block.html %}<div class="mt-2 flex-1 text-sm lg:text-base text-gray-600 dark:text-gray-300 [&_p]:mt-3 [&_p]:first:mt-0">{{ block.html | safe }}</div>{% endif %}
-        {% if href %}
-        <a href="{{ href }}" class="mt-5 inline-flex items-center gap-1.5 rounded text-sm font-semibold text-ecs-green transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50 dark:text-ecs-blue-400">
-            {{ block.link_label or 'Learn more' }}
-            <i class="ti ti-arrow-right transition-transform duration-150 ease-out group-hover:translate-x-0.5 motion-reduce:transform-none"></i>
-        </a>
+        {% if block.title %}
+        <h3 class="{{ 'mt-4' if block.icon }} {{ TYPE.D4 }} {{ _card_title_ink(section) }}">
+            {% if href %}<a href="{{ href }}" class="rounded-lg after:absolute after:inset-0 after:content-[''] {{ _ring_card(section) }}">{{ block.title }}</a>{% else %}{{ block.title }}{% endif %}
+        </h3>
         {% endif %}
+        {% if block.html %}<div class="mt-3 {{ TYPE.B }} {{ _card_body_ink(section) }} break-words [&_p]:mt-[1.15em] [&_p]:first:mt-0 [&_ul]:mt-[1.15em] [&_ul]:list-disc [&_ul]:pl-6 [&_li]:mt-[0.5em] [&_a]:font-medium [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 hover:[&_a]:decoration-2 {{ _card_prose_link(section) }}">{{ block.html | safe }}</div>{% endif %}
+        {% if href %}
+        {# Visual affordance only — the stretched title link is the real target. #}
+        <span class="mt-auto pt-4 inline-flex items-center gap-1.5 text-sm font-semibold {{ _card_brand_ink(section) }}" aria-hidden="true">
+            {{ block.link_label or 'Learn more' }}
+            <i class="ti ti-arrow-right transition-transform duration-150 ease-out group-hover:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none" aria-hidden="true"></i>
+        </span>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+
+{% macro block_callout(block, ctx, section, edit_mode) %}
+{# Quiet panel for a TL;DR, a caution or a key-facts list. Inset surface
+   (design.md § 4.2), Tabler glyph, never an emoji. Warning amber is the one
+   sanctioned non-brand colour — the Appearance picker must not re-skin it.
+
+   On a brand ground the inset goes DARKER, never lighter: bg-white/10 over
+   ecs-green-ink composites to a lighter green and the text-white that clears at
+   4.8:1 on the band drops to 3.98:1 inside the panel. bg-black/15 keeps it ~6:1. #}
+{% set tone = block.tone or 'info' %}
+{% set icons = {'info': 'ti-info-circle', 'caution': 'ti-alert-triangle', 'key-facts': 'ti-list-check'} %}
+{% set on = _on_color(section) %}
+<div class="rounded-xl p-6 sm:p-8 ring-1 ring-inset
+            {{ 'bg-black/15 ring-white/25' if on else ('bg-white ring-amber-600/40 dark:bg-white/[0.03] dark:ring-amber-400/30' if tone == 'caution' else 'bg-ecs-green/[0.05] ring-ecs-green-ink/15 dark:bg-white/[0.02] dark:ring-white/10') }}
+            {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+    <div class="flex items-start gap-4">
+        <i class="ti {{ icons.get(tone, 'ti-info-circle') }} mt-0.5 shrink-0 text-2xl
+                  {{ 'text-white' if on else ('text-amber-700 dark:text-amber-400' if tone == 'caution' else 'text-ecs-green-ink dark:text-ecs-green-300') }}" aria-hidden="true"></i>
+        <div class="min-w-0 flex-1">
+            {% if block.title %}<p class="{{ TYPE.D5 }} {{ _heading_color(section) }}">{{ block.title }}</p>{% endif %}
+            {% if block.html %}
+            <div class="{{ 'mt-2' if block.title }} {{ TYPE.B }} {{ _body_color(section) }} max-w-[65ch]
+                        [&_p]:mt-[1.15em] [&_p]:first:mt-0
+                        [&_ul]:mt-[0.75em] [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-[0.75em] [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-[0.35em]
+                        [&_a]:font-medium [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 hover:[&_a]:decoration-2
+                        {{ '[&_a]:text-white [&_a]:decoration-white/60' if on else '[&_a]:text-ecs-green-ink [&_a]:decoration-ecs-green-ink/40 dark:[&_a]:text-ecs-green-300 dark:[&_a]:decoration-ecs-green-300/40' }}">{{ block.html | safe }}</div>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endmacro %}
@@ -208,14 +512,22 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 {% macro block_gallery(block, ctx, section, edit_mode) %}
 {% if not block['items'] %}{{ _placeholder(edit_mode, block, 'Empty gallery — add photos') }}{% else %}
-{% set grids = {'grid-2': 'grid gap-4 sm:grid-cols-2', 'grid-3': 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3', 'grid-4': 'grid gap-4 sm:grid-cols-2 lg:grid-cols-4'} %}
+{# Tailwind's grid-cols-N is already repeat(N, minmax(0,1fr)) — the bare-1fr
+   overflow trap only bites arbitrary track lists, which is why none appear
+   here. Every grid takes an sm: step before it takes an lg: one (C8). #}
+{% set grids = {'grid-2': 'grid gap-5 sm:grid-cols-2 sm:gap-6',
+                'grid-3': 'grid gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3',
+                'grid-4': 'grid gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4'} %}
+{% set asp = 'aspect-square' if block.crop else 'aspect-4/3' %}
 <div class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
 {% if block.layout == 'carousel' %}
-    <div class="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4">
+    <div class="flex gap-5 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4 sm:mx-0 sm:px-0" tabindex="0" role="group" aria-label="Photo gallery">
         {% for item in block['items'] %}
         <figure class="snap-start shrink-0 w-72 sm:w-80">
-            {{ _img_tag(item.image, ctx, class='w-full rounded-xl object-cover aspect-4/3', sizes='320px') }}
-            {% if item.caption %}<figcaption class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{{ item.caption }}</figcaption>{% endif %}
+            <div class="overflow-hidden rounded-xl aspect-4/3 bg-ecs-green/[0.06] dark:bg-white/[0.04]">
+                {{ _img_tag(item.image, ctx, class='h-full w-full object-cover', sizes='320px', loading='lazy' if loop.index > 3 else 'eager', alt_fallback=item.caption or '') }}
+            </div>
+            {% if item.caption %}<figcaption class="mt-2 {{ TYPE.S }} {{ _muted_color(section) }}">{{ item.caption }}</figcaption>{% endif %}
         </figure>
         {% endfor %}
     </div>
@@ -224,9 +536,9 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
         {% for item in block['items'] %}
         {% set href = ctx.resolve_link(item.link) if item.link else none %}
         <figure>
-            {% set img %}{{ _img_tag(item.image, ctx, class='w-full rounded-xl object-cover ' + ('aspect-square' if block.crop else ''), sizes='(min-width: 1024px) 400px, 50vw') }}{% endset %}
-            {% if href %}<a href="{{ href }}">{{ img }}</a>{% else %}{{ img }}{% endif %}
-            {% if item.caption %}<figcaption class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{{ item.caption }}</figcaption>{% endif %}
+            {% set img %}<div class="overflow-hidden rounded-xl bg-ecs-green/[0.06] dark:bg-white/[0.04] {{ asp }}">{{ _img_tag(item.image, ctx, class='h-full w-full object-cover', sizes='(min-width: 1024px) 400px, 50vw', loading='lazy' if loop.index > 3 else 'eager', alt_fallback=item.caption or '') }}</div>{% endset %}
+            {% if href %}<a href="{{ href }}" class="block rounded-xl {{ _ring(section) }}">{{ img }}</a>{% else %}{{ img }}{% endif %}
+            {% if item.caption %}<figcaption class="mt-2 {{ TYPE.S }} {{ _muted_color(section) }}">{{ item.caption }}</figcaption>{% endif %}
         </figure>
         {% endfor %}
     </div>
@@ -239,12 +551,12 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% macro block_video(block, ctx, section, edit_mode) %}
 {% if not block.embed_src %}{{ _placeholder(edit_mode, block, 'Add a YouTube or Vimeo link') }}{% else %}
 <figure class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
-    <div class="aspect-video w-full overflow-hidden rounded-xl bg-gray-950 shadow-xs">
-        <iframe src="{{ block.embed_src }}" class="h-full w-full" title="Video"
+    <div class="aspect-video w-full overflow-hidden rounded-xl bg-gray-900 shadow-sm dark:shadow-none">
+        <iframe src="{{ block.embed_src }}" class="h-full w-full" title="{{ block.caption or 'Video' }}"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>
     </div>
-    {% if block.caption %}<figcaption class="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">{{ block.caption }}</figcaption>{% endif %}
+    {% if block.caption %}<figcaption class="mt-2.5 {{ TYPE.S }} {{ _muted_color(section) }}">{{ block.caption }}</figcaption>{% endif %}
 </figure>
 {% endif %}
 {% endmacro %}
@@ -253,72 +565,136 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% macro block_map(block, ctx, section, edit_mode) %}
 {% if not block.embed_src %}{{ _placeholder(edit_mode, block, 'Add a Google Maps embed link') }}{% else %}
 <figure class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
-    <div class="aspect-video w-full overflow-hidden rounded-xl shadow-xs">
-        <iframe src="{{ block.embed_src }}" class="h-full w-full border-0" title="Map"
+    <div class="aspect-video w-full overflow-hidden rounded-xl shadow-sm dark:shadow-none bg-ecs-green/[0.06] dark:bg-white/[0.04]">
+        <iframe src="{{ block.embed_src }}" class="h-full w-full border-0" title="{{ block.caption or 'Map' }}"
                 loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
     </div>
-    {% if block.caption %}<figcaption class="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">{{ block.caption }}</figcaption>{% endif %}
+    {% if block.caption %}<figcaption class="mt-2.5 {{ TYPE.S }} {{ _muted_color(section) }}">{{ block.caption }}</figcaption>{% endif %}
 </figure>
 {% endif %}
 {% endmacro %}
 
 
 {% macro block_news_latest(block, ctx, section, edit_mode) %}
+{# Same card contract as block_card: one stretched link on the title, alt="" on
+   the image so the tile has exactly one accessible name, first row eager for
+   the LCP. (The dedicated /news list owns its own lead-card layout.) #}
 {% set posts = ctx.dyn(block.id) %}
 <div class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="news_latest">
     <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {% for post in posts %}
-        <a href="{{ post.url }}"
-           class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs transition duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none dark:border-gray-800 dark:bg-gray-950 {{ _ring(section) }}">
-            {% if post.img %}
-            {# Media-library asset: responsive variants + WebP. #}
-            <picture>
-                {% if post.img.webp_srcset %}<source type="image/webp" srcset="{{ post.img.webp_srcset }}" sizes="(min-width: 1024px) 350px, (min-width: 640px) 50vw, 100vw">{% endif %}
-                <img src="{{ post.img.url }}" {% if post.img.srcset %}srcset="{{ post.img.srcset }}" sizes="(min-width: 1024px) 350px, (min-width: 640px) 50vw, 100vw"{% endif %}
-                     {% if post.img.width and post.img.height %}width="{{ post.img.width }}" height="{{ post.img.height }}"{% endif %}
-                     alt="{{ post.title }}" class="h-44 w-full object-cover" loading="lazy">
-            </picture>
-            {% elif post.image %}
-            <img src="{{ post.image }}" alt="{{ post.title }}" class="h-44 w-full object-cover" loading="lazy">
-            {% else %}
-            <div class="h-44 w-full bg-linear-to-br from-ecs-green to-ecs-green-dark flex items-center justify-center"><i class="ti ti-news text-4xl text-white/40"></i></div>
-            {% endif %}
-            <div class="p-5">
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ post.date }}</p>
-                <h3 class="mt-1 font-semibold text-gray-900 dark:text-white group-hover:text-ecs-green dark:group-hover:text-ecs-blue-400">{{ post.title }}</h3>
-                {% if post.excerpt %}<p class="mt-2 text-sm text-gray-600 dark:text-gray-400 line-clamp-3">{{ post.excerpt }}</p>{% endif %}
-            </div>
-        </a>
-        {% endfor %}
+        {# First row eager + high priority, the rest lazy (design.md § 4.5). #}
+        {% for post in posts %}{{ news_card(post, 'standard', eager=loop.index <= 3) }}{% endfor %}
     </div>
-    <div class="mt-6 text-right">
-        <a href="{{ ctx.news_index_url }}" class="rounded text-sm font-semibold {{ _link_color(section) }} hover:underline {{ _ring(section) }}">All news →</a>
+    <div class="mt-8">
+        <a href="{{ ctx.news_index_url }}" class="group/more inline-flex items-center gap-1.5 rounded-lg text-sm font-semibold underline decoration-1 underline-offset-2 hover:decoration-2 {{ _link_color(section) }} {{ 'decoration-white/60' if _on_color(section) else 'decoration-ecs-green-ink/40 dark:decoration-ecs-green-300/40' }} {{ _ring(section) }}">
+            Read every story
+            <i class="ti ti-arrow-right transition-transform duration-150 ease-out group-hover/more:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none" aria-hidden="true"></i>
+        </a>
     </div>
 </div>
 {% endmacro %}
 
 
 {% macro block_faq_list(block, ctx, section, edit_mode) %}
+{# Padding lives on the <summary>, not the <details>, so the whole row is a
+   >=44px target. Every question is a real <h3> and every row has a slug id, so
+   an answer is linkable and the page has an outline.
+   Category grouping activates the moment site_renderer's _dyn_faqs returns a
+   'category' per row; until then this renders one flat list. #}
 {% set faqs = ctx.dyn(block.id) %}
-<div class="space-y-3 {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="faq_list">
-    {% for f in faqs %}
-    <details class="group rounded-xl border border-gray-200 bg-white px-5 py-4 transition-colors hover:border-ecs-green/40 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-ecs-green/40">
-        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded font-semibold text-gray-900 dark:text-white {{ _ring(section) }}">
-            {{ f.question }}
-            <i class="ti ti-chevron-down transition group-open:rotate-180 text-gray-400"></i>
-        </summary>
-        <div class="mt-3 text-gray-600 dark:text-gray-300 [&_p]:mt-2 [&_p]:first:mt-0 [&_a]:text-ecs-green dark:[&_a]:text-ecs-blue-400">{{ f.answer_html | safe }}</div>
-    </details>
+{% set cats = [] %}
+{% for f in faqs %}{% if f.category and f.category not in cats %}{% set _ = cats.append(f.category) %}{% endif %}{% endfor %}
+<div class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="faq_list">
+    {% if cats | length > 1 %}
+    <nav class="mb-8 flex flex-wrap gap-2" aria-label="Question categories">
+        {% for c in cats %}
+        <a href="#faq-cat-{{ _slug(c) }}" class="{{ CHIP }} bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15 {{ _ring(section) }}">{{ c }}</a>
+        {% endfor %}
+    </nav>
+    {% endif %}
+    {% for c in cats %}
+    {# A category OUTRANKS the questions it groups, both semantically and
+       visually: an <h3> label rendered smaller than the <h3>s beneath it puts a
+       group and its members on the same level of the document outline and
+       flattens the only structure this page has. h2 + D3 (design.md § 2.4). #}
+    <h2 id="faq-cat-{{ _slug(c) }}" class="{{ TYPE.D3 }} {{ 'mt-14' if not loop.first }} mb-5 {{ _heading_color(section) }}">{{ c }}</h2>
+    <div class="space-y-3">
+        {% for f in faqs if f.category == c %}{{ _faq_row(f, section) }}{% endfor %}
+    </div>
     {% endfor %}
+    {% set loose = faqs | rejectattr('category') | list %}
+    {% if loose %}
+    <div class="space-y-3 {{ 'mt-12' if cats }}">
+        {% for f in loose %}{{ _faq_row(f, section) }}{% endfor %}
+    </div>
+    {% endif %}
+    {% if not faqs %}
+    {# Empty is the conversion moment, not a dead end (design.md § 7.7). #}
+    <div class="rounded-xl bg-ecs-green/[0.05] ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.03] dark:ring-white/10 p-8 sm:p-10 text-left">
+        <p class="{{ TYPE.D4 }} {{ _heading_color(section) }}">No questions up here yet</p>
+        <p class="mt-3 {{ TYPE.B }} {{ _body_color(section) }} max-w-[65ch]">The ones people actually ask us land here first. Until then, ask us yours — we answer every one.</p>
+        {% set ask_url = ctx.resolve_link({'kind': 'builtin', 'value': 'contact'}) %}
+        {% if ask_url %}<a href="{{ ask_url }}" class="mt-6 {{ _btn_base(section) }} {{ _btn_variant('primary', _on_color(section)) }}">Ask us anything</a>{% endif %}
+    </div>
+    {% endif %}
 </div>
+{% endmacro %}
+
+{% macro _faq_row(f, section) %}
+{# Same card contract as block_card, so the row needs the same on-brand-ground
+   branch (CARD_ON's opaque white + light-mode inks).
+   The focus ring is INSET: the <summary> fills the <details> edge-to-edge, so
+   an outside ring-2 is clipped away by overflow-hidden and tabbing the list
+   produces no visible focus at all. #}
+{% set on = _on_color(section) %}
+<details id="q-{{ _slug(f.question) }}" class="group overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm {{ '' if on else 'dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none' }} transition-[background-color,box-shadow] duration-150 ease-out motion-reduce:transition-none open:bg-ecs-green/[0.05] open:ring-ecs-green-ink/25 {{ '' if on else 'dark:open:bg-white/[0.05]' }}">
+    <summary class="flex cursor-pointer list-none items-start justify-between gap-4 px-5 py-4 sm:px-6 min-h-11 [&::-webkit-details-marker]:hidden {{ _ring_card_inset(section) }}">
+        <h3 class="{{ TYPE.D4 }} {{ _card_title_ink(section) }}">{{ f.question }}</h3>
+        <i class="ti ti-chevron-down mt-1 shrink-0 text-xl {{ _card_brand_ink(section) }} transition-transform duration-150 ease-out group-open:rotate-180 motion-reduce:transform-none motion-reduce:transition-none" aria-hidden="true"></i>
+    </summary>
+    <div class="px-5 pb-5 sm:px-6 sm:pb-6 {{ TYPE.B }} {{ _card_body_ink(section) }} max-w-[65ch] break-words
+                [&_p]:mt-[1.15em] [&_p]:first:mt-0 [&_ul]:mt-[1.15em] [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:mt-[1.15em] [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mt-[0.5em]
+                [&_table]:mt-[1.15em] [&_table]:block [&_table]:w-full [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:tabular-nums
+                [&_th]:py-2 [&_th]:pr-4 [&_th]:text-left [&_th]:align-top [&_th]:font-semibold [&_td]:py-2 [&_td]:pr-4 [&_td]:align-top
+                [&_tr]:border-b {{ '[&_tr]:border-black/[0.08]' if on else '[&_tr]:border-black/[0.08] dark:[&_tr]:border-white/10' }}
+                [&_pre]:mt-[1.15em] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:text-sm
+                {{ '[&_pre]:bg-ecs-green/[0.06]' if on else '[&_pre]:bg-ecs-green/[0.06] dark:[&_pre]:bg-white/[0.05]' }}
+                [&_a]:font-medium [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 hover:[&_a]:decoration-2 {{ _card_prose_link(section) }}">{{ f.answer_html | safe }}</div>
+</details>
 {% endmacro %}
 
 
 {% macro block_registration_status(block, ctx, section, edit_mode) %}
+{# The only live fact on the page, so it is the LOUDEST element, not the
+   quietest (design.md § 12.1). Three genuinely different states get three
+   genuinely different treatments — "Registration closed" must never render as
+   a positive green badge.
+   `mode` comes from site_renderer._dyn_registration_status; the label fallback
+   keeps this correct on a renderer that has not been updated yet. #}
 {% set d = ctx.dyn(block.id) %}
+{% set _lbl = (d.status_label or '') | lower %}
+{% set mode = d.mode if d.mode else ('waitlist' if 'waitlist' in _lbl else ('closed' if 'closed' in _lbl else 'open')) %}
+{% set icons = {'open': 'ti-door-enter', 'waitlist': 'ti-hourglass', 'closed': 'ti-lock'} %}
+{% set on = _on_color(section) %}
+{% set tones = {
+    'open':     'bg-ecs-green-ink text-white ring-ecs-green-ink',
+    'waitlist': 'bg-amber-100 text-amber-900 ring-amber-600/40 dark:bg-amber-400/15 dark:text-amber-200 dark:ring-amber-400/30',
+    'closed':   'bg-gray-100 text-gray-700 ring-gray-400/50 dark:bg-white/[0.06] dark:text-gray-200 dark:ring-white/15'
+} %}
+{# On a brand/photo ground the pill needs an OPAQUE surface for ALL THREE modes,
+   not just 'open'. A translucent dark fill (amber-400/15, white/[0.06]) paints
+   straight onto the band, composites with it, and the ink calibrated for the
+   dark page ground lands at 3.3-3.5:1. These are opaque and carry no dark:
+   pair, because the ground under them does not change with the theme. #}
+{% set tones_on = {
+    'open':     'bg-white text-ecs-green-ink ring-white',
+    'waitlist': 'bg-amber-100 text-amber-900 ring-white',
+    'closed':   'bg-white text-gray-700 ring-white'
+} %}
 <div class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="registration_status">
-    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset {{ 'bg-white/20 text-white ring-white/40' if _on_color(section) else 'bg-ecs-green/10 text-ecs-green ring-ecs-green/30 dark:text-ecs-blue-400' }}">
-        <i class="ti ti-calendar-event"></i>
+    <span class="inline-flex items-center gap-2 rounded-full px-4 py-1.5 min-h-8 text-sm sm:text-base font-semibold tabular-nums ring-1 ring-inset
+                 {{ tones_on.get(mode, tones_on['open']) if on else tones.get(mode, tones['open']) }}">
+        <i class="ti {{ icons.get(mode, 'ti-calendar-event') }} text-lg" aria-hidden="true"></i>
         {% if d.season_name %}{{ d.season_name }} · {% endif %}{{ d.status_label }}
     </span>
 </div>
@@ -327,83 +703,156 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 {% macro block_calendar_teaser(block, ctx, section, edit_mode) %}
 {% set events = ctx.dyn(block.id) %}
+{% set join_url = ctx.resolve_link({'kind': 'builtin', 'value': 'register'}) %}
+{# Same card contract as block_card (§ 4.4), so the same on-brand-ground branch:
+   an opaque white surface with light-mode inks, because the translucent dark
+   surface composites to mid-green over a brand band. #}
+{% set on = _on_color(section) %}
 <div class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="calendar_teaser">
-    <ul class="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-950">
+    {% if events %}
+    <ul class="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm divide-y divide-black/[0.08] {{ '' if on else 'dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none dark:divide-white/10' }}">
         {% for e in events %}
-        <li class="flex items-center gap-4 px-5 py-4">
-            <div class="flex h-12 w-12 flex-col items-center justify-center rounded-xl bg-ecs-green/10 text-ecs-green dark:text-ecs-blue-400">
-                <span class="text-xs font-semibold uppercase">{{ e.month }}</span>
-                <span class="text-lg font-bold leading-none">{{ e.day }}</span>
+        <li class="flex items-center gap-4 px-5 py-4 min-h-11">
+            <div class="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg {{ _card_tile(section) }}">
+                <span class="{{ TYPE.E }}">{{ e.month }}</span>
+                <span class="text-lg font-bold leading-none tabular-nums">{{ e.day }}</span>
             </div>
             <div class="min-w-0">
-                <p class="font-semibold text-gray-900 dark:text-white truncate">{{ e.title }}</p>
-                <p class="text-sm text-gray-500 dark:text-gray-400 truncate">{{ e.when }}{% if e.location %} · {{ e.location }}{% endif %}</p>
+                <p class="font-semibold {{ _card_title_ink(section) }} truncate">{{ e.title }}</p>
+                <p class="{{ TYPE.S }} tabular-nums {{ _card_muted_ink(section) }} truncate">{{ e.when }}{% if e.location %} · {{ e.location }}{% endif %}</p>
             </div>
         </li>
-        {% else %}
-        <li class="px-5 py-4 text-sm text-gray-500 dark:text-gray-400">No upcoming events — check back soon.</li>
         {% endfor %}
     </ul>
-    <div class="mt-4">
-        <a href="{{ ctx.calendar_url }}" class="rounded text-sm font-semibold {{ _link_color(section) }} hover:underline {{ _ring(section) }}">Full calendar →</a>
+    <div class="mt-5">
+        <a href="{{ ctx.calendar_url }}" class="group/cal inline-flex items-center gap-1.5 rounded-lg text-sm font-semibold underline decoration-1 underline-offset-2 hover:decoration-2 {{ _link_color(section) }} {{ 'decoration-white/60' if _on_color(section) else 'decoration-ecs-green-ink/40 dark:decoration-ecs-green-300/40' }} {{ _ring(section) }}">
+            See the full calendar
+            <i class="ti ti-arrow-right transition-transform duration-150 ease-out group-hover/cal:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none" aria-hidden="true"></i>
+        </a>
     </div>
+    {% else %}
+    {# An empty calendar is the conversion moment, not a dead end (§ 7.7): say
+       what will appear here, and offer exactly one action. Never "check back
+       soon", never a dashed box with a centred icon. #}
+    <div class="rounded-xl bg-ecs-green/[0.05] ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.03] dark:ring-white/10 p-8 sm:p-10 text-left">
+        <p class="{{ TYPE.D4 }} {{ _heading_color(section) }}">Nothing on the schedule yet</p>
+        <p class="mt-3 {{ TYPE.B }} {{ _body_color(section) }} max-w-[65ch]">Kickabouts and match days land here as soon as they’re set. Get your name down now and you’ll be first to know.</p>
+        {% if join_url %}
+        <a href="{{ join_url }}" class="mt-6 {{ _btn_base(section) }} {{ _btn_variant('primary', _on_color(section)) }}">Come play with us</a>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 {% endmacro %}
 
 
 {% macro block_form(block, ctx, section, edit_mode) %}
+{# design.md § 7.2. The form is the page's object: it sits on the inset surface
+   and fills its column. Every field reserves a helper slot so an appearing
+   error never reflows the form; the required marker is the WORD "Required"
+   because red belongs to the error state alone.
+
+   f['prefill'] / f['errors'] / f['sent'] are read defensively — the mapping
+   test means this renders correctly against a renderer that supplies none of
+   them. (Never f.values / f.items / f.keys: those resolve to dict METHODS.) #}
 {% set f = ctx.dyn(block.id) %}
+{% set on = _on_color(section) %}
 <div class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }} data-dynamic="form">
 {% if f %}
-    <form method="post" action="{{ f.action }}" class="space-y-4 max-w-xl">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        {# Honeypot — hidden from humans, filled by naive bots. #}
-        <div class="hidden" aria-hidden="true"><input type="text" name="_hp" tabindex="-1" autocomplete="off"></div>
-        {% for field in f.fields %}
-        <div>
-            <label for="f-{{ f.name }}-{{ field.name }}" class="block text-sm font-medium text-gray-900 dark:text-white">
-                {{ field.label }}{% if field.required %} <span class="text-red-500">*</span>{% endif %}
-            </label>
-            {% if field.type == 'textarea' %}
-            <textarea id="f-{{ f.name }}-{{ field.name }}" name="{{ field.name }}" rows="5" {{ 'required' if field.required }}
-                      class="mt-1.5 block w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-ecs-green focus:ring-ecs-green text-sm"></textarea>
-            {% elif field.type == 'select' %}
-            <select id="f-{{ f.name }}-{{ field.name }}" name="{{ field.name }}" {{ 'required' if field.required }}
-                    class="bg-white text-gray-900 mt-1.5 block w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-ecs-green focus:ring-ecs-green text-sm">
-                <option value="">Choose…</option>
-                {% for opt in field.options or [] %}<option>{{ opt }}</option>{% endfor %}
-            </select>
-            {% else %}
-            <input type="{{ 'email' if field.type == 'email' else 'text' }}" id="f-{{ f.name }}-{{ field.name }}" name="{{ field.name }}" {{ 'required' if field.required }}
-                   class="mt-1.5 block w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-ecs-green focus:ring-ecs-green text-sm">
-            {% endif %}
+{% set prefill = f['prefill'] if f['prefill'] is mapping else {} %}
+{% set errors = f['errors'] if f['errors'] is mapping else {} %}
+{% set autos = {'email': 'email', 'tel': 'tel', 'url': 'url'} %}
+    {# On a brand ground the panel goes DARKER, never lighter: bg-white/10 over
+       ecs-green-ink lightens the composite to (68,143,79) and the labels/help
+       text that clear on the band fall to 3.98:1 / 3.15:1 inside the panel. #}
+    <div class="w-full rounded-xl p-6 sm:p-8 ring-1 ring-inset {{ 'bg-black/15 ring-white/25' if on else 'bg-ecs-green/[0.05] ring-ecs-green-ink/15 dark:bg-white/[0.02] dark:ring-white/10' }}">
+    {% if f['sent'] %}
+        {# Success replaces the thing that succeeded. No toast, no modal. #}
+        <div role="status" tabindex="-1">
+            <p class="{{ TYPE.D4 }} {{ _heading_color(section) }}">Got it — thanks.</p>
+            <p class="mt-3 {{ TYPE.B }} {{ _body_color(section) }} max-w-[65ch]">{{ f['sent'] }}</p>
         </div>
-        {% endfor %}
-        {% if f.turnstile_sitekey %}
-        <div class="cf-turnstile" data-sitekey="{{ f.turnstile_sitekey }}"></div>
-        {% endif %}
-        <button type="submit"
-                class="inline-flex items-center gap-2 rounded-full bg-ecs-green px-6.5 py-3 text-base font-semibold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none {{ _ring(section) }}">
-            <i class="ti ti-send"></i> {{ f.submit_label or 'Send' }}
-        </button>
-    </form>
+    {% else %}
+        <form method="post" action="{{ f.action }}" class="space-y-5" id="form-{{ f.name }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {# Honeypot — hidden from humans, filled by naive bots. #}
+            <div class="hidden" aria-hidden="true"><input type="text" name="_hp" tabindex="-1" autocomplete="off"></div>
+            {% if errors %}
+            <div role="alert" tabindex="-1" id="form-{{ f.name }}-errors" class="rounded-lg px-4 py-3 ring-1 ring-inset {{ 'bg-black/25 ring-white/60' if on else 'bg-white ring-red-600 dark:bg-white/[0.05] dark:ring-red-400' }}">
+                <p class="text-sm font-semibold {{ 'text-white' if on else 'text-red-700 dark:text-red-400' }}">Almost there — check the highlighted fields below.</p>
+            </div>
+            {% endif %}
+            {% for field in f.fields %}
+            {% set fid = 'f-' ~ f.name ~ '-' ~ field.name %}
+            {% set err = errors.get(field.name) %}
+            {% set auto = field.autocomplete or autos.get(field.type) or ('name' if field.name in ('name', 'full_name', 'fullname') else 'off') %}
+            <div>
+                <label for="{{ fid }}" class="block text-sm font-semibold {{ 'text-white' if on else 'text-gray-900 dark:text-white' }}">
+                    {{ field.label }}{% if field.required %}<span class="ml-1.5 text-sm font-normal {{ 'text-white' if on else 'text-gray-500 dark:text-gray-400' }}">Required</span>{% endif %}
+                </label>
+                <div class="mt-1.5">
+                {% if field.type == 'textarea' %}
+                    <textarea id="{{ fid }}" name="{{ field.name }}" rows="5" class="{{ FIELD }}"
+                              {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}
+                              {% if field.maxlength %}maxlength="{{ field.maxlength }}"{% endif %}
+                              autocomplete="{{ auto }}" aria-describedby="{{ fid }}-help"
+                              {% if field.required %}required aria-required="true"{% endif %}
+                              {% if err %}aria-invalid="true"{% endif %}>{{ prefill.get(field.name, '') }}</textarea>
+                {% elif field.type == 'select' %}
+                    <select id="{{ fid }}" name="{{ field.name }}" class="{{ FIELD }} [&>option]:bg-white dark:[&>option]:bg-gray-900"
+                            aria-describedby="{{ fid }}-help"
+                            {% if field.required %}required aria-required="true"{% endif %}
+                            {% if err %}aria-invalid="true"{% endif %}>
+                        <option value="" disabled {{ 'selected' if not prefill.get(field.name) }}>{{ field.placeholder or 'Choose…' }}</option>
+                        {% for opt in field.options or [] %}<option {{ 'selected' if prefill.get(field.name) == opt }}>{{ opt }}</option>{% endfor %}
+                    </select>
+                {% else %}
+                    <input type="{{ 'email' if field.type == 'email' else ('tel' if field.type == 'tel' else 'text') }}"
+                           id="{{ fid }}" name="{{ field.name }}" class="{{ FIELD }}"
+                           value="{{ prefill.get(field.name, '') }}"
+                           {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}
+                           {% if field.maxlength %}maxlength="{{ field.maxlength }}"{% endif %}
+                           autocomplete="{{ auto }}" aria-describedby="{{ fid }}-help"
+                           {% if field.required %}required aria-required="true"{% endif %}
+                           {% if err %}aria-invalid="true"{% endif %}>
+                {% endif %}
+                </div>
+                {# Always rendered, always the same height — an error appearing
+                   must not push the rest of the form down the page. #}
+                <p id="{{ fid }}-help" class="mt-1.5 min-h-5 text-sm {{ ('text-white' if on else 'text-red-700 dark:text-red-400') if err else ('text-white' if on else 'text-gray-600 dark:text-gray-300') }}">{{ err or field.help or '' }}</p>
+            </div>
+            {% endfor %}
+            {% if f.turnstile_sitekey %}
+            <div class="cf-turnstile min-h-[65px]" data-sitekey="{{ f.turnstile_sitekey }}" data-theme="auto"></div>
+            {% endif %}
+            <button type="submit" class="{{ _btn_base(section) }} {{ _btn_variant('primary', on) }}">
+                <i class="ti ti-send text-lg" aria-hidden="true"></i> {{ f.submit_label or 'Send' }}
+            </button>
+        </form>
+    {% endif %}
+    </div>
 {% else %}
-    <p class="text-sm text-gray-500 dark:text-gray-400">This form isn't available right now.</p>
+    <p class="{{ TYPE.B }} {{ _muted_color(section) }}">This form isn’t available right now — email us instead and we’ll pick it up.</p>
 {% endif %}
 </div>
 {% endmacro %}
 
 
 {% macro block_quote(block, ctx, section, edit_mode) %}
-<blockquote class="border-l-4 border-ecs-green pl-6 text-xl font-medium leading-relaxed {{ _body_color(section) }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
-    <div>{{ block.html | safe }}</div>
-    {% if block.attribution %}<footer class="mt-2 text-sm not-italic font-semibold {{ _heading_color(section) }}">— {{ block.attribution }}</footer>{% endif %}
+{# No left side-stripe (the named tell). A short brand rule above, display type
+   for the quote itself, attribution at S. Long quotes step D2 -> D3 so a pull
+   quote never outruns the page's own h1. #}
+{% set n = (block.html | striptags | length) %}
+<blockquote class="{{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+    <span class="block w-12 border-t-2 {{ 'border-white/70' if _on_color(section) else 'border-ecs-green-ink dark:border-ecs-green-300' }}" aria-hidden="true"></span>
+    <div class="mt-6 {{ TYPE.D2 if n <= 160 else TYPE.D3 }} {{ _heading_color(section) }} [&_p]:mt-[0.5em] [&_p]:first:mt-0">{{ block.html | safe }}</div>
+    {% if block.attribution %}<footer class="mt-5 {{ TYPE.S }} font-semibold not-italic {{ _muted_color(section) }}">— {{ block.attribution }}</footer>{% endif %}
 </blockquote>
 {% endmacro %}
 
 
 {% macro block_divider(block, ctx, section, edit_mode) %}
-<hr class="border-ecs-green/20 dark:border-ecs-green/25 {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+<hr class="{{ 'border-white/30' if _on_color(section) else 'border-ecs-green-ink/25 dark:border-white/15' }} {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
 {% endmacro %}
 
 
@@ -417,11 +866,11 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% if not block['items'] %}{{ _placeholder(edit_mode, block, 'Add stats') }}{% else %}
 {% set ncols = [block['items'] | length, 4] | min %}
 {% set colcls = {1: 'sm:grid-cols-1', 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4'} %}
-<dl class="grid grid-cols-2 gap-6 {{ colcls.get(ncols, 'sm:grid-cols-4') }} text-center {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+<dl class="grid grid-cols-2 gap-8 {{ colcls.get(ncols, 'sm:grid-cols-4') }} {{ _hide_mobile_grid(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     {% for it in block['items'] %}
     <div>
-        <dd class="text-4xl font-extrabold tabular-nums tracking-tight {{ 'text-white' if _on_color(section) else 'text-ecs-green dark:text-ecs-blue-400' }}">{{ it.value }}</dd>
-        <dt class="mt-1 text-sm font-medium {{ _body_color(section) }}">{{ it.label }}</dt>
+        <dd class="{{ TYPE.D2 }} tabular-nums {{ 'text-white' if _on_color(section) else 'text-ecs-green-ink dark:text-ecs-green-300' }}">{{ it.value }}</dd>
+        <dt class="mt-2 {{ TYPE.E }} {{ _muted_color(section) }}">{{ it.label }}</dt>
     </div>
     {% endfor %}
 </dl>
@@ -434,11 +883,17 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% set icons = {'discord': 'ti-brand-discord', 'instagram': 'ti-brand-instagram', 'facebook': 'ti-brand-facebook',
                 'bluesky': 'ti-brand-bluesky', 'twitter': 'ti-brand-x', 'youtube': 'ti-brand-youtube',
                 'tiktok': 'ti-brand-tiktok', 'email': 'ti-mail'} %}
-<div class="flex items-center gap-3 {{ _hide_mobile(block) }}"{{ _edit_attrs(block, edit_mode) }}>
+{% set labels = {'discord': 'Discord', 'instagram': 'Instagram', 'facebook': 'Facebook',
+                 'bluesky': 'Bluesky', 'twitter': 'X', 'youtube': 'YouTube',
+                 'tiktok': 'TikTok', 'email': 'Email'} %}
+<div class="flex flex-wrap items-center gap-3 {{ _hide_mobile_flex(block) }}"{{ _edit_attrs(block, edit_mode) }}>
     {% for it in block['items'] %}
-    <a href="{{ it.url }}" target="_blank" rel="noopener noreferrer"
-       class="flex h-10 w-10 items-center justify-center rounded-full transition duration-150 ease-out hover:-translate-y-0.5 motion-reduce:transform-none {{ 'bg-white/20 text-white hover:bg-white/30' if _on_color(section) else 'bg-ecs-green/10 text-gray-600 hover:bg-ecs-green/20 hover:text-ecs-green dark:bg-ecs-green/15 dark:text-gray-300 dark:hover:text-white' }} {{ _ring(section) }}">
-        <i class="ti {{ icons.get(it.kind, 'ti-link') }} text-xl"></i>
+    {# target=_blank only for real navigations. A mailto: in a new tab opens and
+       abandons a blank window on every desktop browser. #}
+    <a href="{{ it.url }}" {% if it.url.startswith('http') %}target="_blank" rel="noopener noreferrer"{% endif %}
+       class="inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-150 ease-out motion-reduce:transition-none {{ 'bg-white/20 text-white hover:bg-white/30' if _on_color(section) else 'bg-ecs-green/10 text-ecs-green-ink hover:bg-ecs-green/20 dark:bg-ecs-green/15 dark:text-ecs-green-300 dark:hover:bg-ecs-green/25' }} {{ _ring(section) }}">
+        <i class="ti {{ icons.get(it.kind, 'ti-link') }} text-xl" aria-hidden="true"></i>
+        <span class="sr-only">{{ it.label or labels.get(it.kind, it.kind) }}</span>
     </a>
     {% endfor %}
 </div>
@@ -459,6 +914,7 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {%- elif block.type == 'button' %}{{ block_button(block, ctx, section, edit_mode) }}
 {%- elif block.type == 'cta_live' %}{{ block_cta_live(block, ctx, section, edit_mode) }}
 {%- elif block.type == 'card' %}{{ block_card(block, ctx, section, edit_mode) }}
+{%- elif block.type == 'callout' %}{{ block_callout(block, ctx, section, edit_mode) }}
 {%- elif block.type == 'gallery' %}{{ block_gallery(block, ctx, section, edit_mode) }}
 {%- elif block.type == 'video' %}{{ block_video(block, ctx, section, edit_mode) }}
 {%- elif block.type == 'map' %}{{ block_map(block, ctx, section, edit_mode) }}
@@ -483,30 +939,48 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 {% macro section_hero(section, ctx, edit_mode) %}
 {% set s = section.settings %}
-{% set pads = {'sm': 'py-20 sm:py-24', 'md': 'py-24 sm:py-32 lg:py-36', 'lg': 'py-28 sm:py-40 lg:py-48', 'xl': 'py-32 sm:py-48 lg:py-60'} %}
-{% set grads = {'none': '', 'light': 'from-ecs-green-dark/70 via-ecs-green/35 to-transparent',
-                'medium': 'from-ecs-green-dark/90 via-ecs-green/60 to-ecs-green/20',
-                'heavy': 'from-ecs-green-dark/95 via-ecs-green/85 to-ecs-green/55'} %}
+{# Bottom-weighted hero padding (design.md § 5.1). The fold budget is measured
+   at 1280x800: header 80 + top pad + a capped D1 + lede + one CTA row must
+   leave the primary action ABOVE the fold. #}
+{% set pads = {'sm': 'pt-16 pb-24 sm:pt-20 sm:pb-28',
+               'md': 'pt-20 pb-28 sm:pt-24 sm:pb-36 lg:pt-28 lg:pb-40',
+               'lg': 'pt-24 pb-32 sm:pt-28 sm:pb-40 lg:pt-32 lg:pb-44',
+               'xl': 'pt-28 pb-40 sm:pt-32 sm:pb-48 lg:pt-36 lg:pb-56'} %}
+{# The overlay IS the legibility treatment — it is the ground under white text,
+   so it is ecs-green-INK, not ecs-green. There is no second bottom scrim. #}
+{% set grads = {'none': '',
+                'light': 'from-ecs-green-ink/75 via-ecs-green-ink/40 to-transparent',
+                'medium': 'from-ecs-green-ink/92 via-ecs-green-ink/65 to-ecs-green-ink/25',
+                'heavy': 'from-ecs-green-ink/96 via-ecs-green-ink/88 to-ecs-green-ink/60'} %}
 {% set img = ctx.image(s.image) if s.image else none %}
 {# On screens wider than 1920 the hero's content-driven height stays ~fixed while
    the width grows, so object-cover zooms the image up and crops heads. Grow a
    min-height only ABOVE 1920 (1920 and below are unchanged) so ultrawide keeps a
-   sensible aspect and the subject stays in frame. Per-image framing is the
-   focal-point control (separate editor work). #}
-<section class="relative overflow-hidden {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if img }} {{ 'bg-linear-to-br from-ecs-green to-ecs-green-dark' if not img and not s.bg_color }}"
+   sensible aspect and the subject stays in frame. These stay until a >=2400px
+   hero source lands (that asset is a user TODO, not a template fix). #}
+<section class="relative overflow-hidden {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if img }} {{ 'bg-ecs-green-ink' if not img and not s.bg_color }}"
          {% if s.bg_color and not img %}style="background-color: {{ s.bg_color }};"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="hero"{% endif %}>
     {% if img %}
     <div class="absolute inset-0">
-        <img src="{{ img.url }}" {% if img.srcset %}srcset="{{ img.srcset }}" sizes="100vw"{% endif %}
-             alt="{{ img.alt }}" class="h-full w-full object-cover" style="object-position: {{ img.focal_css }};">
-        {% if s.overlay != 'none' %}<div class="absolute inset-0 bg-linear-to-r {{ grads.get(s.overlay, grads['medium']) }}"></div>{% endif %}
-        <div class="absolute inset-0 bg-linear-to-t from-gray-950/50 via-transparent to-transparent"></div>
+        {# LCP element: srcset + width/height + focal point + fetchpriority, and
+           deliberately no loading="lazy". #}
+        {{ _img_tag(s.image, ctx, class='h-full w-full object-cover', sizes='100vw', priority=True) }}
+        {# Direction is RESPONSIVE. A left-to-right scrim is sized for a max-w-2xl
+           text column inside a wide viewport; at 320px that column is ~90% of the
+           width, so the end of every line lands on the weakest stop (1.5:1). Top-to-
+           bottom puts the strong stop under the whole headline on a phone. #}
+        {% if s.overlay != 'none' %}<div class="absolute inset-0 bg-linear-to-b sm:bg-linear-to-r {{ grads.get(s.overlay, grads['medium']) }}"></div>{% endif %}
     </div>
     {% endif %}
     <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ pads.get(s.size, pads['md']) }}">
-        <div class="max-w-2xl {{ 'mx-auto text-center' if s.align == 'center' else ('ml-auto text-right' if s.align == 'right' else '') }} space-y-6 [&>*:first-child]:mt-0">
-            {% for block in section.blocks %}{{ render_block(block, ctx, section, edit_mode) }}{% endfor %}
+        <div class="max-w-2xl {{ 'mx-auto text-center' if s.align == 'center' else ('ml-auto text-right' if s.align == 'right' else '') }}
+                    {# Whenever there IS a photo. The shadow costs nothing over a
+                       heavy overlay and is the difference between 1.5:1 and legible
+                       over the light/medium ones — and 'medium' is the DEFAULT. #}
+                    {{ '[text-shadow:0_2px_12px_rgb(0_0_0/0.35)]' if img }}
+                    {{ RHYTHM }} {{ '[&>*]:mx-auto' if s.align == 'center' }}">
+            {{ _render_blocks(section.blocks, ctx, section, edit_mode) }}
         </div>
     </div>
 </section>
@@ -515,15 +989,24 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 
 {% macro section_content(section, ctx, edit_mode) %}
 {% set s = section.settings %}
-{% set widths = {'narrow': 'max-w-3xl', 'normal': 'max-w-5xl', 'wide': 'max-w-7xl'} %}
+{# slot: 'head' (design.md § 6.4) keeps a heading in the SAME <section> as the
+   thing it labels, instead of stranding it in its own centred section ~96px
+   and a rule away. Blocks with no slot behave exactly as they did. #}
+{% set head = section.blocks | selectattr('slot', 'equalto', 'head') | list %}
+{% set body = section.blocks | rejectattr('slot', 'equalto', 'head') | list %}
 {# Optional per-section fill (hex-validated in the schema). #}
 {%- set _fill %}{% if s.bg_color %}background-color:{{ s.bg_color }};{% endif %}{% if s.text_color %}color:{{ s.text_color }};{% endif %}{% endset -%}
 <section class="{{ THEME_SECTION.get(section.theme, '') }} {{ PAD.get(s.padding, PAD['md']) }}"
          {% if _fill %}style="{{ _fill }}"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="content"{% endif %}>
-    <div class="mx-auto {{ widths.get(s.width, 'max-w-5xl') }} px-4 sm:px-6 lg:px-8 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">
-        <div class="space-y-6 {{ '*:mx-auto' if s.align == 'center' else '' }}">
-            {% for block in section.blocks %}{{ render_block(block, ctx, section, edit_mode) }}{% endfor %}
+    <div class="mx-auto {{ WIDTHS.get(s.width, 'max-w-5xl') }} px-4 sm:px-6 lg:px-8 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">
+        {% if head %}
+        <div class="mx-auto max-w-3xl mb-10 sm:mb-14 {{ RHYTHM }} {{ '[&>*]:mx-auto' if s.align == 'center' }}">
+            {{ _render_blocks(head, ctx, section, edit_mode) }}
+        </div>
+        {% endif %}
+        <div class="{{ RHYTHM }} {{ '[&>*]:mx-auto' if s.align == 'center' }}">
+            {{ _render_blocks(body, ctx, section, edit_mode) }}
         </div>
     </div>
 </section>
@@ -535,22 +1018,47 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {# Split Studio gutter discipline: two-column sections read as a diptych — a clear,
    generous gutter between halves and no rule. Column ORDER is deliberately left alone;
    the volunteer chose which blocks sit in which column, and silently reversing that
-   would override an authoring decision they cannot undo. #}
-{% set layouts = {'50-50': 'grid gap-10 lg:grid-cols-2 lg:gap-14',
-                  '33-67': 'grid gap-10 lg:grid-cols-[1fr_2fr] lg:gap-14',
-                  '67-33': 'grid gap-10 lg:grid-cols-[2fr_1fr] lg:gap-14',
+   would override an authoring decision they cannot undo.
+
+   EVERY layout takes an sm: step before its md:/lg: one (C8, design.md § 11).
+   The asymmetric pair go 1 -> even 2-up at sm: -> their real ratio at md:, so a
+   page never changes column discipline between two adjacent sections across the
+   640-767px band. (design.md § 6.1's own map omits the sm: step for these two and
+   contradicts its § 11; § 11 is the binding half.)
+
+   Every arbitrary track is minmax(0,1fr): a bare 1fr track cannot shrink below its
+   image's intrinsic width, which is how a grid silently starts scrolling sideways. #}
+{% set layouts = {'50-50': 'grid gap-8 sm:grid-cols-2 sm:gap-10 lg:gap-14',
+                  '33-67': 'grid gap-8 sm:grid-cols-2 sm:gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-10 lg:gap-14',
+                  '67-33': 'grid gap-8 sm:grid-cols-2 sm:gap-10 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] md:gap-10 lg:gap-14',
                   '3col': 'grid gap-8 sm:grid-cols-2 lg:grid-cols-3 lg:gap-10'} %}
 {% set ncols = 3 if s.layout == '3col' else 2 %}
+{# Two-column sections centre by default so a tall photo doesn't leave a column
+   of dead air beside short copy. 'start' is the opt-out. #}
+{% set valign = 'lg:items-start' if s.align == 'start' or ncols == 3 else 'lg:items-center' %}
+{% set head = section.blocks | selectattr('slot', 'equalto', 'head') | list %}
+{% set body = section.blocks | rejectattr('slot', 'equalto', 'head') | list %}
 <section class="{{ THEME_SECTION.get(section.theme, '') }} {{ PAD.get(s.padding, PAD['md']) }}"
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="columns"{% endif %}>
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div class="{{ layouts.get(s.layout, layouts['3col']) }}">
+        {% if head %}
+        <div class="max-w-3xl mb-10 sm:mb-14 {{ RHYTHM }}">
+            {{ _render_blocks(head, ctx, section, edit_mode) }}
+        </div>
+        {% endif %}
+        <div class="{{ layouts.get(s.layout, layouts['3col']) }} {{ valign }}">
             {% for col in range(ncols) %}
-            <div class="space-y-6 min-w-0" {% if edit_mode %}data-col="{{ col }}"{% endif %}>
-                {# Fold any block whose col exceeds the layout (e.g. a 3-col card
-                   after switching to a 2-col layout) into the last column, so
-                   it never silently vanishes from the page. #}
-                {% for block in section.blocks if (block.col or 0) == col or (col == ncols - 1 and (block.col or 0) >= ncols) %}{{ render_block(block, ctx, section, edit_mode) }}{% endfor %}
+            {# Fold any block whose col exceeds the layout (e.g. a 3-col card
+               after switching to a 2-col layout) into the last column, so it
+               never silently vanishes from the page. #}
+            {% set colblocks = [] %}
+            {% for block in body if (block.col or 0) == col or (col == ncols - 1 and (block.col or 0) >= ncols) %}{% set _ = colblocks.append(block) %}{% endfor %}
+            <div class="{{ RHYTHM }} {{ COL_RHYTHM }}" {% if edit_mode %}data-col="{{ col }}"{% endif %}>
+                {# _render_blocks, not a bare render_block loop: RHYTHM zeroes the
+                   gap between two adjacent button blocks BECAUSE a flex row is
+                   supposed to be handling that spacing. Without the row, two
+                   buttons in a column render stacked and touching. #}
+                {{ _render_blocks(colblocks, ctx, section, edit_mode) }}
             </div>
             {% endfor %}
         </div>
@@ -562,13 +1070,15 @@ bg-ecs-blue-600 text-white shadow-lg hover:bg-ecs-blue-700
 {% macro section_band(section, ctx, edit_mode) %}
 {% set s = section.settings %}
 {% set theme = section.theme if section.theme != 'inherit' else 'brand' %}
+{# Reads PAD like every other section — the hardcoded py-20 sm:py-24 is why
+   every band on the site used to be exactly the same height. #}
 {%- set _fill %}{% if s.bg_color %}background-color:{{ s.bg_color }};{% endif %}{% if s.text_color %}color:{{ s.text_color }};{% endif %}{% endset -%}
-<section class="{{ THEME_SECTION.get(theme, THEME_SECTION['brand']) }}"
+<section class="{{ THEME_SECTION.get(theme, THEME_SECTION['brand']) }} {{ PAD.get(s.padding, PAD['lg']) }}"
          {% if _fill %}style="{{ _fill }}"{% endif %}
          {% if edit_mode %}data-sid="{{ section.id }}" data-stype="band"{% endif %}>
-    <div class="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">
-        <div class="space-y-6 {{ 'max-w-2xl mx-auto' if s.align == 'center' else 'max-w-3xl' }}">
-            {% for block in section.blocks %}{{ render_block(block, ctx, section, edit_mode) }}{% endfor %}
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ 'text-center' if s.align == 'center' else ('text-right' if s.align == 'right' else '') }}">
+        <div class="{{ 'max-w-2xl mx-auto' if s.align == 'center' else 'max-w-3xl' }} {{ RHYTHM }} {{ '[&>*]:mx-auto' if s.align == 'center' }}">
+            {{ _render_blocks(section.blocks, ctx, section, edit_mode) }}
         </div>
     </div>
 </section>

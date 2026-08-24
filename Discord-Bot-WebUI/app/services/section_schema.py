@@ -46,12 +46,20 @@ OVERLAYS = ('none', 'light', 'medium', 'heavy')
 WIDTHS = ('narrow', 'normal', 'wide')
 IMAGE_SIZES = ('s', 'm', 'l', 'full')
 ASPECTS = ('natural', '16:9', '4:3', '1:1')
+COLUMN_ALIGNS = ('start', 'center')
 COLUMN_LAYOUTS = ('50-50', '33-67', '67-33', '3col')
 GALLERY_LAYOUTS = ('grid-2', 'grid-3', 'grid-4', 'carousel')
 BUTTON_STYLES = ('primary', 'secondary', 'outline')
 CTA_KINDS = ('waitlist_or_register', 'division_classic', 'division_premier',
              'how_to_join', 'contact')
 HEADING_LEVELS = (1, 2, 3, 4)
+# Heading emphasis tiers. 'lead' is the page's argument heading (rendered a step
+# up); 'default' is an ordinary section heading.
+PROMINENCES = ('lead', 'default')
+# A block carrying slot='head' is pulled out of the body flow and rendered as
+# the section's header, in the SAME <section> as the content it introduces.
+# Only the two section types whose macros implement a header region honour it.
+SLOTTED_SECTION_TYPES = ('content', 'columns')
 BUILTIN_LINKS = ('home', 'about', 'faqs', 'news', 'calendar', 'register',
                  'contact', 'guide', 'guests')
 SOCIAL_KINDS = ('discord', 'instagram', 'facebook', 'bluesky', 'twitter',
@@ -169,8 +177,13 @@ def _link_ref(value, notes, where):
 # caller manages) or None to drop the block.
 
 def _v_heading(b, notes, w):
+    # `prominence` is the two-tier h2 scale: 'lead' marks the one or two
+    # ARGUMENT headings on a page and renders a step larger than the default
+    # section heading. It must survive validation — macros.html branches on it,
+    # and a stripped key silently flattens every h2 on the site to one size.
     return {'level': _enum(b.get('level'), HEADING_LEVELS, 2),
             'html': _html(b.get('html'), notes, w),
+            'prominence': _enum(b.get('prominence'), PROMINENCES, 'default'),
             'align': _enum(b.get('align'), ALIGNS, 'left')}
 
 
@@ -395,6 +408,12 @@ def _validate_block(raw, notes, where, is_admin, section_type):
         block['hide_mobile'] = True
     if section_type == 'columns':
         block['col'] = _int(raw.get('col'), 0, 2, 0)
+    # Preserved OUTSIDE the per-type validators because it is a layout role that
+    # any block type may carry, not a property of one block. Gated to the
+    # section types whose macros actually render a header region, so a stray
+    # slot on a hero/band can't quietly remove a block from the page.
+    if raw.get('slot') == 'head' and section_type in SLOTTED_SECTION_TYPES:
+        block['slot'] = 'head'
     block.update(cleaned)
     return block
 
@@ -419,6 +438,13 @@ def _section_settings(stype, raw, notes, where):
         out['align'] = _enum(s.get('align'), ALIGNS, 'left')
     elif stype == 'columns':
         out['layout'] = _enum(s.get('layout'), COLUMN_LAYOUTS, '3col')
+        # VERTICAL alignment of the columns against each other, not text align —
+        # hence its own ('start', 'center') vocabulary rather than ALIGNS. A
+        # two-column image+text row centres by default so the copy sits opposite
+        # the middle of the photo; 'start' is the opt-out for columns of very
+        # uneven length. (Three-column layouts always top-align; the macro
+        # enforces that and ignores this setting.)
+        out['align'] = _enum(s.get('align'), COLUMN_ALIGNS, 'center')
     elif stype == 'band':
         out['align'] = _enum(s.get('align'), ALIGNS, 'center')
     # Common knobs

@@ -12,6 +12,15 @@
  *   - client-side full-text search with jump-to-match + flash highlight
  *   - back-to-top button
  *
+ * Design contract (design.md): every class string below is a COMPLETE STATIC
+ * STRING — tailwind.config.js scans app/static/js/**, but a concatenated class
+ * name is purged silently. Colour is var-backed only (`ecs-green-ink` /
+ * `ecs-green-300` for ink, flat `ecs-green` for fills and tints, `paper` /
+ * `paper-dark` for grounds); every colour utility carries a `dark:` pair (C7);
+ * transitions name their properties and carry `motion-reduce:` (§ 8); icon-only
+ * controls get an `sr-only` label and `aria-hidden` glyphs (§ 7.9); interactive
+ * rows clear the 44px floor with `min-h-11` (C8).
+ *
  * No jQuery on purpose — the Vite inject() plugin only adds the import when
  * `$` is referenced, and this must stay a small standalone chunk.
  */
@@ -19,6 +28,18 @@
 const MIN_CHAPTERS = 3;        // below this the page isn't "long" — do nothing
 const SEARCH_MIN_CHARS = 2;
 const SEARCH_MAX_RESULTS = 40;
+
+/* This toolbar is h-12 and sticks directly under the site header, so it is part
+   of the sticky stack the shell measures in --sticky-stack. See the single
+   scroll-padding-top adjustment in init(). */
+const BAR_HEIGHT = '3rem';
+
+/* design.md § 8: smooth scrolling is opt-in per user. Read the query at call
+   time (not once at load) so a mid-session OS change is honoured. */
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+function scrollBehavior() {
+  return reduceMotion.matches ? 'auto' : 'smooth';
+}
 
 function esc(s) {
   return s.replace(/[&<>"']/g, (c) => ({
@@ -83,6 +104,8 @@ function buildSearchIndex(main, chapters) {
   return index;
 }
 
+/* Flat `ecs-green` is a FILL, never an ink — as a 20/30% wash behind inherited
+   body ink it stays a tint, which is the one job it has (design.md § 3.1). */
 function snippet(text, q) {
   const at = text.toLowerCase().indexOf(q.toLowerCase());
   const start = Math.max(0, at - 40);
@@ -90,12 +113,13 @@ function snippet(text, q) {
   const pre = (start > 0 ? '…' : '') + esc(text.slice(start, at));
   const hit = esc(text.slice(at, at + q.length));
   const post = esc(text.slice(at + q.length, end)) + (end < text.length ? '…' : '');
-  return `${pre}<mark class="bg-ecs-green/20 dark:bg-ecs-green/30 text-inherit rounded-xs px-0.5">${hit}</mark>${post}`;
+  return `${pre}<mark class="bg-ecs-green/20 px-0.5 text-inherit dark:bg-ecs-green/30">${hit}</mark>${post}`;
 }
 
 function flashTarget(el) {
   const box = el.closest('li, dd, dt, p, h2, h3, h4') || el;
-  box.classList.add('transition-colors', 'duration-700', 'rounded-lg',
+  box.classList.add('transition-colors', 'duration-700', 'ease-out',
+    'motion-reduce:transition-none', 'rounded-lg',
     'bg-ecs-green/15', 'dark:bg-ecs-green/25');
   setTimeout(() => box.classList.remove('bg-ecs-green/15', 'dark:bg-ecs-green/25'), 1600);
 }
@@ -113,56 +137,40 @@ function init() {
   if (inlineToc) (inlineToc.closest('section') || inlineToc).classList.add('hidden');
 
   // ---- Toolbar ----------------------------------------------------------
+  // top-[var(--sticky-stack)] parks the bar exactly on the shell's own measure
+  // of the pinned chrome (header height + admin bar), so it tracks the sm:
+  // breakpoint and the admin bar without a resize listener or a JS offset.
   const bar = document.createElement('div');
-  bar.className = 'sticky z-30 border-b border-gray-200 dark:border-gray-800 '
-    + 'bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm';
-  // The site header is sticky with a variable top (admin bar shifts it), so
-  // compute our resting offset from it instead of hardcoding top-16.
-  const hdr = document.querySelector('header');
-  const hdrTop = hdr ? (parseFloat(getComputedStyle(hdr).top) || 0) : 0;
-  const barTop = hdrTop + (hdr ? hdr.offsetHeight : 64);
-  bar.style.top = `${barTop}px`;
-
-  // Anchor clearance: the macro's scroll-mt-24 (96px) predates this toolbar —
-  // header + bar is ~112px (more with the admin bar), so jumped-to headings
-  // would tuck underneath. Inline style wins over the class.
-  const anchorClearance = `${barTop + 48 + 16}px`;
-  main.querySelectorAll('h2, h3').forEach((h) => {
-    h.style.scrollMarginTop = anchorClearance;
-  });
+  bar.className = 'sticky top-[var(--sticky-stack)] z-30 border-b border-ecs-green-ink/20 '
+    + 'bg-paper/95 backdrop-blur-sm dark:border-white/10 dark:bg-paper-dark/95';
 
   bar.innerHTML = `
     <div class="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-      <div class="flex h-12 items-center gap-2">
-        <button type="button" data-guide-toggle aria-expanded="false"
-                class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold
-                       text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-          <i class="ti ti-list-details text-base"></i>
-          <span class="hidden sm:inline">Contents</span>
-          <i class="ti ti-chevron-down text-xs transition-transform" data-guide-chevron></i>
+      <div class="flex h-12 items-center gap-1 sm:gap-2">
+        <button type="button" data-guide-toggle aria-expanded="false" aria-controls="guide-toc-panel"
+                class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-gray-800 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-200 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+          <i class="ti ti-list-details text-base" aria-hidden="true"></i>
+          <span class="sr-only sm:not-sr-only">Contents</span>
+          <i class="ti ti-chevron-down text-xs transition-transform duration-150 ease-out motion-reduce:transition-none" aria-hidden="true" data-guide-chevron></i>
         </button>
-        <span class="min-w-0 flex-1 truncate text-sm text-gray-500 dark:text-gray-400" data-guide-current></span>
+        <span class="min-w-0 flex-1 truncate text-sm text-gray-600 dark:text-gray-300" aria-hidden="true" data-guide-current></span>
         <button type="button" data-guide-search-open aria-label="Search the guide"
-                class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium
-                       text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-          <i class="ti ti-search text-base"></i>
-          <span class="hidden sm:inline">Search</span>
+                class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-gray-600 transition-colors duration-150 ease-out hover:bg-ecs-green/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none dark:text-gray-300 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+          <i class="ti ti-search text-base" aria-hidden="true"></i>
+          <span class="sr-only sm:not-sr-only">Search</span>
         </button>
       </div>
-      <div class="absolute inset-x-0 bottom-0 h-0.5 bg-gray-100 dark:bg-gray-800">
-        <div class="h-full w-0 bg-ecs-green" data-guide-progress></div>
+      <div class="absolute inset-x-0 bottom-0 h-0.5 bg-ecs-green/10 dark:bg-white/10" aria-hidden="true">
+        <div class="h-full w-0 bg-ecs-green dark:bg-ecs-green-300" data-guide-progress></div>
       </div>
-      <div class="absolute inset-x-0 top-full hidden" data-guide-panel>
-        <div class="mx-2 sm:mx-4 mt-1 rounded-xl border border-gray-200 dark:border-gray-800
-                    bg-white dark:bg-gray-950 shadow-xl overflow-hidden">
-          <div class="border-b border-gray-100 dark:border-gray-800 p-3">
+      <div class="absolute inset-x-0 top-full hidden" id="guide-toc-panel" data-guide-panel>
+        <div class="mx-2 mt-1 overflow-hidden rounded-xl bg-white shadow-md ring-1 ring-inset ring-black/[0.07] sm:mx-4 dark:bg-paper-dark dark:shadow-none dark:ring-white/10">
+          <div class="border-b border-ecs-green-ink/15 p-3 dark:border-white/10">
             <div class="relative">
-              <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="ti ti-search pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400" aria-hidden="true"></i>
               <input type="search" data-guide-search placeholder="Search the guide…"
                      aria-label="Search the guide" autocomplete="off"
-                     class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900
-                            py-2 pl-9 pr-3 text-sm text-gray-900 dark:text-white placeholder-gray-400
-                            focus:border-ecs-green focus:ring-ecs-green/40 focus:ring-2 focus:outline-hidden">
+                     class="block min-h-11 w-full rounded-lg border-0 bg-white py-2.5 pl-10 pr-3.5 text-base text-gray-900 ring-1 ring-inset ring-gray-400/70 transition-[box-shadow] duration-150 ease-out placeholder:text-gray-500 hover:ring-gray-500 focus:outline-hidden focus:ring-2 focus:ring-ecs-blue-600 motion-reduce:transition-none dark:bg-white/[0.05] dark:text-white dark:ring-white/20 dark:placeholder:text-gray-400 dark:hover:ring-white/30 dark:focus:ring-ecs-green-300">
             </div>
           </div>
           <div class="max-h-[60vh] overflow-y-auto overscroll-contain p-2" data-guide-list></div>
@@ -170,6 +178,15 @@ function init() {
       </div>
     </div>`;
   main.prepend(bar);
+
+  // Anchor clearance stays a SINGLE declaration derived from the shell's own
+  // token — base_public.html sets html{scroll-padding-top:calc(var(--sticky-stack)
+  // + 1.5rem)} in @layer base, and this bar adds its own height to that stack.
+  // Adjusting the one scroll-padding is what keeps TOC jumps correct; per-heading
+  // scroll-margin would STACK on top of the shell's padding and overshoot every
+  // jump (design.md § 5.5).
+  document.documentElement.style.scrollPaddingTop =
+    `calc(var(--sticky-stack) + ${BAR_HEIGHT} + 1.5rem)`;
 
   const panel = bar.querySelector('[data-guide-panel]');
   const list = bar.querySelector('[data-guide-list]');
@@ -180,22 +197,25 @@ function init() {
   const progress = bar.querySelector('[data-guide-progress]');
 
   // ---- TOC / search result rendering ------------------------------------
-  const chapterLink = 'block rounded-lg px-3 py-2 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-900';
-  const subLink = 'block rounded-lg px-3 py-1.5 pl-8 text-sm hover:bg-gray-50 dark:hover:bg-gray-900';
+  // Shared row classes live OUTSIDE the active/inactive ternary so an active
+  // row can never lose its focus ring (design.md § 7.3).
+  const rowBase = 'flex w-full min-h-11 items-center rounded-lg py-2 text-sm transition-colors duration-150 ease-out hover:bg-ecs-green/[0.08] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:hover:bg-white/[0.06] dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark';
+  const chapterLink = `${rowBase} px-3 font-semibold`;
+  const subLink = `${rowBase} pl-10 pr-3`;
 
   function renderToc(activeId) {
     list.innerHTML = chapters.map((c, i) => {
       const on = c.el.id === activeId;
       const subs = c.subs.map((s) => {
         const sOn = s.el.id === activeId;
-        return `<a href="#${s.el.id}" class="${subLink} ${sOn
-          ? 'text-ecs-green dark:text-ecs-blue-400 font-medium'
-          : 'text-gray-600 dark:text-gray-300'}">${esc(s.title)}</a>`;
+        return `<a href="#${s.el.id}"${sOn ? ' aria-current="location"' : ''} class="${subLink} ${sOn
+          ? 'font-medium text-ecs-green-ink dark:text-ecs-green-300'
+          : 'text-gray-600 dark:text-gray-300'}"><span class="min-w-0">${esc(s.title)}</span></a>`;
       }).join('');
-      return `<a href="#${c.el.id}" class="${chapterLink} ${on
-        ? 'text-ecs-green dark:text-ecs-blue-400'
+      return `<a href="#${c.el.id}"${on ? ' aria-current="location"' : ''} class="${chapterLink} ${on
+        ? 'text-ecs-green-ink dark:text-ecs-green-300'
         : 'text-gray-900 dark:text-white'}">
-          <span class="mr-2 inline-block w-5 text-right text-xs font-normal text-gray-400">${i + 1}</span>${esc(c.title)}
+          <span class="mr-2 w-5 shrink-0 text-right text-xs font-normal tabular-nums text-gray-500 dark:text-gray-400" aria-hidden="true">${i + 1}</span><span class="min-w-0">${esc(c.title)}</span>
         </a>${subs}`;
     }).join('');
   }
@@ -210,23 +230,24 @@ function init() {
     hits.sort((a, b) => Number(b.isHeading) - Number(a.isHeading));
     hits = hits.slice(0, SEARCH_MAX_RESULTS);
     if (!hits.length) {
-      list.innerHTML = `<p class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+      list.innerHTML = `<p class="px-3 py-6 text-center text-sm text-gray-600 dark:text-gray-300">
         No matches for “${esc(q)}”.</p>`;
       return;
     }
     list.innerHTML = hits.map((h, i) => `
       <button type="button" data-guide-hit="${i}"
-              class="block w-full rounded-lg px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-900">
-        <span class="block text-[11px] font-semibold uppercase tracking-wide text-ecs-green dark:text-ecs-blue-400">
+              class="flex w-full min-h-11 flex-col justify-center gap-0.5 rounded-lg px-3 py-2 text-left transition-colors duration-150 ease-out hover:bg-ecs-green/[0.08] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:hover:bg-white/[0.06] dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+        <span class="block text-xs font-bold uppercase tracking-[0.14em] text-ecs-green-ink dark:text-ecs-green-300">
           ${esc(h.chapter.title)}</span>
-        <span class="block text-sm text-gray-700 dark:text-gray-300">${snippet(h.text, q)}</span>
+        <span class="block text-sm text-gray-700 dark:text-gray-200">${snippet(h.text, q)}</span>
       </button>`).join('');
     list.querySelectorAll('[data-guide-hit]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const hit = hits[Number(btn.dataset.guideHit)];
         closePanel();
-        hit.el.style.scrollMarginTop = anchorClearance;
-        hit.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // scroll-padding-top on <html> clears the sticky stack for us, so the
+        // hit element needs no scroll-margin of its own.
+        hit.el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
         flashTarget(hit.el);
       });
     });
@@ -269,7 +290,7 @@ function init() {
     if (target) {
       e.preventDefault();
       closePanel();
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      target.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
       history.pushState(null, '', a.getAttribute('href'));
     } else {
       closePanel();
@@ -284,12 +305,16 @@ function init() {
   // ---- Scrollspy + progress + back-to-top -------------------------------
   const topBtn = document.createElement('button');
   topBtn.type = 'button';
-  topBtn.setAttribute('aria-label', 'Back to top');
   topBtn.className = 'fixed bottom-5 right-5 z-30 hidden h-11 w-11 items-center justify-center '
-    + 'rounded-full bg-gray-900/80 dark:bg-gray-700/90 text-white shadow-lg backdrop-blur-sm '
-    + 'hover:bg-ecs-green transition';
-  topBtn.innerHTML = '<i class="ti ti-arrow-up text-lg"></i>';
-  topBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    + 'rounded-full bg-ecs-green-ink text-white shadow-md dark:bg-ecs-green-ink dark:text-white dark:shadow-none '
+    + 'transition-[background-color,transform,color] duration-150 ease-out hover:bg-ecs-green-ink/90 '
+    + 'active:translate-y-px active:shadow-none active:brightness-95 '
+    + 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink '
+    + 'focus-visible:ring-offset-2 focus-visible:ring-offset-paper '
+    + 'motion-reduce:transition-none motion-reduce:transform-none '
+    + 'dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark';
+  topBtn.innerHTML = '<i class="ti ti-arrow-up text-lg" aria-hidden="true"></i><span class="sr-only">Back to top</span>';
+  topBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: scrollBehavior() }));
   document.body.appendChild(topBtn);
 
   const spyTargets = [];

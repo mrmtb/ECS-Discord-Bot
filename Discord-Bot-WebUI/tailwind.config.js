@@ -45,10 +45,35 @@ export default {
           // for readable white text. Overridable via Appearance (--color-primary-rgb).
           DEFAULT: 'rgb(var(--color-primary-rgb, 64 176 80) / <alpha-value>)',
           dark: 'rgb(var(--color-primary-dark-rgb, 46 157 68) / <alpha-value>)',
+          // BRAND INK (public site). The DEFAULT green above is a FILL: at
+          // 2.78:1 on white it can neither be text nor sit under white text.
+          // `ink` is the same hue darkened until it clears 4.6:1 against the
+          // DARKEST tinted panel it may sit on (public_theme.INK_TINT_FLOOR),
+          // so it is the only green allowed to carry text, and the only green
+          // allowed under white text (brand bands, filled secondary buttons).
+          // Derived in public_theme._ink(), not typed in, so the Appearance
+          // colour picker cannot re-break it. The literal below only mirrors
+          // that derivation for the stock #40b050 — no portal page uses this
+          // stop, and the public shell always sets the var.
+          ink: 'rgb(var(--color-primary-ink-rgb, 44 120 54) / <alpha-value>)',
           50: '#f0fdf4',
           100: '#dcfce7',
           200: '#bbf7d0',
-          300: '#86efac',
+          // RE-BOUND (was the frozen Tailwind stop #86efac). This is now the
+          // brand ink IN DARK MODE — the same hue mixed toward white until it
+          // clears 5:1 on the dark page ground, so green stays green when the
+          // theme flips.
+          //
+          // THE FALLBACK MUST STAY EXACTLY #86efac (134 239 172). Only the
+          // PUBLIC shell emits --color-primary-on-dark-rgb; the portal loads
+          // this same stylesheet and never sets it, so the fallback is what 23
+          // live portal usages of `ecs-green-300` actually render (admin panel,
+          // feedback, store, season rollover, three event-delegation JS files).
+          // Putting the derived public value here instead silently re-tinted
+          // every one of them. Freezing it at the old stop keeps a public-site
+          // change from leaking into the portal, while the public :root always
+          // wins on the public site.
+          300: 'rgb(var(--color-primary-on-dark-rgb, 134 239 172) / <alpha-value>)',
           400: '#4ade80',
           500: '#22c55e',
           600: '#16a34a',
@@ -81,7 +106,18 @@ export default {
           50: '#eef1fb',
           100: '#d8def5',
           200: '#b3bdec',
-          300: '#8593de',
+          // RE-BOUND (was the frozen #8593de). The ACTION ink in dark mode,
+          // derived the same way as ecs-green-300. Public templates use this
+          // wherever they used to reach for `ecs-blue-400`.
+          //
+          // Same rule as ecs-green-300 above: the fallback stays EXACTLY
+          // #8593de (133 147 222) because the portal shares this stylesheet,
+          // never sets --color-blue-on-dark-rgb, and still ships live uses of
+          // `ecs-blue-300`. The public shell always sets the var, so the
+          // derived action ink is what the public site renders.
+          300: 'rgb(var(--color-blue-on-dark-rgb, 133 147 222) / <alpha-value>)',
+          // Kept for the portal. RETIRED from the public site: 2.79:1 on the
+          // dark ground, which is why it is not an ink anywhere.
           400: 'rgb(var(--color-blue-light-rgb, 94 111 208) / <alpha-value>)',
           500: '#3a49a8',
           600: 'rgb(var(--color-blue-rgb, 32 48 144) / <alpha-value>)',
@@ -89,6 +125,14 @@ export default {
           800: '#161f5e',
           900: '#121847',
         },
+        // PUBLIC-SITE PAGE GROUNDS. Neither is a neutral: `paper` is the
+        // primary mixed 97% toward white (a trace of the brand hue instead of
+        // a flat #fff) and `paper-dark` is a near-black carrying 6% of it.
+        // Both are derived in public_theme.theme_vars(), so the Appearance
+        // picker re-tints the paper along with everything else. Portal pages
+        // never set these vars and never use these utilities.
+        'paper': 'rgb(var(--color-paper-rgb, 249 253 250) / <alpha-value>)',
+        'paper-dark': 'rgb(var(--color-paper-dark-rgb, 9 20 12) / <alpha-value>)',
         // Dark theme backgrounds (matching Flowbite dark mode)
         'dark': {
           'bg': '#111827',
@@ -127,8 +171,22 @@ export default {
           'input': 'var(--color-border-input, #d1d5db)',        // Gray-300
         },
       },
+      // Two faces, bound to the Appearance screen's font pair. `--font-heading`
+      // / `--font-body` are emitted by public_theme.theme_vars() into the
+      // public shell's :root; the public default pair is Bricolage Grotesque
+      // headings + Inter body, both self-hosted (app/static/vendor/fonts/).
+      //
+      // THE IN-var() FALLBACKS ARE LOAD-BEARING, not belt-and-braces. Portal
+      // pages load tailwind.css but NOT the public shell, so --font-body /
+      // --font-heading are UNDEFINED there. A bare `var(--font-body)` would be
+      // invalid-at-computed-value-time on every portal page, which for an
+      // inherited property means `font-sans` silently resolves to whatever the
+      // parent is — e.g. the `font-sans` spans nested inside `font-mono`
+      // tables in the admin panel would render monospace. With the fallback,
+      // the declaration is always valid and the public :root simply wins.
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ["var(--font-heading, 'Bricolage Grotesque')", 'Bricolage Grotesque', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ["var(--font-body, 'Inter')", 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
       // Ft8 marquee footer (public site). Declared here rather than as a custom
       // <style> block so it stays inside Tailwind — the project rule is Tailwind
@@ -143,7 +201,7 @@ export default {
         },
       },
       animation: {
-        'marquee-x': 'marquee-x 40s linear infinite',
+        'marquee-x': 'marquee-x 32s linear infinite',
       },
     },
   },

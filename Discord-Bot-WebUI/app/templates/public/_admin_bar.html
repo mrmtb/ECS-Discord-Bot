@@ -5,48 +5,68 @@
   (View ⇄ Edit Page) that WordPress users expect.
 
   VISUAL PARITY: styled to match the site editor's toolbar
-  (site_editor_flowbite.html — white/dark-gray surface, h-9 rounded controls,
+  (site_editor_flowbite.html — white/dark surface, h-9 rounded controls,
   ecs_logo, green primary action) so viewing and editing feel like ONE tool.
-  Height is h-12 — base_public.html offsets (body pt-12, header top-12) must
-  match it. Rendered from base_public.html.
+  Height is h-12 — base_public.html offsets (body pt-12, header top-12, and the
+  3rem term inside --sticky-stack) must match it. Rendered from base_public.html.
+
+  The primary action fills with ecs-green-INK, not ecs-green: white on the raw
+  brand green is 2.78:1 and fails at any size (design.md § 3.1).
 #}
 {% if is_site_admin %}
-<div id="ecs-admin-bar" class="fixed top-0 inset-x-0 z-100 h-12 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm flex items-center gap-2 px-3">
+{% set _bar_ring = 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900 focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300' %}
+{# TAP TARGET vs VISUAL PARITY. The controls paint at h-9 (36px) to match the
+   site editor's toolbar, but 36px is under the 44px floor (C8) and this bar
+   renders over the LIVE site on a phone, where the pills sit 8px apart. A
+   transparent ::before extends each control's HIT AREA to 36+4+4 = 44px without
+   touching the painted box, so parity with site_editor_flowbite.html holds and
+   the h-12 bar (which base_public.html's pt-12 / top-12 / --sticky-stack all
+   mirror) does not move. Height, not width: inset-x-0 keeps neighbouring
+   targets from overlapping. #}
+{% set _bar_tap = "relative before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']" %}
+<div id="ecs-admin-bar" class="fixed top-0 inset-x-0 z-100 h-12 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm flex items-center gap-2 px-3">
     <a href="{{ url_for('admin_panel.public_site_hub') }}" title="Website admin"
-       class="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-        <img src="{{ url_for('static', filename='img/ecs_logo.png') }}" alt="ECS" class="h-6 w-6">
+       class="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 font-semibold {{ _bar_tap }} text-gray-700 dark:text-gray-200 transition-colors duration-150 ease-out hover:bg-gray-100 dark:hover:bg-gray-800 motion-reduce:transition-none {{ _bar_ring }}">
+        <img src="{{ url_for('static', filename='img/ecs_logo.png') }}" alt="" class="h-6 w-6">
         <span class="hidden sm:inline">ECS Pub League</span>
     </a>
 
     {% if edit_url is defined and edit_url %}
     <a href="{{ edit_url }}"
-       class="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ecs-green px-3 font-semibold text-white hover:bg-ecs-green-dark focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-        <i class="ti ti-edit"></i> Edit<span class="hidden sm:inline">&nbsp;this page</span>
+       class="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ecs-green-ink px-3 font-semibold {{ _bar_tap }} text-white transition-colors duration-150 ease-out hover:bg-ecs-green-ink/90 active:brightness-95 motion-reduce:transition-none {{ _bar_ring }}">
+        <i class="ti ti-edit" aria-hidden="true"></i> Edit<span class="hidden sm:inline">&nbsp;this page</span>
     </a>
     {% endif %}
 
-    {# + New (Page / Post) — hover for mouse, focus-within for touch/keyboard #}
-    <div class="relative group">
-        <button type="button"
-                class="inline-flex h-9 items-center gap-1 rounded-lg px-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-            <i class="ti ti-plus"></i> New <i class="ti ti-chevron-down text-xs"></i>
+    {# + New (Page / Post). Flowbite dropdown, NOT group-hover/group-focus-within:
+       iOS Safari never fires :focus-within on a clicked <button>, so the old
+       version was unreachable on an iPad. Flowbite gives click, Escape and
+       outside-click for free and keeps aria-expanded in sync. #}
+    <div class="relative">
+        <button type="button" id="ecs-admin-new-btn"
+                data-dropdown-toggle="ecs-admin-new" data-dropdown-placement="bottom-start" data-dropdown-offset-distance="6"
+                aria-haspopup="true" aria-expanded="false" aria-controls="ecs-admin-new"
+                class="group inline-flex h-9 items-center gap-1 rounded-lg px-2.5 {{ _bar_tap }} text-gray-600 dark:text-gray-300 transition-colors duration-150 ease-out hover:bg-gray-100 dark:hover:bg-gray-800 motion-reduce:transition-none {{ _bar_ring }}">
+            <i class="ti ti-plus" aria-hidden="true"></i> New
+            <i class="ti ti-chevron-down text-xs transition-transform duration-150 ease-out group-aria-expanded:rotate-180 motion-reduce:transition-none" aria-hidden="true"></i>
         </button>
-        <div class="absolute left-0 top-full hidden group-hover:block group-focus-within:block pt-1 min-w-40 z-50">
-            <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1">
-                <a href="{{ url_for('admin_panel.public_site_page_new') }}" class="block px-3 py-1.5 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">Page</a>
-                <a href="{{ url_for('admin_panel.public_site_news_new') }}" class="block px-3 py-1.5 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">Post</a>
-            </div>
+        <div id="ecs-admin-new" class="z-50 hidden min-w-40 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-md p-1">
+            <a href="{{ url_for('admin_panel.public_site_page_new') }}" class="flex min-h-11 items-center rounded-lg px-3 text-gray-700 dark:text-gray-200 transition-colors duration-150 ease-out hover:bg-gray-100 dark:hover:bg-gray-800 motion-reduce:transition-none {{ _bar_ring }}">Page</a>
+            <a href="{{ url_for('admin_panel.public_site_news_new') }}" class="flex min-h-11 items-center rounded-lg px-3 text-gray-700 dark:text-gray-200 transition-colors duration-150 ease-out hover:bg-gray-100 dark:hover:bg-gray-800 motion-reduce:transition-none {{ _bar_ring }}">Post</a>
         </div>
     </div>
 
     <div class="ml-auto flex items-center gap-1">
         <a href="{{ portal_url('main.index') }}"
-           class="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-            <i class="ti ti-layout-dashboard"></i> Dashboard
+           class="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 {{ _bar_tap }} text-gray-600 dark:text-gray-300 transition-colors duration-150 ease-out hover:bg-gray-100 dark:hover:bg-gray-800 motion-reduce:transition-none {{ _bar_ring }}">
+            <i class="ti ti-layout-dashboard" aria-hidden="true"></i> Dashboard
         </a>
-        <span class="hidden md:inline px-2 text-xs text-gray-400 dark:text-gray-500">Howdy, {{ current_user.username }}</span>
+        {# Real name first: `username` is a login handle, not a person's name
+           (Player.name is the only real name in this system). #}
+        {% set _who = safe_current_user.player.name if safe_current_user and safe_current_user.player and safe_current_user.player.name else current_user.username %}
+        <span class="hidden md:inline px-2 text-xs text-gray-600 dark:text-gray-300">Howdy, {{ _who }}</span>
         <a href="{{ portal_url('auth.logout') }}"
-           class="inline-flex h-9 items-center rounded-lg px-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
+           class="inline-flex h-9 items-center rounded-lg px-2.5 text-gray-600 {{ _bar_tap }} dark:text-gray-300 transition-colors duration-150 ease-out hover:bg-gray-100 dark:hover:bg-gray-800 motion-reduce:transition-none {{ _bar_ring }}">
             Log out
         </a>
     </div>

@@ -1,19 +1,40 @@
-{% extends "base_unauthenticated_flowbite.html" %}
+{#
+  Survey not accepting responses — /s/<token> when the survey is draft, closed,
+  or outside its open_at/close_at window.
 
-{% block title %}{{ survey.title }} — ECS FC{% endblock %}
+  Context (app/routes/survey_public.py): survey (the Survey row).
 
-{% block main_content %}
-<div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden text-center">
-  <div class="px-6 pt-8 pb-6 bg-linear-to-br from-gray-600 to-gray-800">
-    <div class="w-16 h-16 mx-auto rounded-full bg-white/20 flex items-center justify-center mb-3">
-      <i class="ti ti-lock text-3xl text-white"></i>
-    </div>
-    <h1 class="text-xl font-bold text-white">{{ survey.title }}</h1>
+  This is a STATE, not an error: design.md § 12.1's `closed` treatment (lock
+  glyph, neutral grey, never a green "success" pill), and § 7.7's empty state —
+  left-aligned, no dashed border, no centred icon, exactly one way onward.
+#}
+{% extends "public/base_public_minimal.html" %}
+
+{% block title %}{{ survey.title }} &mdash; closed{% endblock %}
+{% block content_width %}max-w-2xl{% endblock %}
+
+{% block page %}
+{%- set BTN_GHOST = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 text-base font-semibold leading-none text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 active:translate-y-px active:brightness-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark transition-[background-color,box-shadow,transform,color] duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none' -%}
+
+<span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 min-h-6 text-xs font-bold uppercase tracking-[0.08em] text-gray-700 ring-1 ring-inset ring-gray-400/50 dark:bg-white/[0.06] dark:text-gray-200 dark:ring-white/15">
+  <i class="ti ti-lock" aria-hidden="true"></i>Closed
+</span>
+
+<h1 class="mt-5 font-display text-2xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words text-gray-900 sm:text-3xl lg:text-4xl dark:text-white">{{ survey.title }}</h1>
+
+<div class="mt-6 rounded-xl bg-ecs-green/[0.05] p-6 ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.02] dark:ring-white/10 sm:p-8">
+  <p class="max-w-[62ch] text-base font-normal leading-[1.65] text-gray-800 sm:text-lg dark:text-gray-200">
+    This one isn&rsquo;t taking answers any more. Nothing you did caused that &mdash; the window simply closed.
+  </p>
+  <p class="mt-4 max-w-[62ch] text-base font-normal leading-[1.65] text-gray-700 dark:text-gray-200">
+    If you were asked to fill it in, say so in Discord and we&rsquo;ll reopen it or send a fresh link.
+  </p>
+  {% if endpoint_exists is defined and endpoint_exists('public.home') %}
+  <div class="mt-6">
+    <a href="{{ url_for('public.home') }}" class="{{ BTN_GHOST }}">
+      <i class="ti ti-arrow-left" aria-hidden="true"></i>ECS Pub League
+    </a>
   </div>
-  <div class="px-6 py-7">
-    <p class="text-sm text-gray-700 dark:text-gray-300">
-      This survey isn't accepting responses right now. Thanks for stopping by.
-    </p>
-  </div>
+  {% endif %}
 </div>
 {% endblock %}

@@ -1,50 +1,52 @@
-{% extends "base_unauthenticated_flowbite.html" %}
+{#
+  Venue check-in landing — /check-in/<token>, encoded by the printed QR sign or
+  the NFC sticker at the pitch.
 
-{% block title %}Check In — ECS FC{% endblock %}
+  Context (app/routes/check_in_public.py):
+    match_label            e.g. "Ball Lobbers vs Wasteland Wanderers" ("Match" fallback)
+    kickoff_local          e.g. "Sat Aug 23, 6:30 PM", or None
+    ios_app_store_url      AdminConfig, defaulted to the ECS site — never a fake link
+    android_play_store_url  "
 
-{% block main_content %}
-<div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden">
-    <div class="px-6 pt-8 pb-6 bg-linear-to-br from-emerald-600 to-emerald-800 text-center">
-        <div class="w-16 h-16 mx-auto rounded-full bg-white/20 flex items-center justify-center mb-3">
-            <i class="ti ti-soccer-field text-3xl text-white"></i>
-        </div>
-        <h1 class="text-xl font-bold text-white">{{ match_label }}</h1>
-        {% if kickoff_local %}
-        <p class="text-emerald-100 text-sm mt-1">{{ kickoff_local }}</p>
-        {% endif %}
-    </div>
+  App-installed users never see this: iOS/Android intercept the URL via the
+  universal-link association. Everyone who lands here is standing outside on a
+  phone in daylight, so the match is the headline and the instruction is one
+  short sentence at body size — nothing here is set below 14px.
+#}
+{% extends "public/base_public_minimal.html" %}
 
-    <div class="px-6 py-6 text-center">
-        <p class="text-sm text-gray-700 dark:text-gray-300 mb-4">
-            You're at the field — open the ECS FC app to check in for today's match.
-        </p>
-        <p class="text-xs text-gray-500 dark:text-gray-400">
-            If the app didn't open automatically, install it below, then re-scan
-            this code. Codes expire after the match window closes.
-        </p>
-    </div>
+{% block title %}Check in &mdash; {{ match_label }}{% endblock %}
+{% block content_width %}max-w-2xl{% endblock %}
 
-    <!-- App store download buttons (config-driven; safe default to the ECS site) -->
-    <div class="px-6 pb-7">
-        <div class="flex items-center gap-3 mb-4">
-            <span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span>
-            <span class="text-xs text-gray-500 dark:text-gray-400">Don't have the app?</span>
-            <span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <a href="{{ ios_app_store_url }}"
-               class="inline-flex items-center justify-center gap-2 h-10 px-3.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-               aria-label="Download on the App Store">
-                <i class="ti ti-brand-apple text-lg" aria-hidden="true"></i>
-                App Store
-            </a>
-            <a href="{{ android_play_store_url }}"
-               class="inline-flex items-center justify-center gap-2 h-10 px-3.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-               aria-label="Get it on Google Play">
-                <i class="ti ti-brand-google-play text-lg" aria-hidden="true"></i>
-                Google Play
-            </a>
-        </div>
-    </div>
+{% block page %}
+{%- set BTN_GHOST = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 text-base font-semibold leading-none text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 active:translate-y-px active:brightness-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark transition-[background-color,box-shadow,transform,color] duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none' -%}
+
+<header>
+  <p class="text-xs font-bold uppercase tracking-[0.14em] text-ecs-green-ink dark:text-ecs-green-300">You&rsquo;re at the field</p>
+  <h1 class="mt-3 font-display text-2xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words text-gray-900 sm:text-3xl lg:text-4xl dark:text-white">{{ match_label }}</h1>
+  {% if kickoff_local %}
+  <p class="mt-3 text-lg font-normal leading-[1.45] tabular-nums text-pretty text-gray-700 sm:text-xl lg:text-2xl dark:text-gray-200">{{ kickoff_local }}</p>
+  {% endif %}
+</header>
+
+<div class="mt-8 rounded-xl bg-ecs-green/[0.05] p-6 ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.02] dark:ring-white/10 sm:p-8">
+  <h2 class="font-display text-xl font-bold leading-[1.15] tracking-[-0.015em] text-pretty break-words text-gray-900 sm:text-2xl dark:text-white">Open the ECS FC app to check in</h2>
+  <p class="mt-3 max-w-[62ch] text-base font-normal leading-[1.65] text-gray-800 sm:text-lg dark:text-gray-200">
+    If the app didn&rsquo;t open on its own, install it below and scan this code again. Check-in codes expire once the match window closes.
+  </p>
 </div>
+
+{# The store buttons are the only action on the page, so they are the only
+   buttons on it — outline/ghost, one per row on a phone. #}
+<section class="mt-8" aria-label="Get the app">
+  <p class="text-xs font-bold uppercase tracking-[0.14em] text-ecs-green-ink dark:text-ecs-green-300">Don&rsquo;t have the app?</p>
+  <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <a href="{{ ios_app_store_url }}" class="{{ BTN_GHOST }}">
+      <i class="ti ti-brand-apple text-lg" aria-hidden="true"></i>App Store
+    </a>
+    <a href="{{ android_play_store_url }}" class="{{ BTN_GHOST }}">
+      <i class="ti ti-brand-google-play text-lg" aria-hidden="true"></i>Google Play
+    </a>
+  </div>
+</section>
 {% endblock %}

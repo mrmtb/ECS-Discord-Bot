@@ -1,219 +1,355 @@
-{% extends "base_unauthenticated_flowbite.html" %}
+{#
+  Public survey form — reached by a token URL (/s/<token>), usually from a
+  Discord link, usually on a phone.
 
-{% block title %}{{ survey.title }} — ECS FC{% endblock %}
-{% block content_max_width %}max-w-2xl{% endblock %}
+  Context (app/routes/survey_public.py — never reference anything else):
+    survey       the Survey row (title, description, is_anonymous, access_token,
+                 questions, confirmation_message)
+    survey_json  the serialised survey (unused by this template; kept for JS)
+    is_edit      GET only — the viewer already has a response on file
+    errors       POST-error only — list[str] of human-readable messages
+    submitted    POST-error only — request.form (an ImmutableMultiDict)
 
-{% block main_content %}
-<div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden">
-  <!-- Header -->
-  <div class="px-4 sm:px-6 pt-7 pb-5 bg-linear-to-br from-emerald-600 to-emerald-800">
-    <h1 class="text-xl font-bold text-white">{{ survey.title }}</h1>
-    {% if survey.description %}
-    <p class="text-emerald-100 text-sm mt-1.5 whitespace-pre-line">{{ survey.description }}</p>
-    {% endif %}
-    {% if survey.is_anonymous %}
-    <p class="inline-flex items-center gap-1 mt-3 text-xs text-emerald-50/90">
-      <i class="ti ti-eye-off"></i> Your responses are anonymous.
-    </p>
-    {% endif %}
-  </div>
+  BEHAVIOUR THAT MUST NOT CHANGE:
+    - form action + method, the csrf_token hidden field, every field NAME
+      (q_<id>, q_<id>_rank_<option_id>, q_<id>_row_<row>).
+    - `.survey-q` + data-qid + data-showif-q/data-showif-eq: custom_js/survey-form.js
+      queries exactly these to show/hide branched questions and to DISABLE the
+      inputs of a hidden one (a hidden `required` field otherwise blocks submit).
+    - `required` sits on the FIRST radio only for the sr-only scale patterns,
+      exactly as before — putting it on all eleven NPS radios makes the browser
+      demand all eleven.
+#}
+{% extends "public/base_public_minimal.html" %}
 
-  {% if errors %}
-  <div class="mx-6 mt-5 rounded-lg border border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-800 p-4">
-    <p class="text-sm font-medium text-red-800 dark:text-red-300 mb-1">Please fix the following:</p>
-    <ul class="list-disc list-inside text-sm text-red-700 dark:text-red-400 space-y-0.5">
-      {% for e in errors %}<li>{{ e }}</li>{% endfor %}
-    </ul>
-  </div>
+{% block title %}{{ survey.title }} &mdash; {{ appearance.title if appearance is defined and appearance and appearance.title else 'ECS Pub League' }}{% endblock %}
+{% block content_width %}max-w-2xl{% endblock %}
+
+{% block page %}
+{# ---- One spec per control (design.md § 7.2), set once so every field type on
+   this page is byte-identical. border-0 + ring means focus never shifts layout;
+   text-base is mandatory or iOS Safari zooms the viewport on focus. ---- #}
+{%- set FIELD = 'block w-full rounded-lg min-h-11 px-3.5 py-2.5 text-base bg-white text-gray-900 placeholder:text-gray-500 dark:bg-white/[0.05] dark:text-white dark:placeholder:text-gray-400 border-0 ring-1 ring-inset ring-gray-400/70 dark:ring-white/20 hover:ring-gray-500 dark:hover:ring-white/30 focus:outline-hidden focus:ring-2 focus:ring-ecs-blue-600 dark:focus:ring-ecs-green-300 aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-red-600 dark:aria-[invalid=true]:ring-red-400 disabled:opacity-55 disabled:cursor-not-allowed transition-[box-shadow] duration-150 ease-out motion-reduce:transition-none' -%}
+{%- set SELECT = FIELD ~ ' pr-10 [&>option]:bg-white dark:[&>option]:bg-gray-900' -%}
+{%- set SELECT_INLINE = SELECT | replace('block w-full ', '') -%}
+{# A whole-row tap target: the row itself is ~52px tall, so a thumb never has to
+   find the 20px control. `has-[:checked]` tints the row, but the native input
+   stays visible so selection is never colour-only. #}
+{%- set OPTION_ROW = 'flex min-h-11 cursor-pointer gap-3 rounded-lg bg-white px-4 py-3 ring-1 ring-inset ring-gray-400/70 hover:ring-gray-500 dark:bg-white/[0.05] dark:ring-white/20 dark:hover:ring-white/30 has-[:checked]:bg-ecs-blue-600/[0.06] has-[:checked]:ring-2 has-[:checked]:ring-ecs-blue-600 dark:has-[:checked]:bg-ecs-blue-600/20 dark:has-[:checked]:ring-ecs-green-300 transition-[box-shadow,background-color] duration-150 ease-out motion-reduce:transition-none' -%}
+{%- set CONTROL = 'h-5 w-5 shrink-0 border-gray-400/70 text-ecs-blue-600 dark:bg-white/[0.05] dark:border-white/20 dark:text-ecs-green-300 focus:outline-hidden focus:ring-2 focus:ring-ecs-blue-600 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-ecs-green-300 dark:focus:ring-offset-paper-dark' -%}
+{# sr-only radio + styled span. The peer-focus-visible ring is the whole point:
+   without it an 11-point NPS scale has no visible keyboard focus at all. #}
+{%- set SCALE_SPAN = 'inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-3 py-2 text-base font-semibold tabular-nums text-gray-700 ring-1 ring-inset ring-gray-400/70 dark:text-gray-200 dark:ring-white/20 peer-hover:ring-gray-500 dark:peer-hover:ring-white/30 peer-checked:bg-ecs-blue-600 peer-checked:text-white peer-checked:ring-ecs-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-ecs-blue-600 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-paper dark:peer-focus-visible:ring-ecs-green-300 dark:peer-focus-visible:ring-offset-paper-dark transition-[background-color,box-shadow,color] duration-150 ease-out motion-reduce:transition-none' -%}
+{%- set HELP = 'mt-1.5 text-sm font-normal leading-normal text-gray-600 dark:text-gray-300 max-w-[62ch]' -%}
+{%- set BADGE = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1 min-h-6 text-xs font-bold uppercase tracking-[0.08em] ring-1 ring-inset' -%}
+{%- set sub = submitted if submitted else none -%}
+
+<header>
+  <p class="text-xs font-bold uppercase tracking-[0.14em] text-ecs-green-ink dark:text-ecs-green-300">Survey</p>
+  <h1 class="mt-3 font-display text-2xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words text-gray-900 sm:text-3xl lg:text-4xl dark:text-white">{{ survey.title }}</h1>
+
+  {% if survey.description %}
+  <p class="mt-4 max-w-[65ch] whitespace-pre-line text-base font-normal leading-[1.65] text-gray-700 sm:text-lg dark:text-gray-200">{{ survey.description }}</p>
   {% endif %}
 
-  <form method="POST" action="{{ url_for('survey_public.submit_survey', token=survey.access_token) }}"
-        class="px-4 sm:px-6 py-6 space-y-7">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if survey.is_anonymous or is_edit %}
+  <div class="mt-5 flex flex-wrap items-center gap-2">
+    {% if survey.is_anonymous %}
+    <span class="{{ BADGE }} bg-ecs-green/[0.08] text-ecs-green-ink ring-ecs-green-ink/25 dark:bg-ecs-green/15 dark:text-ecs-green-300 dark:ring-white/15">
+      <i class="ti ti-eye-off" aria-hidden="true"></i>Anonymous
+    </span>
+    {% endif %}
+    {% if is_edit %}
+    <span class="{{ BADGE }} bg-ecs-green/[0.08] text-ecs-green-ink ring-ecs-green-ink/25 dark:bg-ecs-green/15 dark:text-ecs-green-300 dark:ring-white/15">
+      <i class="ti ti-pencil" aria-hidden="true"></i>Editing
+    </span>
+    {% endif %}
+  </div>
+  <p class="mt-2.5 text-sm font-normal leading-normal text-gray-600 dark:text-gray-300">
+    {% if survey.is_anonymous %}We don&rsquo;t record who answered &mdash; only the answers.{% endif %}
+    {% if survey.is_anonymous and is_edit %} {% endif %}
+    {% if is_edit %}You&rsquo;ve answered this before; sending it again replaces your earlier answers.{% endif %}
+  </p>
+  {% endif %}
+</header>
 
-    {% for question in survey.questions %}
-    {% set qid = 'q_' ~ question.id %}
-    {% set prev = submitted.get(qid) if submitted else None %}
-    {% set showif = (question.logic or {}).get('show_if') %}
-    <div class="survey-q space-y-2" data-qid="{{ question.id }}"
-         {% if showif %}data-showif-q="{{ showif.question_id }}" data-showif-eq="{{ showif.equals }}"{% endif %}>
-      <label class="block text-sm font-semibold text-gray-900 dark:text-white">
-        {{ question.prompt }}
-        {% if question.is_required %}<span class="text-red-500">*</span>{% endif %}
+{% if errors %}
+{# State 7 (design.md § 7.1): the submit button never turns red. An inline
+   role="alert" summary appears ABOVE the form and takes focus. #}
+<div id="form-errors" tabindex="-1" role="alert"
+     class="mt-8 rounded-xl bg-white p-5 shadow-sm ring-1 ring-inset ring-red-600 focus:outline-hidden dark:bg-white/[0.045] dark:shadow-none dark:ring-red-400 sm:p-6">
+  <p class="flex items-start gap-2 text-base font-semibold leading-snug text-red-700 dark:text-red-400">
+    <i class="ti ti-alert-circle mt-0.5 shrink-0" aria-hidden="true"></i>
+    <span>{% if errors | length == 1 %}One answer needs another look{% else %}{{ errors | length }} answers need another look{% endif %}</span>
+  </p>
+  <ul class="mt-2.5 space-y-1 pl-7 text-base leading-[1.65] text-gray-800 dark:text-gray-200">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+  <p class="mt-2.5 pl-7 text-sm leading-normal text-gray-600 dark:text-gray-300">Everything else you typed is still below.</p>
+</div>
+{% endif %}
+
+{# The form is the page's object: it sits on the inset surface and fills its
+   column (design.md § 7.2). #}
+<form method="POST" action="{{ url_for('survey_public.submit_survey', token=survey.access_token) }}"
+      id="survey-form"
+      class="mt-8 space-y-8 rounded-xl bg-ecs-green/[0.05] p-6 ring-1 ring-inset ring-ecs-green-ink/15 dark:bg-white/[0.02] dark:ring-white/10 sm:p-8">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  {% for question in survey.questions %}
+  {% set qid = 'q_' ~ question.id %}
+  {% set prev = sub.get(qid) if sub else none %}
+  {% set prev_list = sub.getlist(qid) if sub else [] %}
+  {% set showif = (question.logic or {}).get('show_if') %}
+
+  {# Match survey_service._short(prompt) so a validation message can be attached
+     to the question it came from — the service returns a flat list of strings
+     with no question id, and re-deriving the key here is the only way to mark
+     the field inline without changing the service. #}
+  {% set _p = (question.prompt or '') | trim %}
+  {% set _sp = _p if _p | length <= 40 else _p[:39] ~ '…' %}
+  {% set q_errors = [] %}
+  {% if errors %}{% for e in errors %}{% if ("'" ~ _sp ~ "'") in e %}{% set _ = q_errors.append(e) %}{% endif %}{% endfor %}{% endif %}
+  {% set bad = q_errors | length > 0 %}
+  {% set single = question.question_type in ['dropdown', 'short_text', 'email', 'number', 'date', 'long_text'] %}
+
+  <div class="survey-q" data-qid="{{ question.id }}"
+       {% if showif %}data-showif-q="{{ showif.question_id }}" data-showif-eq="{{ showif.equals }}"{% endif %}>
+
+    {% if single %}
+    <label id="{{ qid }}_label" for="{{ qid }}_input" class="block text-base font-semibold leading-snug text-gray-900 sm:text-lg dark:text-white">
+      {{ question.prompt }}{% if question.is_required %}<span class="ml-1.5 text-sm font-normal text-gray-500 dark:text-gray-400">Required</span>{% endif %}
+    </label>
+    {% else %}
+    <span id="{{ qid }}_label" class="block text-base font-semibold leading-snug text-gray-900 sm:text-lg dark:text-white">
+      {{ question.prompt }}{% if question.is_required %}<span class="ml-1.5 text-sm font-normal text-gray-500 dark:text-gray-400">Required</span>{% endif %}
+    </span>
+    {% endif %}
+
+    {% if question.help_text %}
+    <p class="{{ HELP }}">{{ question.help_text }}</p>
+    {% endif %}
+
+    <div class="mt-3">
+    {# ---- single choice ---- #}
+    {% if question.question_type == 'single_choice' %}
+    <div class="space-y-2.5" role="radiogroup" aria-labelledby="{{ qid }}_label" aria-describedby="{{ qid }}_msg">
+      {% for opt in question.options %}
+      <label class="{{ OPTION_ROW }} items-start">
+        <input type="radio" name="{{ qid }}" value="{{ opt.id }}" class="{{ CONTROL }} mt-0.5"
+               {{ 'checked' if prev == opt.id | string }}
+               {{ 'required' if question.is_required }} {% if question.is_required %}aria-required="true"{% endif %}
+               {% if bad %}aria-invalid="true"{% endif %}>
+        <span class="min-w-0 text-base leading-snug text-gray-800 dark:text-gray-100">{{ opt.label }}</span>
       </label>
-      {% if question.help_text %}
-      <p class="text-xs text-gray-500 dark:text-gray-400">{{ question.help_text }}</p>
-      {% endif %}
+      {% endfor %}
+    </div>
 
-      {# ---- single choice ---- #}
-      {% if question.question_type == 'single_choice' %}
-      <div class="space-y-2 mt-1">
-        {% for opt in question.options %}
-        <label class="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
-          <input type="radio" name="{{ qid }}" value="{{ opt.id }}"
-                 {{ 'required' if question.is_required }}
-                 class="text-ecs-green focus:ring-ecs-green">
-          <span class="text-sm text-gray-700 dark:text-gray-200">{{ opt.label }}</span>
-        </label>
-        {% endfor %}
-      </div>
+    {# ---- multi choice ---- #}
+    {% elif question.question_type == 'multi_choice' %}
+    <div class="space-y-2.5" role="group" aria-labelledby="{{ qid }}_label" aria-describedby="{{ qid }}_msg">
+      {% for opt in question.options %}
+      <label class="{{ OPTION_ROW }} items-start">
+        <input type="checkbox" name="{{ qid }}" value="{{ opt.id }}" class="{{ CONTROL }} mt-0.5 rounded-lg"
+               {{ 'checked' if opt.id | string in prev_list }}
+               {% if bad %}aria-invalid="true"{% endif %}>
+        <span class="min-w-0 text-base leading-snug text-gray-800 dark:text-gray-100">{{ opt.label }}</span>
+      </label>
+      {% endfor %}
+    </div>
 
-      {# ---- multi choice ---- #}
-      {% elif question.question_type == 'multi_choice' %}
-      <div class="space-y-2 mt-1">
-        {% for opt in question.options %}
-        <label class="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
-          <input type="checkbox" name="{{ qid }}" value="{{ opt.id }}"
-                 class="rounded-sm text-ecs-green focus:ring-ecs-green">
-          <span class="text-sm text-gray-700 dark:text-gray-200">{{ opt.label }}</span>
-        </label>
-        {% endfor %}
-      </div>
+    {# ---- dropdown ---- #}
+    {% elif question.question_type == 'dropdown' %}
+    <select name="{{ qid }}" id="{{ qid }}_input" class="{{ SELECT }}"
+            {{ 'required' if question.is_required }} {% if question.is_required %}aria-required="true"{% endif %}
+            aria-describedby="{{ qid }}_msg" {% if bad %}aria-invalid="true"{% endif %}>
+      <option value="" {{ 'disabled' if question.is_required }} {{ 'selected' if not prev }}>Choose one&hellip;</option>
+      {% for opt in question.options %}
+      <option value="{{ opt.id }}" {{ 'selected' if prev == opt.id | string }}>{{ opt.label }}</option>
+      {% endfor %}
+    </select>
 
-      {# ---- dropdown ---- #}
-      {% elif question.question_type == 'dropdown' %}
-      <select name="{{ qid }}" {{ 'required' if question.is_required }}
-              class="bg-white text-gray-900 mt-1 block w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm focus:ring-ecs-green focus:border-ecs-green">
-        <option value="">— Select —</option>
-        {% for opt in question.options %}
-        <option value="{{ opt.id }}">{{ opt.label }}</option>
-        {% endfor %}
-      </select>
+    {# ---- yes / no ---- #}
+    {% elif question.question_type == 'yes_no' %}
+    <div class="grid grid-cols-2 gap-3" role="radiogroup" aria-labelledby="{{ qid }}_label" aria-describedby="{{ qid }}_msg">
+      {% for val in ['yes', 'no'] %}
+      <label class="{{ OPTION_ROW }} items-center justify-center">
+        <input type="radio" name="{{ qid }}" value="{{ val }}" class="{{ CONTROL }}"
+               {{ 'checked' if prev == val }}
+               {{ 'required' if question.is_required }} {% if question.is_required %}aria-required="true"{% endif %}
+               {% if bad %}aria-invalid="true"{% endif %}>
+        <span class="text-base font-semibold capitalize leading-none text-gray-800 dark:text-gray-100">{{ val }}</span>
+      </label>
+      {% endfor %}
+    </div>
 
-      {# ---- yes / no ---- #}
-      {% elif question.question_type == 'yes_no' %}
-      <div class="flex gap-3 mt-1">
-        {% for val in ['yes', 'no'] %}
-        <label class="flex-1 flex items-center justify-center gap-2 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
-          <input type="radio" name="{{ qid }}" value="{{ val }}"
-                 {{ 'required' if question.is_required }}
-                 class="text-ecs-green focus:ring-ecs-green">
-          <span class="text-sm capitalize text-gray-700 dark:text-gray-200">{{ val }}</span>
-        </label>
-        {% endfor %}
-      </div>
+    {# ---- short text / email / number / date ---- #}
+    {% elif question.question_type in ['short_text', 'email', 'number', 'date'] %}
+    {% set input_type = {'short_text':'text','email':'email','number':'number','date':'date'}[question.question_type] %}
+    <input type="{{ input_type }}" name="{{ qid }}" id="{{ qid }}_input" value="{{ prev or '' }}"
+           class="{{ FIELD }}{{ ' tabular-nums' if question.question_type in ['number', 'date'] }}"
+           {{ 'required' if question.is_required }} {% if question.is_required %}aria-required="true"{% endif %}
+           autocomplete="{{ 'email' if question.question_type == 'email' else 'off' }}"
+           {% if question.config and question.config.get('char_limit') %}maxlength="{{ question.config.get('char_limit') }}"{% endif %}
+           placeholder="{{ question.config.get('placeholder', '') if question.config else '' }}"
+           aria-describedby="{{ qid }}_msg" {% if bad %}aria-invalid="true"{% endif %}>
 
-      {# ---- short text / email / number / date ---- #}
-      {% elif question.question_type in ['short_text', 'email', 'number', 'date'] %}
-      {% set input_type = {'short_text':'text','email':'email','number':'number','date':'date'}[question.question_type] %}
-      <input type="{{ input_type }}" name="{{ qid }}" value="{{ prev or '' }}"
-             {{ 'required' if question.is_required }}
-             {% if question.config and question.config.get('char_limit') %}maxlength="{{ question.config.get('char_limit') }}"{% endif %}
-             placeholder="{{ question.config.get('placeholder', '') if question.config else '' }}"
-             class="mt-1 block w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm focus:ring-ecs-green focus:border-ecs-green">
+    {# ---- long text ---- #}
+    {% elif question.question_type == 'long_text' %}
+    <textarea name="{{ qid }}" id="{{ qid }}_input" rows="5" class="{{ FIELD }} leading-[1.65]"
+              {{ 'required' if question.is_required }} {% if question.is_required %}aria-required="true"{% endif %}
+              {% if question.config and question.config.get('char_limit') %}maxlength="{{ question.config.get('char_limit') }}"{% endif %}
+              placeholder="{{ question.config.get('placeholder', '') if question.config else '' }}"
+              aria-describedby="{{ qid }}_msg" {% if bad %}aria-invalid="true"{% endif %}>{{ prev or '' }}</textarea>
 
-      {# ---- long text ---- #}
-      {% elif question.question_type == 'long_text' %}
-      <textarea name="{{ qid }}" rows="4" {{ 'required' if question.is_required }}
-                {% if question.config and question.config.get('char_limit') %}maxlength="{{ question.config.get('char_limit') }}"{% endif %}
-                placeholder="{{ question.config.get('placeholder', '') if question.config else '' }}"
-                class="mt-1 block w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm focus:ring-ecs-green focus:border-ecs-green">{{ prev or '' }}</textarea>
+    {# ---- rating ---- #}
+    {% elif question.question_type == 'rating' %}
+    {% set rmax = (question.config.get('max', 5) if question.config else 5) | int %}
+    <div class="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="{{ qid }}_label" aria-describedby="{{ qid }}_msg">
+      {% for n in range(1, rmax + 1) %}
+      <label class="cursor-pointer">
+        <input type="radio" name="{{ qid }}" value="{{ n }}" class="sr-only peer"
+               {{ 'checked' if prev == n | string }}
+               {{ 'required' if question.is_required and n == 1 }} {% if question.is_required and n == 1 %}aria-required="true"{% endif %}>
+        <span class="{{ SCALE_SPAN }}">{{ n }}</span>
+      </label>
+      {% endfor %}
+    </div>
 
-      {# ---- rating (stars) ---- #}
-      {% elif question.question_type == 'rating' %}
-      {% set rmax = (question.config.get('max', 5) if question.config else 5) | int %}
-      <div class="flex gap-1.5 mt-1" role="radiogroup">
-        {% for n in range(1, rmax + 1) %}
+    {# ---- linear scale ---- #}
+    {% elif question.question_type == 'scale' %}
+    {% set smin = (question.config.get('min', 1) if question.config else 1) | int %}
+    {% set smax = (question.config.get('max', 5) if question.config else 5) | int %}
+    <div role="radiogroup" aria-labelledby="{{ qid }}_label" aria-describedby="{{ qid }}_msg">
+      <div class="flex flex-wrap gap-2">
+        {% for n in range(smin, smax + 1) %}
         <label class="cursor-pointer">
           <input type="radio" name="{{ qid }}" value="{{ n }}" class="sr-only peer"
-                 {{ 'required' if question.is_required and n == 1 }}>
-          <span class="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 peer-checked:bg-ecs-green peer-checked:text-white peer-checked:border-ecs-green">{{ n }}</span>
+                 {{ 'checked' if prev == n | string }}
+                 {{ 'required' if question.is_required and n == smin }} {% if question.is_required and n == smin %}aria-required="true"{% endif %}>
+          <span class="{{ SCALE_SPAN }}">{{ n }}</span>
         </label>
         {% endfor %}
       </div>
+      {% if question.config and (question.config.get('min_label') or question.config.get('max_label')) %}
+      <div class="mt-2 flex justify-between gap-4 text-sm leading-normal text-gray-600 dark:text-gray-300">
+        <span>{{ question.config.get('min_label', '') }}</span>
+        <span class="text-right">{{ question.config.get('max_label', '') }}</span>
+      </div>
+      {% endif %}
+    </div>
 
-      {# ---- linear scale ---- #}
-      {% elif question.question_type == 'scale' %}
-      {% set smin = (question.config.get('min', 1) if question.config else 1) | int %}
-      {% set smax = (question.config.get('max', 5) if question.config else 5) | int %}
-      <div class="mt-1">
-        <div class="flex flex-wrap gap-1.5">
-          {% for n in range(smin, smax + 1) %}
+    {# ---- NPS 0-10 ---- #}
+    {% elif question.question_type == 'nps' %}
+    <div class="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="{{ qid }}_label" aria-describedby="{{ qid }}_msg">
+      {% for n in range(0, 11) %}
+      <label class="cursor-pointer">
+        <input type="radio" name="{{ qid }}" value="{{ n }}" class="sr-only peer"
+               {{ 'checked' if prev == n | string }}
+               {{ 'required' if question.is_required and n == 0 }} {% if question.is_required and n == 0 %}aria-required="true"{% endif %}>
+        <span class="{{ SCALE_SPAN }}">{{ n }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="mt-2 flex justify-between gap-4 text-sm leading-normal text-gray-600 dark:text-gray-300">
+      <span>Not likely</span><span class="text-right">Very likely</span>
+    </div>
+
+    {# ---- ranking ---- #}
+    {% elif question.question_type == 'ranking' %}
+    {% set n_opts = question.options | length %}
+    <p class="mb-3 text-sm leading-normal text-gray-600 dark:text-gray-300">Give each option a rank &mdash; 1 is your top pick.</p>
+    <div class="space-y-2.5" role="group" aria-labelledby="{{ qid }}_label" aria-describedby="{{ qid }}_msg">
+      {% for opt in question.options %}
+      {% set rank_prev = sub.get(qid ~ '_rank_' ~ opt.id) if sub else none %}
+      <div class="flex items-center gap-4 rounded-lg bg-white px-4 py-3 ring-1 ring-inset ring-gray-400/70 dark:bg-white/[0.05] dark:ring-white/20">
+        <select name="{{ qid }}_rank_{{ opt.id }}" class="{{ SELECT_INLINE }} w-20 shrink-0 text-center tabular-nums"
+                aria-label="Rank for {{ opt.label }}">
+          <option value="" {{ 'selected' if not rank_prev }}>&mdash;</option>
+          {% for r in range(1, n_opts + 1) %}<option value="{{ r }}" {{ 'selected' if rank_prev == r | string }}>{{ r }}</option>{% endfor %}
+        </select>
+        <span class="min-w-0 text-base leading-snug text-gray-800 dark:text-gray-100">{{ opt.label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    {# ---- matrix / grid ----
+       Restructured from a 640px-wide <table> into one radiogroup per row. A
+       matrix table on a 320px phone either scrolls sideways (shredding the
+       row/column relationship) or squeezes each column to ~40px; here every row
+       is a labelled group and each choice carries its own visible column label,
+       so nothing is lost and nothing scrolls. Field NAMES are unchanged. #}
+    {% elif question.question_type == 'matrix' %}
+    {% set rows = question.config.get('rows', []) if question.config else [] %}
+    {% set cols = question.config.get('cols', []) if question.config else [] %}
+    <div class="space-y-4" role="group" aria-labelledby="{{ qid }}_label" aria-describedby="{{ qid }}_msg">
+      {% for row in rows %}
+      {% set row_prev = sub.get(qid ~ '_row_' ~ row) if sub else none %}
+      <div role="radiogroup" aria-labelledby="{{ qid }}_row{{ loop.index }}_label"
+           class="rounded-lg bg-white p-4 ring-1 ring-inset ring-gray-400/70 dark:bg-white/[0.05] dark:ring-white/20">
+        <p id="{{ qid }}_row{{ loop.index }}_label" class="text-base font-semibold leading-snug text-gray-900 dark:text-white">{{ row }}</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {% for col in cols %}
           <label class="cursor-pointer">
-            <input type="radio" name="{{ qid }}" value="{{ n }}" class="sr-only peer"
-                   {{ 'required' if question.is_required and n == smin }}>
-            <span class="inline-flex min-w-11 h-11 px-2 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 peer-checked:bg-ecs-green peer-checked:text-white peer-checked:border-ecs-green">{{ n }}</span>
+            <input type="radio" name="{{ qid }}_row_{{ row }}" value="{{ col }}" class="sr-only peer"
+                   {{ 'checked' if row_prev == col }}>
+            <span class="{{ SCALE_SPAN }}">{{ col }}</span>
           </label>
           {% endfor %}
         </div>
-        {% if question.config and (question.config.get('min_label') or question.config.get('max_label')) %}
-        <div class="flex justify-between mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-          <span>{{ question.config.get('min_label', '') }}</span>
-          <span>{{ question.config.get('max_label', '') }}</span>
-        </div>
-        {% endif %}
       </div>
-
-      {# ---- NPS 0-10 ---- #}
-      {% elif question.question_type == 'nps' %}
-      <div class="flex flex-wrap gap-1.5 mt-1">
-        {% for n in range(0, 11) %}
-        <label class="cursor-pointer">
-          <input type="radio" name="{{ qid }}" value="{{ n }}" class="sr-only peer"
-                 {{ 'required' if question.is_required and n == 0 }}>
-          <span class="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 peer-checked:bg-ecs-green peer-checked:text-white peer-checked:border-ecs-green">{{ n }}</span>
-        </label>
-        {% endfor %}
-      </div>
-
-      {# ---- ranking (numbered) ---- #}
-      {% elif question.question_type == 'ranking' %}
-      {% set n_opts = question.options | length %}
-      <p class="text-xs text-gray-500 dark:text-gray-400">Assign a rank (1 = top) to each option.</p>
-      <div class="space-y-2 mt-1">
-        {% for opt in question.options %}
-        <div class="flex items-center gap-3 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700">
-          <select name="{{ qid }}_rank_{{ opt.id }}"
-                  class="bg-white text-gray-900 w-20 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm focus:ring-ecs-green focus:border-ecs-green">
-            <option value="">—</option>
-            {% for r in range(1, n_opts + 1) %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
-          </select>
-          <span class="text-sm text-gray-700 dark:text-gray-200">{{ opt.label }}</span>
-        </div>
-        {% endfor %}
-      </div>
-
-      {# ---- matrix / grid ---- #}
-      {% elif question.question_type == 'matrix' %}
-      {% set rows = question.config.get('rows', []) if question.config else [] %}
-      {% set cols = question.config.get('cols', []) if question.config else [] %}
-      <div class="overflow-x-auto mt-1">
-        <table class="min-w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg">
-          <thead>
-            <tr class="bg-gray-50 dark:bg-gray-700/50">
-              <th class="p-2 text-left"></th>
-              {% for col in cols %}<th class="p-2 text-center text-xs font-medium text-gray-600 dark:text-gray-300">{{ col }}</th>{% endfor %}
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in rows %}
-            <tr class="border-t border-gray-200 dark:border-gray-700">
-              <td class="p-2 text-gray-700 dark:text-gray-200">{{ row }}</td>
-              {% for col in cols %}
-              <td class="p-2 text-center">
-                <input type="radio" name="{{ qid }}_row_{{ row }}" value="{{ col }}"
-                       class="text-ecs-green focus:ring-ecs-green">
-              </td>
-              {% endfor %}
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% endif %}
+      {% endfor %}
     </div>
-    {% endfor %}
-
-    <div class="pt-2">
-      <button type="submit"
-              class="w-full inline-flex items-center justify-center gap-2 h-11 px-4 rounded-lg bg-ecs-green text-white text-sm font-semibold hover:bg-emerald-800 focus:outline-hidden focus:ring-2 focus:ring-ecs-green focus:ring-offset-2">
-        <i class="ti ti-send"></i> Submit
-      </button>
+    {% endif %}
     </div>
-  </form>
-</div>
+
+    {# Reserved message slot: rendered ALWAYS, so an appearing error never
+       reflows the form under the reader's thumb (design.md § 7.2). #}
+    <p id="{{ qid }}_msg" class="mt-1.5 min-h-5 text-sm font-normal leading-normal {{ 'text-red-700 dark:text-red-400' if bad else 'text-gray-600 dark:text-gray-300' }}">
+      {% for e in q_errors %}{{ e }}{% if not loop.last %} {% endif %}{% endfor %}
+    </p>
+  </div>
+  {% endfor %}
+
+  <div class="pt-2">
+    <button type="submit" id="survey-submit"
+            class="inline-flex w-full min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-ecs-blue-600 px-6 py-3 text-base font-semibold leading-none text-white shadow-sm transition-[background-color,box-shadow,transform,color] duration-150 ease-out hover:bg-ecs-blue-700 hover:shadow-md active:translate-y-px active:shadow-none active:brightness-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-blue-600 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-55 disabled:shadow-none motion-reduce:transform-none motion-reduce:transition-none dark:focus-visible:ring-offset-paper-dark sm:w-auto">
+      <i class="ti ti-send" id="survey-submit-icon" aria-hidden="true"></i><span>Send my answers</span>
+    </button>
+    <p class="mt-3 text-sm leading-normal text-gray-600 dark:text-gray-300">
+      {% if survey.is_anonymous %}Nothing here is tied back to you.{% else %}You can close this page once it&rsquo;s sent.{% endif %}
+    </p>
+  </div>
+</form>
 {% endblock %}
 
 {% block extra_js %}
 <script src="{{ asset_version('custom_js/survey-form.js') }}"></script>
+<script>
+    (function () {
+        // Focus the error summary so a keyboard/screen-reader user lands on the
+        // reason the submit bounced instead of at the top of a long form.
+        var summary = document.getElementById('form-errors');
+        if (summary) summary.focus();
+
+        // States 6 + 5 (design.md § 7.1): loading after 150ms, label and width
+        // unchanged, and a second tap can't post the survey twice.
+        var form = document.getElementById('survey-form');
+        var btn = document.getElementById('survey-submit');
+        var icon = document.getElementById('survey-submit-icon');
+        if (!form || !btn || !icon) return;
+        var sending = false;
+        form.addEventListener('submit', function (e) {
+            if (sending) { e.preventDefault(); return; }
+            sending = true;
+            window.setTimeout(function () {
+                if (!sending) return;
+                btn.setAttribute('aria-busy', 'true');
+                btn.setAttribute('aria-disabled', 'true');
+                btn.classList.add('pointer-events-none', 'opacity-55');
+                icon.className = 'ti ti-loader-2 animate-spin motion-reduce:animate-none';
+            }, 150);
+        });
+    })();
+</script>
 {% endblock %}

@@ -1,46 +1,136 @@
+{#
+  Public 500 — “that one’s on us”.
+
+  ── THIS ONE HAS TO RENDER WHEN THE APP IS BROKEN ──
+  All four public error pages are self-contained (see the long rationale at the
+  top of `app/templates/public/404.html`), but 500 is the case where it is not a
+  judgement call. `_render_error_html` (app/init/error_handlers.py:77) uses this
+  file as the LAST HTML fallback for every status code — if this template raises,
+  the visitor gets a bare text/plain body. So this page is written to depend on
+  as close to nothing as possible:
+
+    * No `{% extends %}`. The public shell reads `appearance`, `nav_items`,
+      `cta` and `imgs` from a BLUEPRINT-scoped context processor
+      (app/public_site.py:208) that queries AdminConfig — i.e. the database that
+      may be the very thing that just threw. On an unmatched route it does not
+      run at all, and Jinja's Undefined raises on attribute access.
+    * No `session` (Redis may be the failure), no `csrf_token()`, no DB.
+    * No admin-editable nav row — 500 hardcodes nothing but the home link, one
+      retry, and one way to tell us. Only `url_for()` (pure routing) and
+      `static_v()` (which already try/excepts a missing file).
+    * Everything from the blueprint context is `is defined`-guarded and purely
+      cosmetic, so the page renders identically with or without it.
+
+  ── AND IT STILL LOOKS LIKE THE SITE ──
+  Same compiled stylesheet, same self-hosted Bricolage + Inter faces, same
+  class-based dark mode as every other public page. Colours are the `ecs-*`
+  utilities, which are CSS-var-backed with the brand defaults baked into
+  tailwind.config.js — so there is no literal hex here (C2) and the Appearance
+  picker still owns the palette. Nothing is hand-written CSS (C3).
+
+  Replaces: the old `--green-deep` / `--green` inline custom properties (declared
+  in all four files, `--green-deep` used zero times, and the `--green` dark stop
+  an invented literal that existed nowhere else in the system — dark-mode green
+  is now `--color-primary-on-dark-rgb` via `ecs-green-300`), the
+  `prefers-color-scheme` media query (dark mode here is class-based — C7), and
+  the light-only `box-shadow` hover, which was black-on-near-black in dark mode
+  and is gone with the button system (design.md § 7.1: no transform on a button).
+#}
+{% set _site_title = appearance.title if appearance is defined and appearance and appearance.title else 'ECS Pub League' %}
+{% set _logo_src = appearance.logo_url if appearance is defined and appearance and appearance.logo_url
+                   else (imgs.logo if imgs is defined and imgs and imgs.logo
+                         else url_for('static', filename='img/publeague/2025-02__ECSPL-4-Color-With-Outline-transparent.png')) %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="overflow-x-clip">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Something went wrong — ECS Pub League</title>
   <meta name="robots" content="noindex">
-  <style>
-    :root { --green:#40b050; --green-deep:#2f8f43; --ink:#141a15; --muted:#5b665c; --bg:#f6f8f6; }
-    @media (prefers-color-scheme: dark){ :root{ --ink:#eaf0ea; --muted:#9aa89c; --bg:#0e130f; --green:#57c569; } }
-    *{box-sizing:border-box} html,body{height:100%}
-    body{margin:0;background:var(--bg);color:var(--ink);
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-      display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;line-height:1.5}
-    .card{max-width:460px}
-    .code{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--green)}
-    h1{font-size:clamp(26px,6vw,36px);margin:.4em 0 .3em;letter-spacing:-.02em}
-    p{color:var(--muted);margin:0 0 1.6em;font-size:16px}
-    a.btn{display:inline-block;background:var(--green);color:#fff;text-decoration:none;font-weight:600;
-      padding:12px 24px;border-radius:999px;
-      transition:transform .15s cubic-bezier(0,0,.2,1),box-shadow .15s cubic-bezier(0,0,.2,1)}
-    a.btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px -6px rgba(0,0,0,.35)}
-    /* Keyboard users had no visible focus anywhere on these pages. Rings are never
-       animated — they must appear instantly on focus. */
-    a:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:6px}
-    a.btn:focus-visible{outline-offset:4px}
-    @media (prefers-reduced-motion: reduce){
-      a.btn{transition:none} a.btn:hover{transform:none}
-    }
-    .links{margin-top:20px;font-size:14px}
-    .links a{color:var(--green);text-decoration:none;margin:0 8px;padding:2px 4px}
-    .links a:hover{text-decoration:underline}
-  </style>
+
+  {# Class-based dark mode, resolved before the stylesheet paints. Mirrors the
+     shell's boot script with ONE deliberate difference (design.md § 3.5): the
+     system preference is the UNSET DEFAULT and is never persisted, so a visitor
+     who has not chosen keeps following their OS. #}
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.classList.toggle('dark', t === 'dark');
+      } catch (e) {}
+    })();
+  </script>
+
+  {# Same two self-hosted faces as base_public.html. NO fonts.googleapis.com —
+     the public CSP blocks external font CDNs and the type system would fall back
+     silently to system-ui. Bricolage displays, Inter reads (design.md § 2). #}
+  <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/inter/inter-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ url_for('static', filename='vendor/fonts/bricolage/bricolage-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{ static_v('vendor/fonts/inter.css') }}">
+  <link rel="stylesheet" href="{{ static_v('vendor/fonts/bricolage.css') }}">
+  <link rel="stylesheet" href="{{ static_v('vite-dist/css/tailwind.css') }}">
+
+  {# The admin's palette when it is reachable; the tailwind.config.js var
+     fallbacks (the ECS brand green/blue) when the DB is the thing that broke. #}
+  {% if appearance is defined and appearance and appearance.theme_css %}<style>{{ appearance.theme_css }}</style>{% endif %}
+  {% if appearance is defined and appearance and appearance.favicon_url %}<link rel="icon" href="{{ appearance.favicon_url }}">{% endif %}
 </head>
-<body>
-  <div class="card">
-    <div class="code">500 · Something broke</div>
-    <h1>We hit a snag on our end.</h1>
-    <p>This one's on us, not you. Try again in a moment — if it keeps happening, let us know.</p>
-    <a class="btn" href="{{ url_for('public.home') }}">Back to home</a>
-    <div class="links">
-      <a href="{{ url_for('public.about') }}">About</a>·<a href="{{ url_for('public.calendar') }}">Calendar</a>·<a href="{{ url_for('public.faqs') }}">FAQs</a>·<a href="{{ url_for('public.contact') }}">Contact</a>
+<body class="flex min-h-dvh flex-col overflow-x-clip bg-paper text-gray-800 antialiased dark:bg-paper-dark dark:text-gray-200">
+
+  <a href="#main"
+     class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:inline-flex focus:min-h-11 focus:items-center focus:rounded-full focus:bg-ecs-blue-600 focus:px-5 focus:text-base focus:font-semibold focus:leading-none focus:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white">Skip to content</a>
+
+  <header class="w-full border-b-2 border-ecs-green-ink">
+    <div class="mx-auto flex h-16 max-w-5xl items-center px-4 sm:h-20 sm:px-6 lg:px-8">
+      <a href="{{ url_for('public.home') }}" aria-label="{{ _site_title }} — home"
+         class="inline-flex min-h-11 shrink-0 items-center gap-3 rounded-full pr-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+        <img src="{{ _logo_src }}" alt="" width="40" height="40" class="h-10 w-10 shrink-0 object-contain">
+        <span class="font-display text-xl font-extrabold leading-none tracking-[-0.03em] text-gray-900 sm:text-2xl dark:text-white">{{ _site_title }}</span>
+      </a>
     </div>
-  </div>
+  </header>
+
+  <main id="main" tabindex="-1" class="flex-1">
+    <div class="mx-auto w-full max-w-2xl px-4 pt-14 pb-20 sm:px-6 sm:pt-20 sm:pb-28 lg:px-8">
+      <div class="rounded-xl bg-white p-6 ring-1 ring-black/[0.07] shadow-sm ring-inset sm:p-8 lg:p-10 dark:bg-white/[0.045] dark:shadow-none dark:ring-white/10">
+
+        {# Left-aligned, NOT the centred eyebrow/headline/lede/CTA stack the four
+           old error pages shared (design.md § 13.21). The status numeral is the
+           only ornament and it is motivated — it names the thing. Meaning lives in
+           the headline; the numeral never restates it (§ 13.22).
+
+           SINGLE COLUMN, deliberately. The numeral sits directly ABOVE the h1 in
+           the same column and is never beside it: a wrapper holding both a
+           number/kicker and a heading must resolve to one column at every width,
+           so there is no grid and no `order-*` swap here. That also means the
+           mobile and desktop reading order are the same one order. #}
+        <p aria-hidden="true"
+           class="font-display text-7xl font-extrabold leading-[0.9] tracking-[-0.04em] tabular-nums text-ecs-green-ink/15 sm:text-8xl dark:text-ecs-green-300/15">500</p>
+        <h1 class="mt-2 font-display text-3xl font-extrabold leading-[1.06] tracking-[-0.025em] text-balance break-words text-gray-900 sm:text-4xl lg:text-5xl dark:text-white">That one’s on us.</h1>
+        <p class="mt-4 max-w-[65ch] text-lg font-normal leading-[1.45] text-pretty text-gray-700 sm:text-xl dark:text-gray-200">Something broke on our end and it’s already been logged. Give it a moment and try again — if it keeps happening, tell us and we’ll chase it down.</p>
+
+        <div class="mt-8 flex flex-wrap items-center gap-3 sm:gap-4">
+          <a href="{{ request.path }}"
+             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">Try again</a>
+          <a href="{{ url_for('public.home') }}"
+             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 text-ecs-green-ink ring-1 ring-inset ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 focus-visible:ring-ecs-green-ink dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 dark:focus-visible:ring-ecs-green-300">Back to home</a>
+        </div>
+
+        {# The only other link on the page. Deliberately NOT the nav_items row the
+           other three carry: that menu comes from the database, and this page has
+           to work when the database is the problem. #}
+        <p class="mt-8 border-t border-ecs-green-ink/20 pt-6 text-sm font-normal leading-normal text-gray-600 dark:border-white/10 dark:text-gray-300">Still stuck? <a href="{{ url_for('public.contact') }}" class="font-medium text-ecs-green-ink underline decoration-1 decoration-ecs-green-ink/40 underline-offset-2 hover:decoration-2 hover:decoration-ecs-green-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:text-ecs-green-300 dark:decoration-ecs-green-300/40 dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">Tell us what happened</a> and we’ll take a look.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="border-t border-ecs-green-ink/20 dark:border-white/10">
+    <div class="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+      <p class="text-sm font-normal leading-normal text-gray-600 dark:text-gray-300">© {{ current_year if current_year is defined and current_year else 2026 }} Emerald City Supporters Pub League · Seattle, WA</p>
+    </div>
+  </footer>
 </body>
 </html>

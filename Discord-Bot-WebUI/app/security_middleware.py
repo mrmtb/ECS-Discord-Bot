@@ -89,7 +89,17 @@ class SecurityMiddleware:
             ('sql_injection', re.compile(r'\b(union\s+select|drop\s+table|information_schema)\b', re.IGNORECASE), 3),
             ('xss_attempt', re.compile(r'<script|javascript:|onload=|onerror=', re.IGNORECASE), 3),
             ('file_inclusion', re.compile(r'(eval|base64_decode)\s*\(', re.IGNORECASE), 3),
-            ('shell_upload', re.compile(r'file_put_contents|fopen.*w\+', re.IGNORECASE), 4),
+            # Both halves REQUIRE the call paren. The old rule was
+            # `file_put_contents|fopen.*w\+`, and `fopen.*w\+` under IGNORECASE
+            # matches ~5% of base64 photo uploads BY CHANCE: 'fopen' is five
+            # letters from the base64 alphabet in any case mix ('FoPeNX0...'),
+            # `.*` then spans the rest of the one-line blob, and '+' is a base64
+            # character. Weight 4 >= the ban threshold of 3, so a single field
+            # photo instantly banned the admin's IP for an hour. Standard and
+            # URL-safe base64 contain no '(', so requiring it removes the
+            # collision without weakening the rule -- a real PHP webshell
+            # payload always calls the function.
+            ('shell_upload', re.compile(r'(file_put_contents|fopen)\s*\(', re.IGNORECASE), 4),
         ]
     
     def security_check(self):
@@ -254,6 +264,10 @@ class SecurityMiddleware:
         def _is_content_author():
             return self._is_trusted_author()
 
+        def _strip_b64_blobs(text):
+            # See _B64_BLOB: keeps a photo upload from randomly matching a rule.
+            return self._B64_BLOB.sub('', text)
+
         matched = []
         seen_labels = set()
 
@@ -283,15 +297,29 @@ class SecurityMiddleware:
         if request.method == 'POST' and not _is_content_author():
             try:
                 if request.is_json:
-                    _check(str(request.get_json()))
+                    _check(_strip_b64_blobs(str(request.get_json())))
                 elif request.form:
                     for value in request.form.values():
-                        _check(str(value))
+                        _check(_strip_b64_blobs(str(value)))
             except Exception:
                 pass  # Don't block if we can't parse request data
 
         return matched
     
+    # A base64 upload is a multi-megabyte string drawn from a 64-character
+    # alphabet, so it eventually contains ANY short alphabet-only token by pure
+    # chance -- and a chance hit here bans a real person mid-workflow. This cost
+    # an admin their session once already: a quick-profile field photo tripped
+    # 'shell_upload' (weight 4) and auto-banned the phone's IP for an hour, which
+    # then 403'd app_config / user_profile / register-token and bricked the app.
+    #
+    # Tightening one regex fixes that one collision; redacting the blob fixes the
+    # CLASS, so the next pattern added to the list can't reintroduce it. Attack
+    # payloads need punctuation the base64 alphabets don't carry, so nothing
+    # detectable is lost. 512 is comfortably longer than any legitimate token
+    # (JWT segment, CSRF token, session id) we'd still want scanned.
+    _B64_BLOB = re.compile(r'(?:data:[\w.+/-]+;base64,)?[A-Za-z0-9+/=_-]{512,}')
+
     # Roles that legitimately author rich text / edit the site (email broadcasts,
     # announcements, surveys, the public-site editor) and therefore send HTML
     # containing `<script`, `onerror=`, `javascript:` — the exact strings the

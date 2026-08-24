@@ -630,7 +630,7 @@ def public_site_appearance():
             return AdminConfig.get_setting(k, d)
         except Exception:
             return d
-    from app.services.public_theme import (FONT_PAIRS, DEFAULT_PRIMARY,
+    from app.services.public_theme import (FONT_PAIRS, DEFAULT_FONT_PAIR, DEFAULT_PRIMARY,
                                           DEFAULT_ACCENT, contrast_ratio,
                                           SECTION_RHYTHM, DEFAULT_SECTION_RHYTHM)
     primary = g_('public_primary_hex', DEFAULT_PRIMARY)
@@ -642,7 +642,7 @@ def public_site_appearance():
         'favicon_url': g_('public_favicon_url', None),
         'primary_hex': primary,
         'accent_hex': accent,
-        'font_pair': g_('public_font_pair', 'modern'),
+        'font_pair': g_('public_font_pair', DEFAULT_FONT_PAIR),
         'primary_contrast': contrast_ratio(primary),
         'accent_contrast': contrast_ratio(accent),
         'discord_invite_url': g_('discord_invite_url', None),
@@ -669,6 +669,7 @@ def public_site_appearance():
     }
     return render_template('admin_panel/public_site/appearance_flowbite.html',
                            settings=settings, font_pairs=FONT_PAIRS,
+                           default_font_pair=DEFAULT_FONT_PAIR,
                            section_rhythms=SECTION_RHYTHM)
 
 
@@ -689,13 +690,17 @@ def public_site_appearance_save():
     set_('public_favicon_url', (request.form.get('favicon_url') or '').strip() or None)
     # Strict hex validation — these values are emitted into <style> and a JS
     # string literal on every public page, so a malformed "color" is stored XSS.
-    from app.services.public_theme import DEFAULT_PRIMARY, DEFAULT_ACCENT, FONT_PAIRS
+    from app.services.public_theme import (DEFAULT_PRIMARY, DEFAULT_ACCENT, FONT_PAIRS,
+                                           DEFAULT_FONT_PAIR)
     set_('public_primary_hex',
          validate_hex_color(request.form.get('primary_hex'), DEFAULT_PRIMARY))
     set_('public_accent_hex',
          validate_hex_color(request.form.get('accent_hex'), DEFAULT_ACCENT))
-    font_pair = (request.form.get('font_pair') or 'modern').strip()
-    set_('public_font_pair', font_pair if font_pair in FONT_PAIRS else 'modern')
+    # An absent/empty select must land on DEFAULT_FONT_PAIR, not on a frozen
+    # slug — otherwise saving Appearance from a form that omits the field
+    # silently reverts the site's typography.
+    font_pair = (request.form.get('font_pair') or DEFAULT_FONT_PAIR).strip()
+    set_('public_font_pair', font_pair if font_pair in FONT_PAIRS else DEFAULT_FONT_PAIR)
     # Section rhythm: allow-list validated, same as font_pair/overlay. An
     # unknown value silently becomes 'none' rather than emitting an
     # unvalidated string into a class attribute on every public page.

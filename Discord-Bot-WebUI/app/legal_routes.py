@@ -10,6 +10,26 @@ from flask import Blueprint, render_template
 legal_bp = Blueprint('legal', __name__)
 
 
+@legal_bp.context_processor
+def _legal_public_context():
+    """Give the legal templates the REAL public-site context.
+
+    These pages extend ``public/base_public.html``, whose nav, status strip,
+    footer and CTA all read variables produced by ``_inject_public_context()``.
+    That function is registered as a ``@public_bp.context_processor``, so it
+    runs for ``public.*`` endpoints only — never for ``legal.*``. Without this,
+    the templates had to invent values, and the invented CTA hardcoded
+    ``mode: 'waitlist'``: /privacy, /terms, /terms-of-service and
+    /delete-account announced "Waitlist open" even when registration was open.
+
+    The import is deferred to call time so this module stays importable
+    regardless of blueprint registration order, and every helper inside
+    ``_inject_public_context`` is already exception-guarded.
+    """
+    from app.public_site import _inject_public_context
+    return _inject_public_context()
+
+
 @legal_bp.route('/privacy')
 def privacy_policy():
     """Display the privacy policy page."""

@@ -1,0 +1,103 @@
+{# ONE news card. Rendered by the archive (news_list.html) and — via the agreed
+   signature news_card(post, size='standard') — by block_news_latest in
+   sections/macros.html, so a post looks identical wherever it appears.
+
+   Implements design.md §4.4 (card contract), §7.3 (chips), §8 (lift is the
+   card's ONE motion signal), §4.5 (image boxes are reserved in CSS).
+
+   ONE REAL LINK PER CARD (design.md §4.4): the title carries the stretched
+   link (`after:absolute after:inset-0`), the image is alt="" and inert, and
+   the "Read the post" cue is an aria-hidden span — not a third anchor to the
+   same URL. Tag chips are genuinely different destinations, so they lift above
+   the stretched link with `relative z-10`.
+
+   `post` is either a NewsPost model (archive) or the plain dict
+   site_renderer builds for the news_latest block. Every lookup below tolerates
+   both; nothing here queries the database.
+
+   size: 'lead'     — the archive's opening card (sm:col-span-2, title at D3)
+         'standard' — everything else (title at D4)
+   info:  the media_service render-info dict for post.featured_image_url when
+          the caller has already batched the lookup (the archive has; the
+          news_latest block puts it on post.img).
+   eager: true for above-the-fold cards — design.md §4.5 wants the first row
+          eager+high-priority and everything after it lazy.
+#}
+{% macro news_card(post, size='standard', info=none, eager=false) %}
+{%- set _lead = (size == 'lead') -%}
+{%- set _url = post.url if (post.url is defined and post.url) else (url_for('public.news_detail', slug=post.slug) if post.slug else '') -%}
+{%- set _info = info if info else (post.img if post.img is defined else none) -%}
+{%- set _raw = post.featured_image_url if post.featured_image_url is defined else (post.image if post.image is defined else none) -%}
+{%- set _sizes = '(min-width: 1024px) 640px, 100vw' if _lead else '(min-width: 1024px) 310px, (min-width: 640px) 50vw, 100vw' -%}
+{%- set _load %}{% if eager %}loading="eager" fetchpriority="high" decoding="async"{% else %}loading="lazy" decoding="async"{% endif %}{% endset -%}
+{%- set _img_attrs %}{% if _info and _info.srcset %} srcset="{{ _info.srcset }}" sizes="{{ _sizes }}"{% endif %}{% if _info and _info.width and _info.height %} width="{{ _info.width }}" height="{{ _info.height }}"{% endif %}{% endset -%}
+<article class="group relative flex flex-col overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/[0.07] shadow-sm dark:bg-white/[0.045] dark:ring-white/10 dark:shadow-none transition-[transform,box-shadow,background-color] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none hover:-translate-y-0.5 hover:shadow-md dark:hover:bg-white/[0.07] focus-within:-translate-y-0.5 {{ 'sm:col-span-2' if _lead }}">
+  {# Media well — the box is reserved by aspect-video whether or not the media
+     row knows its own dimensions, so a missing width/height can never shift
+     the grid (design.md §4.5). #}
+  <div class="aspect-video w-full overflow-hidden bg-ecs-green/[0.06] dark:bg-white/[0.04]">
+    {% if _info and _info.webp_srcset %}
+    <picture>
+      <source type="image/webp" srcset="{{ _info.webp_srcset }}" sizes="{{ _sizes }}">
+      <img src="{{ _info.url }}"{{ _img_attrs }} alt="" {{ _load }}
+           class="h-full w-full object-cover"
+           {% if _info.focal_css %}style="object-position: {{ _info.focal_css }};"{% endif %}>
+    </picture>
+    {% elif _info %}
+    <img src="{{ _info.url }}"{{ _img_attrs }} alt="" {{ _load }}
+         class="h-full w-full object-cover"
+         {% if _info.focal_css %}style="object-position: {{ _info.focal_css }};"{% endif %}>
+    {% elif _raw %}
+    <img src="{{ _raw }}" alt="" {{ _load }} class="h-full w-full object-cover">
+    {% else %}
+    {# No image: a brand-tinted plate with the post's initial. Not a clone of
+       the hero gradient (design.md §13-9 / O4 §4.2). #}
+    <div class="flex h-full w-full items-center justify-center bg-ecs-green/10 dark:bg-ecs-green/15" aria-hidden="true">
+      <span class="font-display text-5xl font-extrabold text-ecs-green-ink dark:text-ecs-green-300">{{ (post.title | string | trim | first | upper) if post.title else '·' }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="flex flex-1 flex-col p-6 lg:p-8">
+    <p class="text-sm font-normal leading-normal text-gray-600 dark:text-gray-300">
+      {% if post.display_date is defined and post.display_date %}
+      <time datetime="{{ post.display_date.isoformat() }}" class="tabular-nums">{{ post.display_date.strftime('%B %-d, %Y') }}</time>
+      {% elif post.date is defined and post.date %}
+      <span class="tabular-nums">{{ post.date }}</span>
+      {% endif %}
+      {% if post.category is defined and post.category %}
+      <span class="ml-2 inline-flex min-h-6 items-center gap-1.5 rounded-full bg-ecs-green/[0.08] px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-gray-800 ring-1 ring-inset ring-ecs-green-ink/20 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15">{{ post.category }}</span>
+      {% endif %}
+    </p>
+
+    <h3 class="mt-2 font-display {{ 'text-2xl sm:text-3xl lg:text-4xl font-extrabold leading-[1.1] tracking-[-0.02em]' if _lead else 'text-xl sm:text-2xl font-bold leading-[1.15] tracking-[-0.015em]' }} text-pretty break-words text-gray-900 dark:text-white">
+      <a href="{{ _url }}"
+         class="rounded-lg after:absolute after:inset-0 after:content-[''] transition-colors duration-150 ease-out motion-reduce:transition-none group-hover:text-ecs-green-ink dark:group-hover:text-ecs-green-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">{{ post.title }}</a>
+    </h3>
+
+    {% if post.excerpt %}
+    <p class="mt-3 min-h-[3.75rem] text-base sm:text-lg font-normal leading-[1.65] text-gray-700 dark:text-gray-200 {{ 'line-clamp-4' if _lead else 'line-clamp-3' }}">{{ post.excerpt }}</p>
+    {% endif %}
+
+    {% if post.tags is defined and post.tags %}
+    <div class="relative z-10 mt-4 flex flex-wrap gap-2">
+      {% for raw_tag in post.tags.split(',') %}
+      {% set post_tag = raw_tag.strip() %}
+      {% if post_tag %}
+      <a href="{{ url_for('public.news_list', tag=post_tag) }}"
+         class="inline-flex items-center gap-2 rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15">#{{ post_tag }}</a>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Visual CTA only — the title above is the card's one real link, so this
+       carries no href and is hidden from assistive tech (design.md §4.4,
+       §13-39/40). The nudge is motion primitive 3. #}
+    <span class="mt-auto flex items-center gap-1.5 pt-4 text-sm font-semibold text-ecs-green-ink dark:text-ecs-green-300" aria-hidden="true">
+      {{ 'Read the story' if _lead else 'Read the post' }}
+      <i class="ti ti-arrow-right transition-transform duration-150 ease-out group-hover:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none"></i>
+    </span>
+  </div>
+</article>
+{% endmacro %}

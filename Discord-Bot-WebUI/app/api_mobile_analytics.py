@@ -15,7 +15,7 @@ from sqlalchemy import and_, or_, func
 import logging
 import uuid
 
-from app import db
+from app import db, csrf
 from app.models_mobile_analytics import MobileErrorAnalytics, MobileErrorPatterns, MobileLogs
 from app.models import User
 from app.utils.mobile_auth import mobile_api_auth_required, log_mobile_api_request, get_request_context
@@ -23,6 +23,15 @@ from app.utils.mobile_auth import mobile_api_auth_required, log_mobile_api_reque
 logger = logging.getLogger(__name__)
 
 mobile_analytics_bp = Blueprint('mobile_analytics', __name__, url_prefix='/api/v1')
+
+# The Flutter client authenticates every call here with a JWT and has no session
+# cookie, so it can never hold a CSRF token. Without this exemption EVERY POST to
+# /api/v1/analytics/errors answered `400 ... The CSRF token is missing.`, so
+# mobile crash and error reporting has never actually reached the server (the
+# only POST route on this blueprint). The sibling mobile blueprint
+# (mobile_api_v2) is exempted inside init_mobile_api; this one shares its
+# /api/v1 prefix and its auth model but was registered plainly and missed it.
+csrf.exempt(mobile_analytics_bp)
 
 
 @mobile_analytics_bp.route('/analytics/errors', methods=['POST'])

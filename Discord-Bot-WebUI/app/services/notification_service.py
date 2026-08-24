@@ -268,19 +268,32 @@ class NotificationService:
             from app.models import UserFCMToken
             from flask import g
             
-            # Mark tokens as inactive instead of deleting (for audit trail)
-            if hasattr(g, 'db_session') and g.db_session:
-                updated = g.db_session.query(UserFCMToken).filter(
+            def _deactivate(db_sess):
+                updated = db_sess.query(UserFCMToken).filter(
                     UserFCMToken.fcm_token.in_(invalid_tokens)
                 ).update({
                     'is_active': False,
                     'deactivated_reason': 'invalid_token'
                 }, synchronize_session=False)
-                
-                g.db_session.commit()
                 logger.info(f"Deactivated {updated} invalid FCM tokens from database")
+
+            # Mark tokens as inactive instead of deleting (for audit trail).
+            #
+            # g.db_session only exists inside a REQUEST. Most pushes are sent
+            # from Celery (reminders, broadcasts, RSVP nudges), where there is
+            # no request context -- so this used to log "No database session
+            # available for token cleanup" and drop the work on the floor.
+            # Firebase had already told us the token is dead, and we kept the
+            # row active and retried it on every subsequent send, forever.
+            # Fall back to our own session so the cleanup actually happens off
+            # the request path.
+            if hasattr(g, 'db_session') and g.db_session:
+                _deactivate(g.db_session)
+                g.db_session.commit()
             else:
-                logger.warning("No database session available for token cleanup")
+                from app.core.session_manager import managed_session
+                with managed_session() as db_sess:
+                    _deactivate(db_sess)
                 
         except Exception as e:
             logger.error(f"Error cleaning up invalid tokens: {e}")

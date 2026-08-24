@@ -417,6 +417,15 @@ class RealtimeReportingService:
                 # Match not started yet or unknown status — wait, don't deactivate
                 logger.info(f"Session {session_id}: Match not live yet (status={status}), waiting...")
                 self._last_statuses[session_id] = status
+                # Record the poll itself. Sessions are created ~20min before
+                # kickoff, and this branch returns without touching the session
+                # row -- so for that whole window last_update stayed NULL and
+                # update_count stayed 0 while we were in fact polling ESPN every
+                # 10s. monitor_stalled_sessions read that as "never polled" and
+                # logged STALLED ... at ERROR every 2 minutes before EVERY match.
+                # It cost two separate investigations that concluded live
+                # reporting was dead when it was working perfectly.
+                await self._touch_session_poll(session_id, status)
                 return
 
             # Status is live — reset unknown counter
@@ -1485,6 +1494,25 @@ class RealtimeReportingService:
                     session.commit()
         except Exception as e:
             logger.error(f"Error updating session stats for {session_id}: {e}")
+
+    async def _touch_session_poll(self, session_id: int, status: str = None):
+        """Heartbeat: record that we successfully polled, with nothing to report.
+
+        Deliberately does NOT bump ``update_count`` -- that counts updates SENT,
+        and inflating it would misreport pre-kickoff quiet as activity. Only
+        ``last_update`` moves, so it means "last time we successfully reached
+        ESPN for this session", which is exactly what the stall watchdog needs.
+        """
+        try:
+            with task_session() as session:
+                live_session = session.query(LiveReportingSession).filter_by(id=session_id).first()
+                if live_session:
+                    live_session.last_update = datetime.utcnow()
+                    if status:
+                        live_session.last_status = status
+                    session.commit()
+        except Exception as e:
+            logger.error(f"Error recording poll heartbeat for {session_id}: {e}")
 
     async def _handle_session_error(self, session_id: int, error_msg: str):
         """Handle errors for a specific session."""

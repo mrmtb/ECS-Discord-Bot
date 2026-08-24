@@ -133,7 +133,7 @@ class RenderContext:
             return {'label': 'Join us', 'url': url_for('public.register'),
                     'icon': 'ti-user-plus'}
         if block['type'] == 'registration_status':
-            return {'season_name': None, 'status_label': ''}
+            return {'season_name': None, 'mode': 'open', 'status_label': ''}
         if block['type'] in ('news_latest', 'faq_list', 'calendar_teaser'):
             return []
         return None
@@ -193,12 +193,39 @@ class RenderContext:
         return [{'question': f.question, 'answer_html': f.answer_html} for f in faqs]
 
     def _dyn_registration_status(self):
+        """The live registration state, as BOTH a machine-readable ``mode`` and a
+        human label.
+
+        The template (macros.html block_registration_status) gives each of the
+        three states a visually different treatment, so it needs the mode itself
+        — inferring it from the label was fragile and, worse, the label map used
+        to be keyed on a vocabulary ``_cta_state`` never emits: it returns
+        'waitlist' or 'register', never 'open'/'closed', so the registration case
+        always fell through to a generic 'Registration' and no state could ever
+        style itself correctly.
+
+        The waitlist takes precedence because that is how the league actually
+        operates: when the waitlist is on, the season is full and that is the
+        fact a visitor needs, regardless of the registration phase.
+        """
         from app.public_site import _cta_state, _current_season_name
         cta = _cta_state()
+        if cta.get('mode') == 'waitlist':
+            mode = 'waitlist'
+        else:
+            try:
+                from app.services.season_phase_service import is_registration_open
+                mode = 'open' if is_registration_open() else 'closed'
+            except Exception:
+                # Same degradation stance as _cta_state's own guard: assume the
+                # welcoming state rather than telling a visitor the league is
+                # shut because a lookup failed.
+                mode = 'open'
         labels = {'waitlist': 'Waitlist open', 'closed': 'Registration closed',
                   'open': 'Registration open'}
         return {'season_name': _current_season_name(),
-                'status_label': labels.get(cta.get('mode'), 'Registration')}
+                'mode': mode,
+                'status_label': labels[mode]}
 
     def _dyn_calendar(self, block):
         from app.models.calendar import LeagueEvent

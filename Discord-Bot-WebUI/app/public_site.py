@@ -160,7 +160,8 @@ def _appearance():
     """Editable site branding (Appearance screen), with sensible fallbacks.
     Palette + typography are resolved through the ONE theme service so a single
     admin change re-skins the whole site (green primary + blue accent + fonts)."""
-    from app.services.public_theme import theme_vars, css_var_block, DEFAULT_PRIMARY, DEFAULT_ACCENT
+    from app.services.public_theme import (theme_vars, css_var_block, DEFAULT_PRIMARY,
+                                           DEFAULT_ACCENT, DEFAULT_FONT_PAIR)
 
     def get(k, d=None):
         try:
@@ -169,7 +170,11 @@ def _appearance():
             return d
     primary_hex = get('public_primary_hex', DEFAULT_PRIMARY)
     accent_hex = get('public_accent_hex', DEFAULT_ACCENT)
-    font_pair = get('public_font_pair', 'modern')
+    # Fall back to DEFAULT_FONT_PAIR, never to a hardcoded slug: 'modern' is a
+    # VALID key, so theme_vars()'s own `FONT_PAIRS.get(x) or FONT_PAIRS[DEFAULT]`
+    # guard would never fire and changing the default in public_theme.py would
+    # silently do nothing on every site that has not explicitly saved a pair.
+    font_pair = get('public_font_pair', DEFAULT_FONT_PAIR)
     from app.services.public_theme import (DEFAULT_SECTION_RHYTHM,
                                           section_rhythm_classes)
     theme = theme_vars(primary_hex, accent_hex, font_pair)

@@ -1,40 +1,108 @@
-{# ONE shared hero band for the dynamic (non-section-pipeline) public pages —
-   news list + calendar. VISUAL PARITY CONTRACT: every value here (padding map,
-   gradient stops, container widths, h1 typography) mirrors section_hero +
-   block_heading level-1 in sections/macros.html so these pages are
-   indistinguishable from editor-built pages. If you touch the look of one,
-   change the other to match. Data-driven colors are inline styles (like the
-   theme --color var); everything else is Tailwind. #}
+{# ONE shared hero band for the dynamic (non-section-pipeline) public pages.
+   Consumed by news_list.html and news_detail.html. calendar.html now inlines
+   its own Stat-Led variant of the same shape (its hero is a computed fact, not
+   a title + lede) — it reads the SAME padding map and the same ecs-green-ink
+   overlay, so it is a third party to the contract below, not an exception.
+
+   VISUAL PARITY CONTRACT
+   ----------------------
+   This macro, `section_hero` + `block_heading` level-1 in sections/macros.html,
+   and calendar.html's inline hero render the SAME hero band. Neither is the source of truth:
+   /design.md is. Specifically this macro implements
+     · §5.1 "Hero pads"            — the asymmetric, bottom-weighted padding map
+     · §2.3 D1 + §2.5              — the h1 ramp and the headline-length step-down
+     · §2.3 L                      — the lede/subtitle ramp
+     · §3.3 "photo hero"           — text-white on colour, no /90 opacity ink
+     · §4.5 "Images" / "Photo-hero legibility" — srcset + focal point, ONE overlay,
+                                     no bottom scrim, no drop shadow on the type, and
+                                     a real text shadow only where a photo shows
+                                     through a light or absent overlay
+     · §3.1 / C2                   — every colour is a var-backed utility; the only
+                                     inline styles left are the two values that
+                                     genuinely come out of the database
+                                     (bg_color / text_color) plus the focal point.
+     · §5.2 "One page, one left edge" — the optional `width` argument lets a page
+                                     whose body sits at max-w-5xl / max-w-3xl put
+                                     the hero on the SAME left edge. Omit it and
+                                     you get section_hero's max-w-7xl exactly, so
+                                     parity is the default, not the exception.
+   If you change the look here, change section_hero (and calendar.html) to
+   match — and if design.md disagrees with any of us, design.md wins.
+
+   The three `min-[2000px]:min-h-*` steps are deliberate and shared with
+   section_hero: above 1920 the hero's content-driven height stays ~fixed while
+   the width grows, so object-cover zooms the source and crops heads. They come
+   out only when a ≥2400px hero crop lands in the media library (design.md §14).
+#}
 {% macro hero(title, subtitle=None, size='md', bg_color=None, text_color=None,
-              image=None, overlay='medium', align='left') %}
+              image=None, overlay='medium', align='left',
+              image_info=None, image_alt='', width='wide') %}
+{# design.md §5.1 — hero padding is bottom-weighted, never symmetric. #}
 {% set _pad = {
-    'sm': 'py-20 sm:py-24',
-    'md': 'py-24 sm:py-32 lg:py-36',
-    'lg': 'py-28 sm:py-40 lg:py-48',
-    'xl': 'py-32 sm:py-48 lg:py-60'
-  }.get(size, 'py-20 sm:py-28') %}
+    'sm': 'pt-16 pb-24 sm:pt-20 sm:pb-28',
+    'md': 'pt-20 pb-28 sm:pt-24 sm:pb-36 lg:pt-28 lg:pb-40',
+    'lg': 'pt-24 pb-32 sm:pt-28 sm:pb-40 lg:pt-32 lg:pb-44',
+    'xl': 'pt-28 pb-40 sm:pt-32 sm:pb-48 lg:pt-36 lg:pb-56'
+  }.get(size, 'pt-20 pb-28 sm:pt-24 sm:pb-36 lg:pt-28 lg:pb-40') %}
+{# design.md §5.2 — container widths. 'wide' is section_hero's own value. #}
+{% set _width = {'narrow': 'max-w-3xl', 'normal': 'max-w-5xl', 'wide': 'max-w-7xl'}.get(width, 'max-w-7xl') %}
+{# The overlay IS the legibility treatment — it is the ground under white text,
+   so its stops are ecs-green-INK, not ecs-green. Byte-identical to section_hero's
+   `grads` map; if one moves, move the other. #}
 {% set _grad = {
-    'light':  'from-ecs-green-dark/70 via-ecs-green/35 to-transparent',
-    'medium': 'from-ecs-green-dark/90 via-ecs-green/60 to-ecs-green/20',
-    'heavy':  'from-ecs-green-dark/95 via-ecs-green/85 to-ecs-green/55'
-  }.get(overlay, 'from-ecs-green-dark/90 via-ecs-green/60 to-ecs-green/20') %}
-<section class="relative overflow-hidden {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if image }} {{ 'bg-linear-to-br from-ecs-green to-ecs-green-dark' if not image and not bg_color }}"
+    'none':   '',
+    'light':  'from-ecs-green-ink/75 via-ecs-green-ink/40 to-transparent',
+    'medium': 'from-ecs-green-ink/92 via-ecs-green-ink/65 to-ecs-green-ink/25',
+    'heavy':  'from-ecs-green-ink/96 via-ecs-green-ink/88 to-ecs-green-ink/60'
+  }.get(overlay, 'from-ecs-green-ink/92 via-ecs-green-ink/65 to-ecs-green-ink/25') %}
+{# design.md §2.5 — the D1 size step is derived from the RENDERED headline
+   length, so it is content-driven and never positional (C6). #}
+{% set _len = (title | string | striptags | length) if title else 0 %}
+{% set _d1_size = 'text-[2.75rem] sm:text-6xl lg:text-7xl xl:text-8xl' if _len <= 24
+             else ('text-[2.75rem] sm:text-6xl lg:text-7xl' if _len <= 55
+             else ('text-[2.25rem] sm:text-5xl lg:text-6xl' if _len <= 90
+             else 'text-[2rem] sm:text-4xl lg:text-5xl')) %}
+{%- set _img_attrs %}src="{{ image_info.url if image_info and image_info.url else image }}"{% if image_info and image_info.srcset %} srcset="{{ image_info.srcset }}" sizes="100vw"{% endif %}{% if image_info and image_info.width and image_info.height %} width="{{ image_info.width }}" height="{{ image_info.height }}"{% endif %}{% endset -%}
+{# The brand ground is painted whether or not there is an image: the photo
+   covers it when it loads, and carries the white ink when it does not. #}
+<section class="relative overflow-hidden {{ 'min-[2000px]:min-h-[620px] min-[2600px]:min-h-[740px] min-[3200px]:min-h-[860px]' if image }} {{ 'bg-ecs-green-ink' if not bg_color }}"
          {% if bg_color and not image %}style="background-color: {{ bg_color }};"{% endif %}>
   {% if image %}
+  {# design.md §4.5 — the hero image is the LCP element: eager, high priority,
+     dimensioned, and never lazy. ONE overlay carries the contrast; the old
+     second bottom scrim is gone. #}
   <div class="absolute inset-0">
-    <img src="{{ image }}" alt="" class="h-full w-full object-cover">
-    <div class="absolute inset-0 bg-linear-to-r {{ _grad }}"></div>
-    <div class="absolute inset-0 bg-linear-to-t from-gray-950/50 via-transparent to-transparent"></div>
+    {% if image_info and image_info.webp_srcset %}
+    <picture>
+      <source type="image/webp" srcset="{{ image_info.webp_srcset }}" sizes="100vw">
+      <img {{ _img_attrs }} alt="{{ image_alt }}" fetchpriority="high" decoding="async"
+           class="h-full w-full object-cover"
+           {% if image_info and image_info.focal_css %}style="object-position: {{ image_info.focal_css }};"{% endif %}>
+    </picture>
+    {% else %}
+    <img {{ _img_attrs }} alt="{{ image_alt }}" fetchpriority="high" decoding="async"
+         class="h-full w-full object-cover"
+         {% if image_info and image_info.focal_css %}style="object-position: {{ image_info.focal_css }};"{% endif %}>
+    {% endif %}
+    {% if overlay != 'none' and _grad %}<div class="absolute inset-0 bg-linear-to-r {{ _grad }}"></div>{% endif %}
   </div>
   {% endif %}
-  <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 {{ _pad }}">
-    <div class="max-w-2xl space-y-6 {{ 'mx-auto text-center' if align == 'center' else '' }}">
-      <h1 class="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-extrabold tracking-[-0.03em] text-balance break-words drop-shadow-xs"
-          style="color: {{ text_color or '#ffffff' }};">{{ title }}</h1>
+  <div class="relative mx-auto {{ _width }} px-4 sm:px-6 lg:px-8 {{ _pad }}">
+    <div class="max-w-2xl [&>*:first-child]:mt-0 {{ 'mx-auto text-center' if align == 'center' else ('ml-auto text-right' if align == 'right' else '') }}
+                {{ '[text-shadow:0_2px_12px_rgb(0_0_0/0.35)]' if image and overlay in ('none', 'light') }}">
+      <h1 class="font-display {{ _d1_size }} font-extrabold leading-[1.02] tracking-[-0.035em] text-balance break-words {{ '' if text_color else 'text-white' }}"
+          {% if text_color %}style="color: {{ text_color }};"{% endif %}>{{ title }}</h1>
       {% if subtitle %}
-      <p class="text-lg sm:text-xl opacity-90 drop-shadow-sm {{ 'mx-auto' if align == 'center' else '' }}"
-         style="color: {{ text_color or '#ffffff' }};">{{ subtitle }}</p>
+      {# design.md §2.3 L (lede) + §3.3: on-colour body ink is solid white,
+         never a 90%-opacity white — that step drops a 4.8:1 band to 4.2:1. #}
+      <p class="mt-3 text-lg sm:text-xl lg:text-2xl font-normal leading-[1.45] text-pretty {{ '' if text_color else 'text-white' }} {{ 'mx-auto' if align == 'center' else '' }}"
+         {% if text_color %}style="color: {{ text_color }};"{% endif %}>{{ subtitle }}</p>
       {% endif %}
+      {# Optional masthead slot: {% call hero(...) %}…{% endcall %}. Used by the
+         news archive to carry its category rail and result count inside the
+         hero instead of stranding them in a strip below it. Absent for a plain
+         {{ hero(...) }} call, so every existing caller is unchanged. #}
+      {% if caller %}{% set _slot = caller() %}{% if _slot | trim %}<div class="mt-8">{{ _slot }}</div>{% endif %}{% endif %}
     </div>
   </div>
 </section>

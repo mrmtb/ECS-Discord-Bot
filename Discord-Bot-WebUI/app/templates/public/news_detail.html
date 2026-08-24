@@ -1,54 +1,90 @@
 {% extends "public/base_public.html" %}
+{% from 'public/_hero.html' import hero %}
+
+{# A single article. It OPENS the same way the archive does — the shared hero
+   band from _hero.html — so list and detail read as one surface (design.md
+   §12, News → "Ecosystem Index"). The featured image is the hero's background
+   rather than a second figure inside the column: rendering it twice was the
+   duplicate the redesign removes, and as the hero background it is the LCP
+   element with srcset, dimensions and fetchpriority already wired.
+
+   The long-form voice below is the SAME string set O3 gives block_richtext
+   (design.md §2.6 rhythm, §2.3 D3/D4/D5, §7.4 prose links) — deliberately not
+   the Tailwind Typography `prose` plugin, which is an optional require in
+   tailwind.config.js and therefore may not exist in a built stylesheet at all. #}
 
 {% block content %}
-<article class="py-12 sm:py-16">
-    <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-        <a href="{{ url_for('public.news_list') }}" class="group inline-flex items-center gap-1.5 rounded text-sm font-semibold text-ecs-green hover:underline dark:text-ecs-blue-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-            <i class="ti ti-arrow-left transition-transform duration-150 ease-out group-hover:-translate-x-0.5 motion-reduce:transform-none"></i> Back to news
-        </a>
 
-        <header class="mt-6">
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ post.display_date.strftime('%B %-d, %Y') if post.display_date else '' }}{% if post.author_name %} · {{ post.author_name }}{% endif %}</p>
-            <h1 class="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">{{ post.title }}</h1>
-            {% if post.excerpt %}<p class="mt-4 text-lg text-gray-600 dark:text-gray-300">{{ post.excerpt }}</p>{% endif %}
-            {% if post.tags %}
-            <div class="mt-4 flex flex-wrap gap-1.5">
-                {% for raw_tag in post.tags.split(',') %}
-                {% set post_tag = raw_tag.strip() %}
-                {% if post_tag %}
-                <a href="{{ url_for('public.news_list', tag=post_tag) }}"
-                   class="rounded-full bg-ecs-green/10 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-ecs-green/20 hover:text-ecs-green dark:bg-ecs-green/15 dark:text-gray-300 dark:hover:bg-ecs-green/25 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">#{{ post_tag }}</a>
-                {% endif %}
-                {% endfor %}
-            </div>
-            {% endif %}
-        </header>
+{% call hero(post.title, post.excerpt, size='sm', width='narrow',
+             image=post.featured_image_url or none, image_info=img) %}
+  <p class="text-sm font-normal leading-normal text-white">
+    {% if post.display_date %}<time datetime="{{ post.display_date.isoformat() }}" class="tabular-nums">{{ post.display_date.strftime('%B %-d, %Y') }}</time>{% endif %}
+    {%- if post.author_name %}{% if post.display_date %} · {% endif %}{{ post.author_name }}{% endif %}
+  </p>
+{% endcall %}
 
-        {% if img is defined and img %}
-        {# Media-library asset: responsive variants + WebP (same pipeline as
-           the section renderer's images). #}
-        <picture>
-            {% if img.webp_srcset %}<source type="image/webp" srcset="{{ img.webp_srcset }}" sizes="(min-width: 768px) 720px, 100vw">{% endif %}
-            <img src="{{ img.url }}" {% if img.srcset %}srcset="{{ img.srcset }}" sizes="(min-width: 768px) 720px, 100vw"{% endif %}
-                 {% if img.width and img.height %}width="{{ img.width }}" height="{{ img.height }}"{% endif %}
-                 alt="{{ post.title }}" class="mt-8 w-full rounded-xl object-cover">
-        </picture>
-        {% elif post.featured_image_url %}
-        <img src="{{ post.featured_image_url }}" alt="{{ post.title }}" class="mt-8 w-full rounded-xl object-cover">
+<section class="pt-12 pb-20 sm:pt-14 sm:pb-24">
+  <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+
+    <a href="{{ url_for('public.news_list') }}"
+       class="group inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 min-h-11 text-sm font-semibold leading-none ring-1 ring-inset transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:brightness-95 text-ecs-green-ink ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ecs-green-ink focus-visible:ring-offset-paper dark:focus-visible:ring-ecs-green-300 dark:focus-visible:ring-offset-paper-dark">
+      <i class="ti ti-arrow-left transition-transform duration-150 ease-out group-hover:-translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none" aria-hidden="true"></i> All news
+    </a>
+
+    {# The measure lives on the reading element (design.md §2.6), and the
+       long-form ramp is BL: text-base sm:text-lg / leading-[1.7], with em-based
+       paragraph rhythm so the spacing tracks the type instead of a fixed mt-3. #}
+    <article class="mt-8 max-w-[68ch] text-base sm:text-lg font-normal leading-[1.7] text-gray-700 dark:text-gray-200
+                    [&_p]:mt-[1.15em] [&_p]:first:mt-0
+                    [&_ul]:mt-[1.15em] [&_ul]:list-disc [&_ul]:pl-6
+                    [&_ol]:mt-[1.15em] [&_ol]:list-decimal [&_ol]:pl-6
+                    [&_li]:mt-[0.5em]
+                    [&_h2]:mt-[1.6em] [&_h2]:mb-[0.35em] [&_h2]:font-display [&_h2]:text-2xl sm:[&_h2]:text-3xl lg:[&_h2]:text-4xl [&_h2]:font-extrabold [&_h2]:leading-[1.1] [&_h2]:tracking-[-0.02em] [&_h2]:text-balance [&_h2]:break-words [&_h2]:text-gray-900 dark:[&_h2]:text-white
+                    [&_h3]:mt-[1.4em] [&_h3]:mb-[0.3em] [&_h3]:font-display [&_h3]:text-xl sm:[&_h3]:text-2xl [&_h3]:font-bold [&_h3]:leading-[1.15] [&_h3]:tracking-[-0.015em] [&_h3]:text-pretty [&_h3]:break-words [&_h3]:text-gray-900 dark:[&_h3]:text-white
+                    [&_h4]:mt-[1.25em] [&_h4]:mb-[0.25em] [&_h4]:font-display [&_h4]:text-lg sm:[&_h4]:text-xl [&_h4]:font-bold [&_h4]:leading-snug [&_h4]:tracking-normal [&_h4]:break-words [&_h4]:text-gray-900 dark:[&_h4]:text-white
+                    [&_dl]:mt-[1.15em] [&_dt]:mt-[1em] [&_dt]:font-semibold [&_dt]:text-gray-900 dark:[&_dt]:text-white [&_dd]:mt-[0.25em] [&_dd]:max-w-[62ch]
+                    [&_strong]:font-semibold [&_strong]:text-gray-900 dark:[&_strong]:text-white
+                    [&_blockquote]:mt-[1.5em] [&_blockquote]:border-t-2 [&_blockquote]:border-ecs-green-ink/40 [&_blockquote]:pt-[0.75em] [&_blockquote]:font-display [&_blockquote]:text-xl sm:[&_blockquote]:text-2xl [&_blockquote]:font-bold [&_blockquote]:leading-[1.2] [&_blockquote]:tracking-[-0.015em] [&_blockquote]:text-gray-900 dark:[&_blockquote]:text-white
+                    [&_img]:my-[1.5em] [&_img]:rounded-xl [&_img]:max-w-full [&_img]:h-auto
+                    [&_hr]:my-[2em] [&_hr]:border-ecs-green-ink/25 dark:[&_hr]:border-white/15
+                    [&_code]:rounded-lg [&_code]:bg-ecs-green/[0.08] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.9em] dark:[&_code]:bg-white/[0.06]
+                    [&_pre]:mt-[1.15em] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-ecs-green/[0.06] [&_pre]:p-4 dark:[&_pre]:bg-white/[0.05]
+                    [&_table]:mt-[1.15em] [&_table]:w-full [&_table]:tabular-nums
+                    [&_a]:font-medium [&_a]:text-ecs-green-ink [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 [&_a]:decoration-ecs-green-ink/40 dark:[&_a]:text-ecs-green-300 dark:[&_a]:decoration-ecs-green-300/40
+                    [&_a:hover]:decoration-2 [&_a:hover]:decoration-ecs-green-ink dark:[&_a:hover]:decoration-ecs-green-300
+                    [&_a]:rounded-lg [&_a:focus-visible]:outline-hidden [&_a:focus-visible]:ring-2 [&_a:focus-visible]:ring-offset-2 [&_a:focus-visible]:ring-ecs-green-ink [&_a:focus-visible]:ring-offset-paper dark:[&_a:focus-visible]:ring-ecs-green-300 dark:[&_a:focus-visible]:ring-offset-paper-dark">
+      {{ post.body_html | safe }}
+    </article>
+
+    {% if post.tags %}
+    <div class="mt-12">
+      <p class="text-xs font-bold uppercase tracking-[0.14em] text-gray-600 dark:text-gray-300">Filed under</p>
+      {# design.md §7.3 — the shared chip string sits outside any ternary. #}
+      <div class="mt-3 flex flex-wrap gap-2">
+        {% for raw_tag in post.tags.split(',') %}
+        {% set post_tag = raw_tag.strip() %}
+        {% if post_tag %}
+        <a href="{{ url_for('public.news_list', tag=post_tag) }}"
+           class="inline-flex items-center gap-2 rounded-full px-4 py-2 min-h-11 text-sm font-semibold ring-1 ring-inset transition-colors duration-150 ease-out motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark focus-visible:ring-ecs-green-ink bg-ecs-green/[0.08] text-gray-800 ring-ecs-green-ink/20 hover:bg-ecs-green/15 dark:bg-white/[0.05] dark:text-gray-100 dark:ring-white/15">#{{ post_tag }}</a>
         {% endif %}
-
-        <div class="mt-8 prose prose-lg dark:prose-invert max-w-none prose-headings:text-gray-900 dark:prose-headings:text-white prose-a:text-ecs-green dark:prose-a:text-ecs-blue-400 prose-img:rounded-xl">
-            {{ post.body_html | safe }}
-        </div>
-
-        <div class="mt-12 border-t border-gray-200 dark:border-gray-800 pt-8 flex flex-col sm:flex-row gap-3">
-            <a href="{{ cta.url }}" class="inline-flex items-center justify-center gap-2 rounded-full bg-ecs-green px-5.5 py-2.5 text-sm font-semibold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-                <i class="ti ti-user-plus"></i> {{ cta.label }}
-            </a>
-            <a href="{{ url_for('public.news_list') }}" class="inline-flex items-center justify-center gap-2 rounded-full border border-ecs-green/30 px-5.5 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-ecs-green/10 hover:text-ecs-green dark:border-ecs-green/25 dark:text-gray-200 dark:hover:bg-ecs-green/15 dark:hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ecs-green/50">
-                <i class="ti ti-news"></i> More news
-            </a>
-        </div>
+        {% endfor %}
+      </div>
     </div>
-</article>
+    {% endif %}
+
+    {# One button geometry (design.md §7.1): the ask is the blue primary, the
+       aside is the ghost. Both carry all eight states. #}
+    <div class="mt-12 flex flex-wrap items-center gap-3 border-t border-ecs-green-ink/20 pt-8 sm:gap-4 dark:border-white/10">
+      <a href="{{ cta.url }}"
+         class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 bg-ecs-blue-600 text-white shadow-sm hover:bg-ecs-blue-700 hover:shadow-md focus-visible:ring-ecs-blue-600">
+        <i class="ti ti-user-plus" aria-hidden="true"></i> {{ cta.label }}
+      </a>
+      <a href="{{ url_for('public.news_list') }}"
+         class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 py-3 min-h-11 font-semibold leading-none text-base ring-1 ring-inset transition-[background-color,box-shadow,transform,color,outline-color] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark motion-reduce:transition-none motion-reduce:transform-none active:translate-y-px active:shadow-none active:brightness-95 text-ecs-green-ink ring-ecs-green-ink/35 hover:bg-ecs-green/10 hover:ring-ecs-green-ink/60 dark:text-ecs-green-300 dark:ring-white/25 dark:hover:bg-white/10 focus-visible:ring-ecs-green-ink dark:focus-visible:ring-ecs-green-300">
+        <i class="ti ti-news" aria-hidden="true"></i> More news
+      </a>
+    </div>
+
+  </div>
+</section>
 {% endblock %}

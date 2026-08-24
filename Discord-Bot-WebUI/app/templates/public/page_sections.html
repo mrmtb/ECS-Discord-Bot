@@ -2,23 +2,33 @@
 
 {# The ONE public page template: every page (home included) is a sections
    document rendered server-side by site_renderer. sections_html arrives
-   pre-rendered so routes control mode (draft vs published) and caching. #}
+   pre-rendered so routes control mode (draft vs published) and caching.
+
+   `content` holds SECTIONS AND NOTHING ELSE. The 'auto' page rhythm selects on
+   `section:not([class*=bg-]) + section:not([class*=bg-])` (design.md § 5.4), so
+   any non-<section> direct child of <main> — a <script> tag included — breaks
+   the seam between the sections either side of it. Scripts therefore go in
+   extra_js, which renders at the end of <body>, outside <main>. #}
 
 {% block content %}
 {{ sections_html | safe }}
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
 {% if active_page == 'guide' and not edit_mode %}
 {# Guide reader chrome (sticky TOC bar + in-page search + scrollspy). Pure
    progressive enhancement over the rendered headings, so it survives admin
    edits to the page. Skipped in the editor iframe — it would fight the
-   selection overlay. #}
+   selection overlay.
+   vite_asset() emits the full <script type="module"> tag — render it directly,
+   never wrapped in another <script src="…">. #}
 {{ vite_asset('js/public-guide.js') }}
 {% endif %}
 {% if edit_mode %}
 {# Site-editor bridge: only rendered for authenticated site editors inside the
    editor iframe (?edit=1). Provides selection overlay, inline text editing,
-   and section-swap plumbing via postMessage to the parent shell.
-   vite_asset() emits the full <script type="module"> tag — render it directly,
-   never wrapped in another <script src="…">. #}
+   and section-swap plumbing via postMessage to the parent shell. #}
 {{ vite_asset('js/site-editor/bridge.js') }}
 {% endif %}
 {% endblock %}

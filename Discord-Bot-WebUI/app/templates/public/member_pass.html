@@ -1,50 +1,75 @@
-{% extends "base_unauthenticated_flowbite.html" %}
+{#
+  Member identity pass — /m/<token>, scanned from a player's QR by a phone
+  camera at the door.
 
-{% block title %}{{ player_name }} — ECS FC Member{% endblock %}
+  Context (app/routes/check_in_public.py):
+    player_name, team_name, division   always present
+    profile_picture_url                absolute URL or None
+    jersey_number                      may be None
+    status                             'active' | 'inactive' | 'expired' | 'suspended'
+    badge_label                        None when the pass is plainly active
 
-{% block main_content %}
-<div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden">
-    <div class="px-6 pt-8 pb-4 bg-linear-to-br from-emerald-600 to-emerald-800 text-center">
-        {% if profile_picture_url %}
-        <img src="{{ profile_picture_url }}" alt=""
-             class="w-32 h-32 rounded-full mx-auto border-4 border-white shadow-lg object-cover bg-gray-200">
-        {% else %}
-        <div class="w-32 h-32 rounded-full mx-auto border-4 border-white shadow-lg bg-emerald-900 flex items-center justify-center">
-            <i class="ti ti-user text-5xl text-emerald-200"></i>
-        </div>
-        {% endif %}
-        <h1 class="mt-4 text-2xl font-bold text-white">{{ player_name }}</h1>
-        {% if jersey_number %}
-        <p class="text-emerald-100 text-sm mt-1">#{{ jersey_number }}</p>
-        {% endif %}
-    </div>
+  DELIBERATE, DO NOT "FIX": badge_label is None for a healthy pass, so no badge
+  renders in the normal case. That is the route's decision ("only emit something
+  when it's not a generic active"), not an omission — do not invent an "Active"
+  pill for it.
 
-    <div class="px-6 py-5 space-y-3">
-        <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Team</span>
-            <span class="text-sm font-medium text-gray-900 dark:text-white text-right">{{ team_name }}</span>
-        </div>
-        <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Division</span>
-            <span class="text-sm font-medium text-gray-900 dark:text-white text-right">{{ division }}</span>
-        </div>
+  PII: no email, phone or Discord handle here — a casual QR scan must not leak
+  them. The shell sets robots noindex for the same reason.
+#}
+{% extends "public/base_public_minimal.html" %}
 
-        {% if badge_label %}
-        <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
-            <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full
-                {% if status == 'expired' %}bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200
-                {% elif status == 'suspended' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
-                {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200{% endif %}">
-                <i class="ti ti-alert-circle"></i>{{ badge_label }}
-            </span>
-        </div>
-        {% endif %}
-    </div>
+{% block title %}{{ player_name }} &mdash; member pass{% endblock %}
+{% block content_width %}max-w-md{% endblock %}
 
-    <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900 text-center border-t border-gray-100 dark:border-gray-700">
-        <p class="text-xs text-gray-500 dark:text-gray-400">
-            Open the ECS FC app for full access
-        </p>
-    </div>
+{% block page %}
+<div class="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-inset ring-black/[0.07] dark:bg-white/[0.045] dark:shadow-none dark:ring-white/10">
+
+  {# Brand band: bg-ecs-green-ink, never bg-ecs-green — white on the plain brand
+     green is 2.78:1 (design.md § 3.3). Full white text, never text-white/90. #}
+  <div class="bg-ecs-green-ink px-6 pb-7 pt-8 text-center sm:px-8">
+    {% if profile_picture_url %}
+    <img src="{{ profile_picture_url }}" alt="{{ player_name }}"
+         width="128" height="128" fetchpriority="high" decoding="async"
+         class="mx-auto h-32 w-32 rounded-full object-cover ring-4 ring-white">
+    {% else %}
+    <span class="mx-auto flex h-32 w-32 items-center justify-center rounded-full bg-white/15 ring-4 ring-white">
+      <i class="ti ti-user text-5xl text-white" aria-hidden="true"></i>
+      <span class="sr-only">No pass photo on file</span>
+    </span>
+    {% endif %}
+
+    <h1 class="mt-5 font-display text-2xl font-extrabold leading-[1.1] tracking-[-0.02em] text-balance break-words text-white sm:text-3xl">{{ player_name }}</h1>
+    {% if jersey_number %}
+    <p class="mt-2 font-display text-xl font-bold leading-none tabular-nums text-white">#{{ jersey_number }}</p>
+    {% endif %}
+  </div>
+
+  <div class="px-6 py-6 sm:px-8">
+    {% if badge_label %}
+    {# The one live fact on this page, so it is read at body size, not 12px. #}
+    <p class="mb-5 inline-flex min-h-8 items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold ring-1 ring-inset sm:text-base
+              {% if status == 'expired' %}bg-amber-100 text-amber-900 ring-amber-600/40 dark:bg-amber-400/15 dark:text-amber-200 dark:ring-amber-400/30
+              {% elif status == 'suspended' %}bg-red-100 text-red-900 ring-red-600/40 dark:bg-red-400/15 dark:text-red-200 dark:ring-red-400/30
+              {% else %}bg-gray-100 text-gray-700 ring-gray-400/50 dark:bg-white/[0.06] dark:text-gray-200 dark:ring-white/15{% endif %}">
+      <i class="ti {% if status == 'expired' %}ti-hourglass{% elif status == 'suspended' %}ti-alert-triangle{% else %}ti-lock{% endif %}" aria-hidden="true"></i>{{ badge_label }}
+    </p>
+    {% endif %}
+
+    <dl class="divide-y divide-black/[0.08] dark:divide-white/10">
+      <div class="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+        <dt class="shrink-0 text-xs font-bold uppercase tracking-[0.14em] text-gray-600 dark:text-gray-300">Team</dt>
+        <dd class="min-w-0 break-words text-right text-base font-semibold leading-snug text-gray-900 dark:text-white">{{ team_name }}</dd>
+      </div>
+      <div class="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+        <dt class="shrink-0 text-xs font-bold uppercase tracking-[0.14em] text-gray-600 dark:text-gray-300">Division</dt>
+        <dd class="min-w-0 break-words text-right text-base font-semibold leading-snug text-gray-900 dark:text-white">{{ division }}</dd>
+      </div>
+    </dl>
+  </div>
+
+  <div class="border-t border-black/[0.07] px-6 py-4 dark:border-white/10 sm:px-8">
+    <p class="text-sm font-normal leading-normal text-gray-600 dark:text-gray-300">Open the ECS FC app for the full pass.</p>
+  </div>
 </div>
 {% endblock %}
