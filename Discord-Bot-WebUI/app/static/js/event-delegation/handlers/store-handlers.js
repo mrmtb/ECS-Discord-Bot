@@ -236,7 +236,9 @@ window.EventDelegation.register('store-order-status', function(element) {
     element.disabled = true;
     const csrfToken = document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || '';
 
-    fetch(`/store/admin/order/${orderId}/update`, {
+    // Retired /store/admin/order/<id>/update now answers 410 -- the surviving
+    // endpoint is the admin-panel one.
+    fetch(`/admin-panel/store/orders/${orderId}/update-status`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',

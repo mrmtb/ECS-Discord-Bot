@@ -14,12 +14,14 @@ import json
 import logging
 from flask import jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.mobile_api import mobile_api_v2
 from app.decorators import jwt_role_required
 from app.core.session_manager import managed_session
-from app.models import User, StoreItem, StoreOrder, Season
+from app.models import User, StoreItem, StoreOrder
+from app.store_helpers import check_order_eligibility, validate_order_options
 
 logger = logging.getLogger(__name__)
 
@@ -50,19 +52,11 @@ def get_store_items():
 
         items_data = []
         for item in items:
-            # Parse JSON fields
-            colors = []
-            sizes = []
-            try:
-                if item.available_colors:
-                    colors = json.loads(item.available_colors)
-            except (json.JSONDecodeError, TypeError):
-                pass
-            try:
-                if item.available_sizes:
-                    sizes = json.loads(item.available_sizes)
-            except (json.JSONDecodeError, TypeError):
-                pass
+            # The column comes back already decoded (json/jsonb), so json.loads()
+            # here raised TypeError and this endpoint reported EVERY item as
+            # having no colours and no sizes. See parse_option_list().
+            colors = item.color_options
+            sizes = item.size_options
 
             items_data.append({
                 "id": item.id,
@@ -105,19 +99,9 @@ def get_store_item(item_id: int):
         if not item:
             return jsonify({"msg": "Store item not found"}), 404
 
-        # Parse JSON fields
-        colors = []
-        sizes = []
-        try:
-            if item.available_colors:
-                colors = json.loads(item.available_colors)
-        except (json.JSONDecodeError, TypeError):
-            pass
-        try:
-            if item.available_sizes:
-                sizes = json.loads(item.available_sizes)
-        except (json.JSONDecodeError, TypeError):
-            pass
+        # Already-decoded column -- see parse_option_list().
+        colors = item.color_options
+        sizes = item.size_options
 
         return jsonify({
             "item": {
@@ -147,11 +131,12 @@ def check_store_eligibility():
     current_user_id = int(get_jwt_identity())
 
     with managed_session() as session:
-        # Get current pub league season
-        current_season = session.query(Season).filter_by(
-            league_type='Pub League',
-            is_current=True
-        ).first()
+        # Shared with the web store -- see app/store_helpers.py. An order an admin
+        # has granted a re-order on keeps its season_id but stops blocking here,
+        # so the app becomes eligible again with no client change.
+        eligible, reason, current_season, blocking_order = check_order_eligibility(
+            session, current_user_id
+        )
 
         if not current_season:
             return jsonify({
@@ -160,35 +145,28 @@ def check_store_eligibility():
                 "season": None
             }), 200
 
-        # Check if user has already ordered this season
-        existing_order = session.query(StoreOrder).filter_by(
-            ordered_by=current_user_id,
-            season_id=current_season.id
-        ).first()
+        season_payload = {
+            "id": current_season.id,
+            "name": current_season.name
+        }
 
-        if existing_order:
+        if blocking_order:
             return jsonify({
                 "eligible": False,
-                "reason": f"You have already placed an order this season ({current_season.name}). Only one order per season is allowed.",
-                "season": {
-                    "id": current_season.id,
-                    "name": current_season.name
-                },
+                "reason": reason,
+                "season": season_payload,
                 "existing_order": {
-                    "id": existing_order.id,
-                    "item_id": existing_order.item_id,
-                    "status": existing_order.status,
-                    "order_date": existing_order.order_date.isoformat() if existing_order.order_date else None
+                    "id": blocking_order.id,
+                    "item_id": blocking_order.item_id,
+                    "status": blocking_order.status,
+                    "order_date": blocking_order.order_date.isoformat() if blocking_order.order_date else None
                 }
             }), 200
 
         return jsonify({
             "eligible": True,
             "reason": None,
-            "season": {
-                "id": current_season.id,
-                "name": current_season.name
-            },
+            "season": season_payload,
             "existing_order": None
         }), 200
 
@@ -218,9 +196,11 @@ def place_order():
 
     item_id = data.get('item_id')
     quantity = data.get('quantity', 1)
-    color = data.get('color', '').strip()
-    size = data.get('size', '').strip()
-    notes = data.get('notes', '').strip()
+    # Raw, not pre-stripped: a client sending an explicit null used to raise
+    # AttributeError here. validate_order_options() handles None.
+    color = data.get('color')
+    size = data.get('size')
+    notes = (data.get('notes') or '').strip()
 
     if not item_id:
         return jsonify({"msg": "item_id is required"}), 400
@@ -241,61 +221,44 @@ def place_order():
         if not item.is_active:
             return jsonify({"msg": "This item is no longer available"}), 400
 
-        # Get current pub league season
-        current_season = session.query(Season).filter_by(
-            league_type='Pub League',
-            is_current=True
-        ).first()
-
+        # Same eligibility rule as the web store -- see app/store_helpers.py.
+        eligible, reason, current_season, _blocking = check_order_eligibility(
+            session, current_user_id
+        )
         if not current_season:
             return jsonify({"msg": "No current season found. Cannot place order."}), 400
+        if not eligible:
+            return jsonify({"msg": reason}), 400
 
-        # Check if user has already ordered this season
-        existing_order = session.query(StoreOrder).filter_by(
-            ordered_by=current_user_id,
-            season_id=current_season.id
-        ).first()
-
-        if existing_order:
-            return jsonify({
-                "msg": f"You have already placed an order this season ({current_season.name}). Only one order per season is allowed."
-            }), 400
-
-        # Validate color selection if item has colors
-        if item.available_colors:
-            try:
-                available_colors = json.loads(item.available_colors)
-                if available_colors and not color:
-                    return jsonify({"msg": "Color selection is required for this item"}), 400
-                if color and color not in available_colors:
-                    return jsonify({"msg": f"Invalid color. Available: {', '.join(available_colors)}"}), 400
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        # Validate size selection if item has sizes
-        if item.available_sizes:
-            try:
-                available_sizes = json.loads(item.available_sizes)
-                if available_sizes and not size:
-                    return jsonify({"msg": "Size selection is required for this item"}), 400
-                if size and size not in available_sizes:
-                    return jsonify({"msg": f"Invalid size. Available: {', '.join(available_sizes)}"}), 400
-            except (json.JSONDecodeError, TypeError):
-                pass
+        # Same colour/size rule as the web store: required only when the item
+        # declares options, and validated against them.
+        ok, message, selected_color, selected_size = validate_order_options(item, color, size)
+        if not ok:
+            return jsonify({"msg": message}), 400
 
         # Create order
         order = StoreOrder(
             item_id=item_id,
             ordered_by=current_user_id,
             quantity=quantity,
-            selected_color=color if color else None,
-            selected_size=size if size else None,
+            selected_color=selected_color,
+            selected_size=selected_size,
             notes=notes if notes else None,
             season_id=current_season.id
         )
 
         session.add(order)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # uq_store_orders_live_per_season -- a phone POST racing a browser
+            # POST. Answer with the message the check above would have given
+            # rather than a 500.
+            session.rollback()
+            logger.info(f"Duplicate store order blocked for user {current_user_id}")
+            return jsonify({
+                "msg": f"You have already placed an order this season ({current_season.name}). Only one order per season is allowed."
+            }), 400
 
         logger.info(f"Order placed for item '{item.name}' by user {current_user_id}")
 

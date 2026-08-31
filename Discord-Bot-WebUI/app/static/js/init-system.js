@@ -574,9 +574,21 @@ export const InitSystemDebug = {
     }
 };
 
-// Backward compatibility - keep window.InitSystem for legacy code
-window.InitSystem = InitSystem;
-window.InitSystemDebug = InitSystemDebug;
+// Backward compatibility - keep window.InitSystem for legacy code.
+//
+// DO NOT make these unconditional again. app/static/custom_js/*.js is not a Vite
+// entry, so those files ship raw and their `import '../js/init-system.js'`
+// fetches a SECOND copy of this module at a different URL. An unconditional
+// assignment let that copy overwrite the bundle's already-initialised instance
+// with a fresh one (initialized:false, autoInit:false), so every
+// window.InitSystem.register() from a raw module landed in a queue nobody ever
+// drained -- the module was dead, silently, with an empty console.
+//
+// Preserving the first instance instead means a late registration hits the
+// bundle's instance, whose `initialized` is already true, so the
+// late-registration path in register() initialises it on the spot.
+window.InitSystem = window.InitSystem || InitSystem;
+window.InitSystemDebug = window.InitSystemDebug || InitSystemDebug;
 
 // Auto-initialize on DOMContentLoaded (if enabled)
 if (window.InitSystem.config.autoInit) {

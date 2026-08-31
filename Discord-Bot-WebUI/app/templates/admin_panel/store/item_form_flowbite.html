@@ -60,7 +60,7 @@
         </div>
     </div>
 
-    <form method="POST" id="itemForm" class="grid grid-cols-1 xl:grid-cols-3 gap-5 sm:gap-6 items-start">
+    <form method="POST" id="itemForm" enctype="multipart/form-data" class="grid grid-cols-1 xl:grid-cols-3 gap-5 sm:gap-6 items-start">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         {# ================= LEFT: editor (2/3) ================= #}
@@ -112,9 +112,17 @@
                         <label for="image_url" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                             Image URL
                         </label>
-                        <input type="url" id="image_url" name="image_url" value="{{ item.image_url if item else '' }}" placeholder="https://example.com/image.jpg"
+                        <input type="text" inputmode="url" id="image_url" name="image_url" value="{{ item.image_url if item else '' }}" placeholder="https://example.com/image.jpg"
                             class="input-ecs">
                         <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Shown on the storefront card preview.</p>
+                    </div>
+                    <div>
+                        <label for="image_file" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                            Or upload an image
+                        </label>
+                        <input type="file" id="image_file" name="image_file" accept="image/png,image/jpeg,image/webp,image/gif"
+                            class="block w-full text-sm text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer bg-gray-50 dark:bg-gray-700 focus:outline-hidden file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-semibold file:bg-ecs-green file:text-white hover:file:bg-ecs-green-700">
+                        <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Overrides the URL above. Resized and stored in the media library (15&nbsp;MB max).</p>
                     </div>
                 </div>
             </div>
@@ -125,8 +133,8 @@
                 {% call section_card('Available Colors', icon='ti-palette') %}
                 <div class="p-4 sm:p-5">
                     <div id="colorsContainer" class="space-y-2">
-                        {% if item and item.available_colors %}
-                            {% set colors = item.available_colors | fromjson %}
+                        {% if item and item.color_options %}
+                            {% set colors = item.color_options %}
                             {% for color in colors %}
                             <div class="flex items-center gap-2 color-input">
                                 <input type="text" name="color_{{ loop.index0 }}" value="{{ color }}" placeholder="Color name"
@@ -155,8 +163,8 @@
                 {% call section_card('Available Sizes', icon='ti-ruler') %}
                 <div class="p-4 sm:p-5">
                     <div id="sizesContainer" class="space-y-2">
-                        {% if item and item.available_sizes %}
-                            {% set sizes = item.available_sizes | fromjson %}
+                        {% if item and item.size_options %}
+                            {% set sizes = item.size_options %}
                             {% for size in sizes %}
                             <div class="flex items-center gap-2 size-input">
                                 <input type="text" name="size_{{ loop.index0 }}" value="{{ size }}" placeholder="Size (e.g., S, M, L, XL)"
@@ -221,8 +229,8 @@
                                     {% endif %}
                                 {% endif %}
                             </div>
-                            {% if item and item.available_colors %}
-                            {% set colors = item.available_colors | fromjson %}
+                            {% if item and item.color_options %}
+                            {% set colors = item.color_options %}
                             {% if colors %}
                             <div class="mt-2.5 flex flex-wrap gap-1">
                                 {% for color in colors %}
@@ -231,8 +239,8 @@
                             </div>
                             {% endif %}
                             {% endif %}
-                            {% if item and item.available_sizes %}
-                            {% set sizes = item.available_sizes | fromjson %}
+                            {% if item and item.size_options %}
+                            {% set sizes = item.size_options %}
                             {% if sizes %}
                             <div class="mt-1.5 flex flex-wrap gap-1">
                                 {% for size in sizes %}
@@ -300,7 +308,7 @@
             </h3>
         </div>
         <div class="p-6">
-            <form method="POST" id="itemForm">
+            <form method="POST" id="itemForm" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <!-- Basic Information Section -->
@@ -355,8 +363,16 @@
                             <label for="image_url" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Image URL
                             </label>
-                            <input type="url" id="image_url" name="image_url" value="{{ item.image_url if item else '' }}" placeholder="https://example.com/image.jpg"
+                            <input type="text" inputmode="url" id="image_url" name="image_url" value="{{ item.image_url if item else '' }}" placeholder="https://example.com/image.jpg"
                                 class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:border-ecs-green focus:ring-1 focus:ring-ecs-green">
+                        </div>
+                        <div>
+                            <label for="image_file" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Or upload an image
+                            </label>
+                            <input type="file" id="image_file" name="image_file" accept="image/png,image/jpeg,image/webp,image/gif"
+                                class="block w-full text-sm text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer bg-gray-50 dark:bg-gray-700 focus:outline-hidden file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-semibold file:bg-ecs-green file:text-white">
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Overrides the URL above (15&nbsp;MB max).</p>
                         </div>
                     </div>
                 </div>
@@ -368,8 +384,8 @@
                         Available Colors
                     </h4>
                     <div id="colorsContainer" class="space-y-2">
-                        {% if item and item.available_colors %}
-                            {% set colors = item.available_colors | fromjson %}
+                        {% if item and item.color_options %}
+                            {% set colors = item.color_options %}
                             {% for color in colors %}
                             <div class="flex items-center gap-2 color-input">
                                 <input type="text" name="color_{{ loop.index0 }}" value="{{ color }}" placeholder="Color name"
@@ -401,8 +417,8 @@
                         Available Sizes
                     </h4>
                     <div id="sizesContainer" class="space-y-2">
-                        {% if item and item.available_sizes %}
-                            {% set sizes = item.available_sizes | fromjson %}
+                        {% if item and item.size_options %}
+                            {% set sizes = item.size_options %}
                             {% for size in sizes %}
                             <div class="flex items-center gap-2 size-input">
                                 <input type="text" name="size_{{ loop.index0 }}" value="{{ size }}" placeholder="Size (e.g., S, M, L, XL)"
@@ -464,8 +480,8 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const isDark = document.documentElement.classList.contains('dark');
-    let colorIndex = {{ (item.available_colors | fromjson | length) if item and item.available_colors else 1 }};
-    let sizeIndex = {{ (item.available_sizes | fromjson | length) if item and item.available_sizes else 1 }};
+    let colorIndex = {{ (item.color_options | length if item else 0) or 1 }};
+    let sizeIndex = {{ (item.size_options | length if item else 0) or 1 }};
 
     const colorsContainer = document.getElementById('colorsContainer');
     const sizesContainer = document.getElementById('sizesContainer');

@@ -188,8 +188,8 @@
             {% endif %}
           </td>
           <td class="px-3 py-3 align-middle hidden lg:table-cell">
-            {% set colors = item.available_colors|from_json if item.available_colors else [] %}
-            {% set sizes = item.available_sizes|from_json if item.available_sizes else [] %}
+            {% set colors = item.color_options %}
+            {% set sizes = item.size_options %}
             {% if colors or sizes %}
             <div class="flex flex-wrap items-center gap-1.5">
               {% if colors %}
@@ -270,8 +270,8 @@
               <span class="font-mono font-semibold text-gray-900 dark:text-white tabular-nums">${{ "%.2f"|format(item.price) }}</span>
               {% endif %}
             </div>
-            {% set m_colors = item.available_colors|from_json if item.available_colors else [] %}
-            {% set m_sizes = item.available_sizes|from_json if item.available_sizes else [] %}
+            {% set m_colors = item.color_options %}
+            {% set m_sizes = item.size_options %}
             {% if m_colors or m_sizes %}
             <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
               {% if m_colors %}
@@ -542,8 +542,8 @@
                     {% endif %}
                 </td>
                 <td class="px-4 py-3 hidden md:table-cell">
-                    {% set colors = item.available_colors|from_json if item.available_colors else [] %}
-                    {% set sizes = item.available_sizes|from_json if item.available_sizes else [] %}
+                    {% set colors = item.color_options %}
+                    {% set sizes = item.size_options %}
                     {% if colors %}
                     <p class="text-xs text-gray-500 dark:text-gray-400">Colors: {{ colors|length }}</p>
                     {% endif %}

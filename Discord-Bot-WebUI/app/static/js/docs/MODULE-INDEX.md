@@ -356,7 +356,6 @@ Complete inventory of all JavaScript files in the codebase.
 | `bulk-operations.js` | Bulk data operations |
 | `cache-stats.js` | Cache statistics |
 | `redis-stats.js` | Redis statistics |
-| `store-admin.js` | Store administration |
 | `user-analytics.js` | User analytics |
 | `user-approval-management.js` | User approval workflow |
 

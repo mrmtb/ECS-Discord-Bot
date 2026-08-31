@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from flask import render_template, request, jsonify, flash, redirect, url_for
 from flask_login import login_required, current_user
 from sqlalchemy import func, desc, and_, or_
+from sqlalchemy.exc import IntegrityError
 
 from .. import admin_panel_bp
 from app.core import db
@@ -23,10 +24,16 @@ from app.models.store import StoreItem, StoreOrder
 from app.models.core import User, Season
 from app.models.admin_config import AdminAuditLog
 from app.decorators import role_required
+from app.store_helpers import get_current_store_season, validate_order_options
 from app.utils.db_utils import transactional
 
 # Set up the module logger
 logger = logging.getLogger(__name__)
+
+# The one definition of the order lifecycle. Previously re-declared as a
+# literal list in four separate places, which is how the single-order and
+# bulk paths drifted apart on timestamp handling.
+ORDER_STATUSES = ('PENDING', 'PROCESSING', 'ORDERED', 'DELIVERED', 'CANCELLED')
 
 
 @admin_panel_bp.route('/store')
@@ -178,6 +185,37 @@ def store_items():
         return redirect(url_for('admin_panel.store_management'))
 
 
+def _resolve_item_image(image_url):
+    """Return the image URL for an item, uploading a posted file if there is one.
+
+    An uploaded file wins over the URL field. Reuses the media library's
+    save_public_image (validation, re-encode, responsive variants) rather than
+    inventing a second image pipeline. Returns (url, error_message); on error
+    the caller keeps the URL field and shows the message, because a silently
+    discarded upload is exactly what this replaces -- the previous store code
+    read the file and threw it away behind a TODO while the form kept offering
+    the control.
+    """
+    upload = request.files.get('image_file')
+    if not upload or not upload.filename:
+        return image_url or None, None
+
+    try:
+        from app.services.media_service import save_public_image, MediaValidationError
+    except Exception:
+        logger.exception("Media service unavailable for store item image upload")
+        return image_url or None, 'Image upload is unavailable right now.'
+
+    try:
+        asset = save_public_image(upload, uploaded_by_id=current_user.id, session=db.session)
+        return asset.url, None
+    except MediaValidationError as exc:
+        return image_url or None, str(exc)
+    except Exception:
+        logger.exception("Error uploading store item image")
+        return image_url or None, 'Could not process that image.'
+
+
 @admin_panel_bp.route('/store/items/create', methods=['GET', 'POST'])
 @login_required
 @role_required(['Global Admin', 'Pub League Admin'])
@@ -220,11 +258,17 @@ def create_store_item():
             return render_template('admin_panel/store/item_form_flowbite.html',
                                  action='create', item=None)
 
+        resolved_image, image_error = _resolve_item_image(image_url)
+        if image_error:
+            flash(image_error, 'error')
+            return render_template('admin_panel/store/item_form_flowbite.html',
+                                 action='create', item=None)
+
         # Create item
         item = StoreItem(
             name=name,
             description=description or None,
-            image_url=image_url or None,
+            image_url=resolved_image,
             category=category or None,
             price=price_value,
             available_colors=json.dumps(colors) if colors else None,
@@ -271,23 +315,19 @@ def edit_store_item(item_id):
             'is_active': item.is_active
         }
 
-        # Update item
-        item.name = request.form.get('name', '').strip()
-        item.description = request.form.get('description', '').strip() or None
-        item.image_url = request.form.get('image_url', '').strip() or None
-        item.category = request.form.get('category', '').strip() or None
-        price = request.form.get('price', '').strip()
+        # Read and validate EVERYTHING before touching `item`.
+        #
+        # @transactional treats ANY normal return as success and commits, so a
+        # `flash(...) + render_template(...)` placed after a partial mutation
+        # persists half an edit while telling the admin it failed -- rename the
+        # item, attach a 20MB photo, and the rename sticks while the error says
+        # the image was rejected.
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip() or None
+        category = request.form.get('category', '').strip() or None
+        price_raw = request.form.get('price', '').strip()
+        is_active = 'is_active' in request.form
 
-        try:
-            item.price = float(price) if price else None
-        except ValueError:
-            flash('Invalid price format.', 'error')
-            return render_template('admin_panel/store/item_form_flowbite.html',
-                                 action='edit', item=item)
-
-        item.is_active = 'is_active' in request.form
-
-        # Get colors and sizes
         colors = []
         sizes = []
         for key, value in request.form.items():
@@ -296,24 +336,44 @@ def edit_store_item(item_id):
             elif key.startswith('size_') and value.strip():
                 sizes.append(value.strip())
 
+        def _reject(message):
+            # Roll back first: a failed upload may already have flushed a
+            # MediaAsset row, and `item` must re-render as it is stored.
+            flash(message, 'error')
+            db.session.rollback()
+            return render_template('admin_panel/store/item_form_flowbite.html',
+                                   action='edit', item=item)
+
+        if not name:
+            return _reject('Item name is required.')
+
+        try:
+            price_value = float(price_raw) if price_raw else None
+        except ValueError:
+            return _reject('Invalid price format.')
+
+        duplicate = StoreItem.query.filter(
+            and_(StoreItem.name == name, StoreItem.id != item.id)
+        ).first()
+        if duplicate:
+            return _reject('An item with this name already exists.')
+
+        resolved_image, image_error = _resolve_item_image(
+            request.form.get('image_url', '').strip()
+        )
+        if image_error:
+            return _reject(image_error)
+
+        # Every check passed -- now mutate, so the commit is all-or-nothing.
+        item.name = name
+        item.description = description
+        item.category = category
+        item.price = price_value
+        item.is_active = is_active
+        item.image_url = resolved_image
         item.available_colors = json.dumps(colors) if colors else None
         item.available_sizes = json.dumps(sizes) if sizes else None
         item.updated_at = datetime.utcnow()
-
-        # Validation
-        if not item.name:
-            flash('Item name is required.', 'error')
-            return render_template('admin_panel/store/item_form_flowbite.html',
-                                 action='edit', item=item)
-
-        # Check for duplicate name (excluding current item)
-        duplicate = StoreItem.query.filter(
-            and_(StoreItem.name == item.name, StoreItem.id != item.id)
-        ).first()
-        if duplicate:
-            flash('An item with this name already exists.', 'error')
-            return render_template('admin_panel/store/item_form_flowbite.html',
-                                 action='edit', item=item)
 
         # Log the action
         changes = []
@@ -344,7 +404,11 @@ def edit_store_item(item_id):
 
 @admin_panel_bp.route('/store/items/<int:item_id>/delete', methods=['POST'])
 @login_required
-@role_required(['Global Admin'])
+# Pub League Admin could delete items on the retired /store/admin page; keep that
+# parity rather than silently narrowing it to Global Admin. This route still
+# refuses when the item has orders, so it is strictly safer than the old one,
+# which cascade-deleted the order history behind a trash icon.
+@role_required(['Global Admin', 'Pub League Admin'])
 @transactional
 def delete_store_item(item_id):
     """Delete store item."""
@@ -439,7 +503,7 @@ def store_orders():
         )
         
         # Get order statuses for filter dropdown
-        order_statuses = ['PENDING', 'PROCESSING', 'ORDERED', 'DELIVERED', 'CANCELLED']
+        order_statuses = list(ORDER_STATUSES)
         
         return render_template('admin_panel/store/orders_flowbite.html',
                              orders=orders,
@@ -466,7 +530,7 @@ def update_order_status(order_id):
     order = StoreOrder.query.get_or_404(order_id)
     new_status = request.form.get('status')
 
-    if new_status not in ['PENDING', 'PROCESSING', 'ORDERED', 'DELIVERED', 'CANCELLED']:
+    if new_status not in ORDER_STATUSES:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'success': False, 'message': 'Invalid status.'}), 400
         flash('Invalid status.', 'error')
@@ -535,6 +599,335 @@ def order_details(order_id):
     except Exception as e:
         logger.error(f"Error getting order details: {e}")
         return jsonify({'success': False, 'message': 'Error retrieving order details'}), 500
+
+
+@admin_panel_bp.route('/store/orders/<int:order_id>/reorder-grant', methods=['POST'])
+@login_required
+@role_required(['Global Admin', 'Pub League Admin'])
+@transactional
+def reorder_grant(order_id):
+    """Let ONE coach place another order this season, without touching anyone else.
+
+    Stamps eligibility_reset_at so the order stops counting against the
+    one-order-per-season rule while keeping its season_id, its status and its
+    place in the coach's history. Before this route existed the only lever was
+    the all-or-nothing season reset -- and that reset had never actually run,
+    because its confirm button lived in JavaScript that never initialised.
+    """
+    order = StoreOrder.query.get_or_404(order_id)
+    data = request.get_json(silent=True) or {}
+    allow = bool(data.get('allow', True))
+    coach = order.orderer.username if order.orderer else f'user {order.ordered_by}'
+
+    if allow:
+        if order.eligibility_reset_at:
+            return jsonify({'success': False,
+                            'message': f'{coach} can already place another order this season.'}), 409
+        order.eligibility_reset_at = datetime.utcnow()
+        order.eligibility_reset_by = current_user.id
+        message = (f'{coach} can now place another order this season. '
+                   f'Order #{order.id} is unchanged.')
+    else:
+        if not order.eligibility_reset_at:
+            return jsonify({'success': False,
+                            'message': f'{coach} has no re-order permission to revoke.'}), 409
+        if order.season_id is None:
+            # `season_id = NULL` is never true in SQL, so the guard below would
+            # be vacuous and this order never blocked anything anyway.
+            return jsonify({'success': False,
+                            'message': 'That order has no season, so it never blocked ordering.'}), 409
+        # Revoking after the coach already used the grant would leave two live
+        # orders and trip uq_store_orders_live_per_season as an opaque
+        # IntegrityError. Refuse with an explanation instead.
+        live = StoreOrder.query.filter(
+            StoreOrder.ordered_by == order.ordered_by,
+            StoreOrder.season_id == order.season_id,
+            StoreOrder.eligibility_reset_at.is_(None),
+            StoreOrder.id != order.id
+        ).first()
+        if live:
+            return jsonify({
+                'success': False,
+                'message': (f'{coach} already placed order #{live.id} using this grant. '
+                            f'Delete that order first if you want to revoke.')
+            }), 409
+        order.eligibility_reset_at = None
+        order.eligibility_reset_by = None
+        message = f'Re-order permission for {coach} revoked.'
+
+    AdminAuditLog.log_action(
+        user_id=current_user.id,
+        action='store_reorder_grant' if allow else 'store_reorder_revoke',
+        resource_type='store',
+        resource_id=str(order.id),
+        old_value=coach,
+        new_value=f'season {order.season_id}',
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    )
+
+    try:
+        # The guard above is a check-then-write with no lock. Two revokes
+        # confirmed at once each see the other as still reset, both pass, and
+        # the second commit trips uq_store_orders_live_per_season. Catch it so
+        # the admin gets the same explanation instead of a 500.
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'{coach} already has a live order for this season. Reload and try again.'
+        }), 409
+
+    return jsonify({'success': True, 'message': message})
+
+
+@admin_panel_bp.route('/store/orders/<int:order_id>/delete', methods=['POST'])
+@login_required
+@role_required(['Global Admin', 'Pub League Admin'])
+@transactional
+def delete_store_order(order_id):
+    """Permanently delete a single order. Audited -- this destroys data."""
+    order = StoreOrder.query.get_or_404(order_id)
+    describe = (f'#{order.id} {order.item.name if order.item else "Unknown Item"} '
+                f'for {order.orderer.username if order.orderer else "Unknown"}')
+
+    AdminAuditLog.log_action(
+        user_id=current_user.id,
+        action='store_delete_order',
+        resource_type='store',
+        resource_id=str(order.id),
+        old_value=describe,
+        new_value='deleted',
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    )
+
+    db.session.delete(order)
+    return jsonify({'success': True, 'message': f'Order {describe} deleted.'})
+
+
+@admin_panel_bp.route('/store/orders/<int:order_id>/options', methods=['POST'])
+@login_required
+@role_required(['Global Admin', 'Pub League Admin'])
+@transactional
+def update_order_options(order_id):
+    """Set an order's colour and size.
+
+    Orders placed from the phone before the jsonb parsing fix carry no colour or
+    size -- the app was served empty option lists, so there was nothing to pick,
+    and the same bug suppressed the server-side requirement. Those orders cannot
+    be fulfilled and nothing in the database can recover the intent, so an admin
+    needs a way to record what the coach asks for without making them re-order.
+    """
+    order = StoreOrder.query.get_or_404(order_id)
+    if not order.item:
+        return jsonify({'success': False, 'message': 'That order has no item.'}), 409
+
+    data = request.get_json(silent=True) or {}
+
+    ok, message, color, size = validate_order_options(
+        order.item, data.get('color'), data.get('size')
+    )
+    if not ok:
+        return jsonify({'success': False, 'message': message}), 400
+
+    before = f'{order.selected_color or "-"} / {order.selected_size or "-"}'
+    order.selected_color = color
+    order.selected_size = size
+    after = f'{color or "-"} / {size or "-"}'
+
+    AdminAuditLog.log_action(
+        user_id=current_user.id,
+        action='store_update_order_options',
+        resource_type='store',
+        resource_id=str(order.id),
+        old_value=before,
+        new_value=after,
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    )
+
+    return jsonify({'success': True,
+                    'message': f'Order #{order.id} set to {after}.'})
+
+
+@admin_panel_bp.route('/store/orders/bulk-status', methods=['POST'])
+@login_required
+@role_required(['Global Admin', 'Pub League Admin'])
+@transactional
+def bulk_update_order_status():
+    """Set the status on many orders at once."""
+    data = request.get_json(silent=True) or {}
+    order_ids = data.get('order_ids') or []
+    new_status = (data.get('status') or '').strip().upper()
+
+    if not order_ids:
+        return jsonify({'success': False, 'message': 'No orders selected.'}), 400
+    if new_status not in ORDER_STATUSES:
+        return jsonify({'success': False, 'message': 'Invalid status.'}), 400
+
+    orders = StoreOrder.query.filter(StoreOrder.id.in_(order_ids)).all()
+    if not orders:
+        return jsonify({'success': False, 'message': 'None of those orders exist.'}), 404
+
+    now = datetime.utcnow()
+    for order in orders:
+        old_status = order.status
+        order.status = new_status
+        # Same timestamp rules as the single-order route, so a bulk update and a
+        # one-off update leave identical rows.
+        if new_status == 'PROCESSING' and old_status == 'PENDING':
+            order.processed_date = now
+            order.processed_by = current_user.id
+        elif new_status == 'DELIVERED':
+            order.delivered_date = now
+            if not order.processed_by:
+                order.processed_by = current_user.id
+
+    AdminAuditLog.log_action(
+        user_id=current_user.id,
+        action='store_bulk_update_order_status',
+        resource_type='store',
+        resource_id=','.join(str(o.id) for o in orders)[:255],
+        old_value=f'{len(orders)} order(s)',
+        new_value=new_status,
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    )
+
+    # Report what actually changed, not what was asked for: ids that do not
+    # exist are silently absent from `orders`, and saying "5 updated" when 3
+    # landed is the reports-success-does-nothing pattern this page is fixing.
+    message = f'{len(orders)} order(s) set to {new_status}.'
+    missing = len(order_ids) - len(orders)
+    if missing > 0:
+        message += f' {missing} selected order(s) no longer exist.'
+
+    return jsonify({'success': True, 'message': message, 'updated': len(orders)})
+
+
+@admin_panel_bp.route('/store/orders/bulk-delete', methods=['POST'])
+@login_required
+@role_required(['Global Admin', 'Pub League Admin'])
+@transactional
+def bulk_delete_orders():
+    """Permanently delete many orders at once. Audited -- this destroys data."""
+    data = request.get_json(silent=True) or {}
+    order_ids = data.get('order_ids') or []
+
+    if not order_ids:
+        return jsonify({'success': False, 'message': 'No orders selected.'}), 400
+
+    orders = StoreOrder.query.filter(StoreOrder.id.in_(order_ids)).all()
+    if not orders:
+        return jsonify({'success': False, 'message': 'None of those orders exist.'}), 404
+
+    AdminAuditLog.log_action(
+        user_id=current_user.id,
+        action='store_bulk_delete_orders',
+        resource_type='store',
+        resource_id=','.join(str(o.id) for o in orders)[:255],
+        old_value=f'{len(orders)} order(s)',
+        new_value='deleted',
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    )
+
+    for order in orders:
+        db.session.delete(order)
+
+    message = f'{len(orders)} order(s) deleted.'
+    missing = len(order_ids) - len(orders)
+    if missing > 0:
+        message += f' {missing} selected order(s) no longer existed.'
+
+    return jsonify({'success': True, 'message': message, 'deleted': len(orders)})
+
+
+@admin_panel_bp.route('/store/orders/reset-season', methods=['POST'])
+@login_required
+@role_required(['Global Admin', 'Pub League Admin'])
+@transactional
+def reset_season_ordering():
+    """Let every coach order again for the current season -- non-destructively.
+
+    Replaces the old /store/admin implementation, which had two modes and both
+    lost data: 'all' hard-DELETEd every order for the season with no audit row,
+    and 'eligibility' permanently set season_id = NULL despite a comment claiming
+    it was temporary, which erased those orders from every season-scoped query
+    and made them render a null season in my-orders forever.
+
+    Both modes here keep every row and every season_id. The whole batch shares
+    one timestamp, which is what makes the undo below a single UPDATE.
+    """
+    data = request.get_json(silent=True) or {}
+    reset_type = (data.get('reset_type') or '').strip()
+
+    if reset_type not in ('eligibility', 'cancel_and_reset'):
+        return jsonify({'success': False, 'message': 'Invalid reset type.'}), 400
+
+    current_season = get_current_store_season(db.session)
+    if not current_season:
+        return jsonify({'success': False, 'message': 'No current season found.'}), 400
+
+    reset_at = datetime.utcnow()
+
+    # Two different populations on purpose:
+    #  * orders to STAMP  -- only ones still blocking (not already reset)
+    #  * orders to CANCEL -- every open order for the season, including ones a
+    #    previous per-coach grant already reset. Restricting the cancel to
+    #    un-reset rows would leave a PENDING order from an earlier grant to be
+    #    fulfilled, contradicting what the modal promises.
+    season_orders = StoreOrder.query.filter(
+        StoreOrder.season_id == current_season.id
+    ).all()
+    orders = [o for o in season_orders if o.eligibility_reset_at is None]
+
+    for order in orders:
+        order.eligibility_reset_at = reset_at
+        order.eligibility_reset_by = current_user.id
+
+    cancelled = 0
+    if reset_type == 'cancel_and_reset':
+        for order in season_orders:
+            if order.status not in ('DELIVERED', 'CANCELLED'):
+                order.status = 'CANCELLED'
+                cancelled += 1
+
+    AdminAuditLog.log_action(
+        user_id=current_user.id,
+        action='store_reset_season_ordering',
+        resource_type='store',
+        resource_id=str(current_season.id),
+        old_value=f'{len(orders)} live order(s) in {current_season.name}',
+        new_value=f'{reset_type} at {reset_at.isoformat()}',
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    )
+
+    message = (f'{len(orders)} order(s) in {current_season.name} were kept and marked reset. '
+               f'Coaches may order again.')
+    if cancelled:
+        message += f' {cancelled} open order(s) marked CANCELLED.'
+
+    return jsonify({
+        'success': True,
+        # One stamp for the batch, so the ELIGIBILITY half is reversible with:
+        #   UPDATE store_orders SET eligibility_reset_at = NULL,
+        #          eligibility_reset_by = NULL
+        #    WHERE eligibility_reset_at = '<reset_token>';
+        #
+        # Two caveats, deliberately spelled out rather than implied:
+        #  * it does NOT restore status. cancel_and_reset overwrites the old
+        #    status in place and nothing records it, so CANCELLED is permanent.
+        #  * it only works until someone re-orders -- once a coach has a new
+        #    live order, un-stamping the old one trips
+        #    uq_store_orders_live_per_season and the UPDATE aborts.
+        'reset_token': reset_at.isoformat(),
+        'undo_restores': 'eligibility only, and only until someone re-orders',
+        'message': message
+    })
 
 
 @admin_panel_bp.route('/store/analytics')
@@ -677,8 +1070,8 @@ def store_items_api():
                 'price': float(item.price) if item.price else 0,
                 'category': item.category,
                 'stock_quantity': getattr(item, 'stock_quantity', 0),
-                'available_colors': json.loads(item.available_colors) if item.available_colors else [],
-                'available_sizes': json.loads(item.available_sizes) if item.available_sizes else [],
+                'available_colors': item.color_options,
+                'available_sizes': item.size_options,
                 'created_at': item.created_at.isoformat()
             } for item in items])
         except Exception as e:

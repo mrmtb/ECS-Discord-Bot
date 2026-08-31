@@ -1,6 +1,80 @@
 {% extends "admin_panel/base_flowbite.html" %}
 {% from 'macros/flowbite.html' import card, button, badge, alert %}
 
+{#
+  Row-level order actions and the re-order badge live in ONE place and are called
+  from every branch below (console table, console mobile card, legacy table).
+  This page renders two full copies of itself behind `shell`, and the store admin
+  page that preceded it broke precisely because those copies drifted apart -- so
+  anything added here gets defined once, never pasted three times.
+#}
+{% macro missing_options_badge(order) %}
+  {% if order.item and ((order.item.color_options and not order.selected_color) or (order.item.size_options and not order.selected_size)) %}
+  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+        title="This item declares colours/sizes but this order has none — it cannot be fulfilled as it stands.">
+    <i class="ti ti-alert-triangle text-[11px]" aria-hidden="true"></i>No colour/size
+  </span>
+  {% endif %}
+{% endmacro %}
+
+{% macro reorder_badge(order) %}
+  {% if order.eligibility_reset_at %}
+  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+        title="Re-order allowed {{ order.eligibility_reset_at.strftime('%b %-d, %Y') }} — this order no longer blocks a new one">
+    <i class="ti ti-rotate-clockwise text-[11px]" aria-hidden="true"></i>Re-order OK
+  </span>
+  {% endif %}
+{% endmacro %}
+
+{% macro order_select(order, prefix='') %}
+  <input type="checkbox" class="order-select w-4 h-4 rounded-sm border-gray-300 text-ecs-green focus:ring-ecs-green dark:bg-gray-700 dark:border-gray-600"
+         id="sel-{{ prefix }}{{ order.id }}" value="{{ order.id }}"
+         aria-label="Select order {{ order.id }}">
+{% endmacro %}
+
+{% macro order_extra_actions(order, style='icon') %}
+  {% set who = order.orderer.username if order.orderer else 'this coach' %}
+  {% if order.season_id %}
+    {% if order.eligibility_reset_at %}
+    <button type="button"
+            class="{% if style == 'icon' %}inline-flex items-center justify-center p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 sm:h-9 sm:w-9{% else %}inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 text-xs font-semibold{% endif %} text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/30 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-ecs-green"
+            data-action="reorder-revoke" data-order-id="{{ order.id }}" data-customer-name="{{ who }}"
+            title="Re-order allowed — click to revoke" aria-label="Revoke re-order permission for order {{ order.id }}">
+      <i class="ti ti-user-check" aria-hidden="true"></i>{% if style != 'icon' %}Revoke{% endif %}
+    </button>
+    {% else %}
+    <button type="button"
+            class="{% if style == 'icon' %}inline-flex items-center justify-center p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 sm:h-9 sm:w-9{% else %}inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 text-xs font-semibold{% endif %} text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-ecs-green"
+            data-action="reorder-grant" data-order-id="{{ order.id }}" data-customer-name="{{ who }}"
+            title="Let this coach order again this season" aria-label="Allow re-order for order {{ order.id }}">
+      <i class="ti ti-user-plus" aria-hidden="true"></i>{% if style != 'icon' %}Allow re-order{% endif %}
+    </button>
+    {% endif %}
+  {% endif %}
+  {% if order.item and (order.item.color_options or order.item.size_options) %}
+  {% set needs_options = (order.item.color_options and not order.selected_color) or (order.item.size_options and not order.selected_size) %}
+  <button type="button"
+          class="{% if style == 'icon' %}inline-flex items-center justify-center p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 sm:h-9 sm:w-9{% else %}inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 text-xs font-semibold{% endif %} {% if needs_options %}text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/30{% else %}text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700{% endif %} rounded-lg focus:outline-hidden focus:ring-2 focus:ring-ecs-green"
+          data-action="edit-order-options" data-order-id="{{ order.id }}"
+          data-item-name="{{ order.item.name }}" data-customer-name="{{ who }}"
+          data-colors="{{ order.item.color_options | tojson }}"
+          data-sizes="{{ order.item.size_options | tojson }}"
+          data-current-color="{{ order.selected_color or '' }}"
+          data-current-size="{{ order.selected_size or '' }}"
+          title="{% if needs_options %}Missing colour/size — set it{% else %}Change colour or size{% endif %}"
+          aria-label="Edit colour and size for order {{ order.id }}">
+    <i class="ti ti-palette" aria-hidden="true"></i>{% if style != 'icon' %}Colour/Size{% endif %}
+  </button>
+  {% endif %}
+  <button type="button"
+          class="{% if style == 'icon' %}inline-flex items-center justify-center p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 sm:h-9 sm:w-9{% else %}inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 text-xs font-semibold{% endif %} text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-ecs-green"
+          data-action="delete-store-order" data-order-id="{{ order.id }}" data-customer-name="{{ who }}"
+          data-order-info="Order #{{ order.id }} — {{ order.item.name if order.item else 'Unknown Item' }}"
+          title="Delete this order permanently" aria-label="Delete order {{ order.id }}">
+    <i class="ti ti-trash" aria-hidden="true"></i>{% if style != 'icon' %}Delete{% endif %}
+  </button>
+{% endmacro %}
+
 {% block admin_title %}Store Orders{% endblock %}
 {% block panel_description %}View and manage store orders{% endblock %}
 
@@ -68,6 +142,11 @@
      class="inline-flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 sm:h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors focus:outline-hidden focus:ring-2 focus:ring-ecs-green">
     <i class="ti ti-arrow-left" aria-hidden="true"></i>Store
   </a>
+  <button type="button"
+          class="inline-flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 sm:h-10 px-4 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/40 dark:hover:bg-amber-500/25 text-sm font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-amber-400"
+          data-action="open-season-reset">
+    <i class="ti ti-rotate-clockwise" aria-hidden="true"></i>Reset Season Ordering
+  </button>
   {# Export dropdown — JS hooks (data-dropdown-toggle, id) preserved verbatim for extra_js wiring #}
   <div class="relative">
     <button type="button"
@@ -232,6 +311,11 @@
       <table class="hidden md:table w-full text-sm text-left">
         <thead class="bg-gray-50 dark:bg-gray-900/40 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
           <tr>
+            <th scope="col" class="px-4 py-2.5 font-semibold w-10">
+              <input type="checkbox" id="selectAllOrders"
+                     class="w-4 h-4 rounded-sm border-gray-300 text-ecs-green focus:ring-ecs-green dark:bg-gray-700 dark:border-gray-600"
+                     aria-label="Select all orders on this page">
+            </th>
             <th scope="col" class="px-4 py-2.5 font-semibold">Order</th>
             <th scope="col" class="px-4 py-2.5 font-semibold">Item</th>
             <th scope="col" class="px-4 py-2.5 font-semibold hidden lg:table-cell">Customer</th>
@@ -249,7 +333,7 @@
           {% if this_day != day.prev %}
           {% set day.prev = this_day %}
           <tr aria-hidden="true">
-            <td colspan="8" class="px-4 pt-4 pb-1.5">
+            <td colspan="9" class="px-4 pt-4 pb-1.5">
               <div class="flex items-center gap-3">
                 <span class="font-mono text-xs font-bold uppercase tracking-wider text-ecs-green shrink-0">
                   {{ order.order_date.strftime('%a · %b %-d, %Y') if order.order_date else 'Unknown date' }}
@@ -260,6 +344,7 @@
           </tr>
           {% endif %}
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+            <td class="px-4 py-3 align-middle">{{ order_select(order) }}</td>
             <td class="px-4 py-3 align-middle whitespace-nowrap">
               <span class="font-mono font-bold text-gray-900 dark:text-white">#{{ order.id }}</span>
               <span class="block text-xs font-mono text-gray-400 dark:text-gray-500">{{ order.order_date.strftime('%H:%M') if order.order_date else '--:--' }}</span>
@@ -327,9 +412,12 @@
               {% endif %}
             </td>
             <td class="px-4 py-3 align-middle">
-              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium {{ status_pill.get(order.status, status_pill['CANCELLED']) }}">
-                <i class="ti {{ status_icon.get(order.status, 'ti-circle') }} text-[11px]" aria-hidden="true"></i>{{ order.status }}
-              </span>
+              <div class="flex flex-wrap items-center gap-1">
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium {{ status_pill.get(order.status, status_pill['CANCELLED']) }}">
+                  <i class="ti {{ status_icon.get(order.status, 'ti-circle') }} text-[11px]" aria-hidden="true"></i>{{ order.status }}
+                </span>
+                {{ reorder_badge(order) }}{{ missing_options_badge(order) }}
+              </div>
             </td>
             <td class="px-4 py-3 align-middle text-right">
               <div class="flex items-center justify-end gap-1">
@@ -355,6 +443,7 @@
                     </ul>
                   </div>
                 </div>
+                {{ order_extra_actions(order) }}
               </div>
             </td>
           </tr>
@@ -380,6 +469,7 @@
       <div class="px-4 py-3.5 border-t border-gray-100 dark:border-gray-700/60">
         <div class="flex items-start justify-between gap-2">
           <div class="flex items-center gap-3 min-w-0">
+            <span class="shrink-0">{{ order_select(order, prefix='m') }}</span>
             {% if order.item and order.item.image_url %}
             <img src="{{ order.item.image_url }}" alt="{{ order.item.name }}" class="w-10 h-10 rounded-sm object-cover shrink-0">
             {% else %}
@@ -398,6 +488,7 @@
           <span class="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium {{ status_pill.get(order.status, status_pill['CANCELLED']) }}">
             <i class="ti {{ status_icon.get(order.status, 'ti-circle') }} text-[11px]" aria-hidden="true"></i>{{ order.status }}
           </span>
+          {{ reorder_badge(order) }}{{ missing_options_badge(order) }}
         </div>
         <div class="mt-2 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
           <p><span class="font-medium text-gray-700 dark:text-gray-300">Customer:</span> {{ order.orderer.username if order.orderer else 'Unknown User' }}</p>
@@ -432,6 +523,7 @@
               </ul>
             </div>
           </div>
+          {{ order_extra_actions(order, style='labelled') }}
         </div>
       </div>
       {% endfor %}
@@ -480,6 +572,10 @@
 <!-- Page Header -->
 <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
     <h4 class="text-xl font-semibold text-gray-900 dark:text-white">Store Orders</h4>
+    <div class="flex flex-wrap items-center gap-3">
+    <button type="button" class="inline-flex items-center px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 dark:bg-gray-800 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-gray-700" data-action="open-season-reset">
+        <i class="ti ti-rotate-clockwise mr-2"></i>Reset Season Ordering
+    </button>
     <div class="relative">
         <button type="button" class="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-600 rounded-lg hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-gray-700" id="exportDropdownBtn" data-dropdown-toggle="exportDropdown">
             <i class="ti ti-download mr-2"></i>Export
@@ -499,6 +595,7 @@
                 </li>
             </ul>
         </div>
+    </div>
     </div>
 </div>
 
@@ -556,6 +653,11 @@
     <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
         <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
             <tr>
+                <th scope="col" class="px-4 py-3 w-10">
+                  <input type="checkbox" id="selectAllOrdersLegacy"
+                         class="w-4 h-4 rounded-sm border-gray-300 text-ecs-green focus:ring-ecs-green dark:bg-gray-700 dark:border-gray-600"
+                         aria-label="Select all orders on this page">
+                </th>
                 <th scope="col" class="px-4 py-3">Order ID</th>
                 <th scope="col" class="px-4 py-3 hidden md:table-cell">Item</th>
                 <th scope="col" class="px-4 py-3 hidden md:table-cell">Customer</th>
@@ -568,6 +670,7 @@
         <tbody>
             {% for order in orders.items %}
             <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="px-4 py-3">{{ order_select(order, prefix='l') }}</td>
                 <td class="px-4 py-3 font-bold text-gray-900 dark:text-white">#{{ order.id }}</td>
                 <td class="px-4 py-3 hidden md:table-cell">
                     <div class="flex items-center">
@@ -600,6 +703,7 @@
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' if order.status == 'PENDING' else 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300' if order.status == 'PROCESSING' else 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' if order.status == 'ORDERED' else 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' if order.status == 'DELIVERED' else 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' }}">
                         {{ order.status }}
                     </span>
+                    {{ reorder_badge(order) }}{{ missing_options_badge(order) }}
                 </td>
                 <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 hidden md:table-cell">{{ order.order_date.strftime('%Y-%m-%d %H:%M') if order.order_date else 'Unknown' }}</td>
                 <td class="px-4 py-3">
@@ -625,6 +729,7 @@
                                 </ul>
                             </div>
                         </div>
+                        {{ order_extra_actions(order) }}
                     </div>
                 </td>
             </tr>
@@ -683,6 +788,119 @@
 {% endif %}
 {% endcall %}
 {% endif %}
+
+{# ===================== Reset Season Ordering modal =====================
+   Rendered once, outside both shell branches. Plain markup toggled by the
+   script below — deliberately not a Flowbite auto-init component, because the
+   page this replaced died on exactly that dependency. #}
+<div id="seasonResetModal" class="hidden fixed inset-0 z-50 items-center justify-center p-4 bg-black/50" role="dialog" aria-modal="true" aria-labelledby="seasonResetTitle">
+  <div class="w-full max-w-lg rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700">
+    <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+      <h3 id="seasonResetTitle" class="text-lg font-semibold text-gray-900 dark:text-white">Reset Season Ordering</h3>
+      <button type="button" class="p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700" data-action="close-season-reset" aria-label="Close">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="p-4 space-y-4">
+      <div class="flex items-start gap-2 p-3 text-sm text-green-800 bg-green-50 rounded-lg dark:bg-green-900/30 dark:text-green-300">
+        <i class="ti ti-shield-check text-lg shrink-0" aria-hidden="true"></i>
+        <div>Nothing is deleted. Existing orders keep their season and their place in each coach&#39;s history &mdash; they simply stop blocking a new order.</div>
+      </div>
+
+      <p class="text-sm text-gray-700 dark:text-gray-300">Choose what happens to the orders already placed this season:</p>
+
+      <div class="space-y-3">
+        <label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+          <input type="radio" name="seasonResetType" value="eligibility" checked class="mt-1 w-4 h-4 text-ecs-green focus:ring-ecs-green">
+          <span class="text-sm">
+            <span class="block font-medium text-gray-900 dark:text-white">Allow everyone to order again</span>
+            <span class="block text-xs text-gray-500 dark:text-gray-400">Keeps every order exactly as it is, including its status. Use this when you are re-opening ordering.</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+          <input type="radio" name="seasonResetType" value="cancel_and_reset" class="mt-1 w-4 h-4 text-ecs-green focus:ring-ecs-green">
+          <span class="text-sm">
+            <span class="block font-medium text-gray-900 dark:text-white">Allow re-ordering and cancel the open orders</span>
+            <span class="block text-xs text-gray-500 dark:text-gray-400">Same as above, and marks every order that is not already delivered as CANCELLED so it will not be fulfilled. Still nothing deleted.</span>
+          </span>
+        </label>
+      </div>
+
+      <p class="text-xs text-gray-500 dark:text-gray-400">
+        To unblock a single coach instead, use the <i class="ti ti-user-plus" aria-hidden="true"></i> button on their row.
+      </p>
+    </div>
+    <div class="flex items-center justify-end gap-3 p-4 border-t border-gray-200 dark:border-gray-700">
+      <button type="button" class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" data-action="close-season-reset">Cancel</button>
+      <button type="button" id="confirmSeasonResetBtn" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 focus:outline-hidden focus:ring-2 focus:ring-amber-400 disabled:opacity-50 disabled:cursor-not-allowed">
+        <i class="ti ti-rotate-clockwise" aria-hidden="true"></i>Reset Season Ordering
+      </button>
+    </div>
+  </div>
+</div>
+
+{# ============ Bulk action bar — one instance, shown on selection ============ #}
+<div id="bulkBar"
+     class="hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur px-4 py-3 shadow-lg">
+  <div class="max-w-7xl mx-auto flex flex-wrap items-center gap-3">
+    <span class="text-sm font-semibold text-gray-900 dark:text-white">
+      <span id="bulkCount">0</span> selected
+    </span>
+    <button type="button" data-action="bulk-clear"
+            class="text-xs font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white underline">
+      Clear
+    </button>
+    <span class="flex-1"></span>
+    <select id="bulkStatus"
+            class="min-h-[44px] sm:min-h-0 sm:h-10 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-ecs-green focus:border-ecs-green"
+            aria-label="Status to apply to the selected orders">
+      <option value="">Set status…</option>
+      {% for status in order_statuses %}
+      <option value="{{ status }}">{{ status }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" data-action="bulk-apply-status"
+            class="inline-flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 sm:h-10 px-4 rounded-lg bg-ecs-green hover:bg-ecs-green-700 text-white text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-ecs-green focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-50">
+      <i class="ti ti-check" aria-hidden="true"></i>Apply
+    </button>
+    <button type="button" data-action="bulk-delete"
+            class="inline-flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 sm:h-10 px-4 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/30 text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-red-400">
+      <i class="ti ti-trash" aria-hidden="true"></i>Delete
+    </button>
+  </div>
+</div>
+
+{# ============ Colour / size editor ============ #}
+<div id="orderOptionsModal" class="hidden fixed inset-0 z-50 items-center justify-center p-4 bg-black/50" role="dialog" aria-modal="true" aria-labelledby="orderOptionsTitle">
+  <div class="w-full max-w-md rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700">
+    <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+      <h3 id="orderOptionsTitle" class="text-lg font-semibold text-gray-900 dark:text-white">Set Colour &amp; Size</h3>
+      <button type="button" class="p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700" data-action="close-order-options" aria-label="Close">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="p-4 space-y-4">
+      <p id="orderOptionsSubject" class="text-sm text-gray-600 dark:text-gray-400"></p>
+      <div id="orderOptionsColorWrap">
+        <label for="orderOptionsColor" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Colour</label>
+        <select id="orderOptionsColor" class="w-full min-h-[44px] px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-ecs-green focus:border-ecs-green"></select>
+      </div>
+      <div id="orderOptionsSizeWrap">
+        <label for="orderOptionsSize" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Size</label>
+        <select id="orderOptionsSize" class="w-full min-h-[44px] px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white focus:ring-ecs-green focus:border-ecs-green"></select>
+      </div>
+      <p class="text-xs text-gray-500 dark:text-gray-400">
+        Only what the item actually offers is listed &mdash; the same options the coach sees.
+      </p>
+    </div>
+    <div class="flex items-center justify-end gap-3 p-4 border-t border-gray-200 dark:border-gray-700">
+      <button type="button" class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" data-action="close-order-options">Cancel</button>
+      <button type="button" id="saveOrderOptionsBtn" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-ecs-green rounded-lg hover:bg-ecs-green-700 focus:outline-hidden focus:ring-2 focus:ring-ecs-green disabled:opacity-50">
+        <i class="ti ti-device-floppy" aria-hidden="true"></i>Save
+      </button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -710,6 +928,315 @@ document.addEventListener('DOMContentLoaded', function() {
             d.classList.add('hidden');
         });
     });
+
+    // ------------------------------------------------------------------
+    // Season ordering: per-coach re-order grants, order deletion, and the
+    // season-wide reset.
+    //
+    // Bound directly here rather than through a custom_js module. The page this
+    // replaced registered its handlers with window.InitSystem from an unbundled
+    // module that loaded a SECOND copy of init-system.js, which overwrote
+    // window.InitSystem with a fresh instance nobody ever initialised — so every
+    // button on it was dead with an empty console. Direct listeners cannot fail
+    // that way.
+    // ------------------------------------------------------------------
+    const csrfToken = () => {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+    };
+
+    const post = (url, body) => fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+        body: JSON.stringify(body || {})
+    }).then(async (response) => {
+        // Never trust the status code alone, and never assume the body is JSON —
+        // an error page here used to surface as a misleading "success".
+        let data = null;
+        try { data = await response.json(); } catch (e) { data = null; }
+        if (!data) throw new Error('The server returned an unexpected response (HTTP ' + response.status + ').');
+        if (!data.success) throw new Error(data.message || 'The request failed.');
+        return data;
+    });
+
+    const notify = (icon, title, text) => {
+        if (typeof window.Swal !== 'undefined') {
+            return window.Swal.fire({ icon: icon, title: title, text: text });
+        }
+        window.alert(title + '\n\n' + text);
+        return Promise.resolve();
+    };
+
+    const confirmThen = (opts, run) => {
+        if (typeof window.Swal !== 'undefined') {
+            window.Swal.fire({
+                title: opts.title,
+                text: opts.text,
+                icon: opts.icon || 'question',
+                showCancelButton: true,
+                confirmButtonText: opts.confirmText || 'Confirm',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: opts.color || '#d97706'
+            }).then((r) => { if (r.isConfirmed) run(); });
+        } else if (window.confirm(opts.title + '\n\n' + opts.text)) {
+            run();
+        }
+    };
+
+    document.addEventListener('click', function(e) {
+        if (!e.target || typeof e.target.closest !== 'function') return;
+
+        // --- per-coach re-order grant / revoke ---
+        const grantBtn = e.target.closest('[data-action="reorder-grant"], [data-action="reorder-revoke"]');
+        if (grantBtn) {
+            e.preventDefault();
+            const allow = grantBtn.dataset.action === 'reorder-grant';
+            const orderId = grantBtn.dataset.orderId;
+            const who = grantBtn.dataset.customerName || 'this coach';
+            confirmThen({
+                title: allow ? 'Allow Re-order' : 'Revoke Re-order',
+                text: allow
+                    ? 'Let ' + who + ' place another order this season? Their existing order is kept exactly as it is.'
+                    : 'Revoke ' + who + "'s permission to place another order this season?",
+                confirmText: allow ? 'Yes, allow it' : 'Yes, revoke'
+            }, () => {
+                post('/admin-panel/store/orders/' + orderId + '/reorder-grant', { allow: allow })
+                    .then((data) => notify('success', allow ? 'Re-order Allowed' : 'Revoked', data.message)
+                        .then(() => window.location.reload()))
+                    .catch((err) => notify('error', 'Could Not Update', err.message));
+            });
+            return;
+        }
+
+        // --- delete a single order ---
+        const delBtn = e.target.closest('[data-action="delete-store-order"]');
+        if (delBtn) {
+            e.preventDefault();
+            const orderId = delBtn.dataset.orderId;
+            confirmThen({
+                title: 'Delete Order',
+                text: (delBtn.dataset.orderInfo || 'This order') + ' will be permanently deleted. '
+                    + 'To let ' + (delBtn.dataset.customerName || 'the coach') + ' order again while keeping the record, '
+                    + 'use Allow re-order instead.',
+                icon: 'warning',
+                confirmText: 'Yes, delete it',
+                color: '#dc2626'
+            }, () => {
+                post('/admin-panel/store/orders/' + orderId + '/delete')
+                    .then((data) => notify('success', 'Order Deleted', data.message)
+                        .then(() => window.location.reload()))
+                    .catch((err) => notify('error', 'Could Not Delete', err.message));
+            });
+            return;
+        }
+
+        // --- season reset modal ---
+        const modal = document.getElementById('seasonResetModal');
+        if (e.target.closest('[data-action="open-season-reset"]')) {
+            e.preventDefault();
+            if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+            return;
+        }
+        if (e.target.closest('[data-action="close-season-reset"]') || e.target === modal) {
+            if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+            return;
+        }
+
+        // ---------------- bulk selection ----------------
+        if (e.target.closest('[data-action="bulk-clear"]')) {
+            e.preventDefault();
+            document.querySelectorAll('.order-select').forEach(cb => { cb.checked = false; });
+            document.querySelectorAll('#selectAllOrders, #selectAllOrdersLegacy').forEach(cb => { cb.checked = false; });
+            refreshBulkBar();
+            return;
+        }
+
+        if (e.target.closest('[data-action="bulk-apply-status"]')) {
+            e.preventDefault();
+            const ids = selectedIds();
+            const status = (document.getElementById('bulkStatus') || {}).value || '';
+            if (!ids.length) return;
+            if (!status) { notify('info', 'Pick a Status', 'Choose the status to apply first.'); return; }
+            confirmThen({
+                title: 'Update ' + ids.length + ' Order(s)',
+                text: 'Set ' + ids.length + ' selected order(s) to ' + status + '?',
+                confirmText: 'Yes, update them'
+            }, () => {
+                post('/admin-panel/store/orders/bulk-status', { order_ids: ids, status: status })
+                    .then((data) => notify('success', 'Orders Updated', data.message)
+                        .then(() => window.location.reload()))
+                    .catch((err) => notify('error', 'Could Not Update', err.message));
+            });
+            return;
+        }
+
+        if (e.target.closest('[data-action="bulk-delete"]')) {
+            e.preventDefault();
+            const ids = selectedIds();
+            if (!ids.length) return;
+            confirmThen({
+                title: 'Delete ' + ids.length + ' Order(s)',
+                text: ids.length + ' order(s) will be permanently deleted. This cannot be undone.',
+                icon: 'warning',
+                confirmText: 'Yes, delete them',
+                color: '#dc2626'
+            }, () => {
+                post('/admin-panel/store/orders/bulk-delete', { order_ids: ids })
+                    .then((data) => notify('success', 'Orders Deleted', data.message)
+                        .then(() => window.location.reload()))
+                    .catch((err) => notify('error', 'Could Not Delete', err.message));
+            });
+            return;
+        }
+
+        // ---------------- colour / size editor ----------------
+        const optBtn = e.target.closest('[data-action="edit-order-options"]');
+        if (optBtn) {
+            e.preventDefault();
+            openOptionsModal(optBtn);
+            return;
+        }
+        const optModal = document.getElementById('orderOptionsModal');
+        if (e.target.closest('[data-action="close-order-options"]') || e.target === optModal) {
+            if (optModal) { optModal.classList.add('hidden'); optModal.classList.remove('flex'); }
+            return;
+        }
+        if (e.target.closest('#saveOrderOptionsBtn')) {
+            e.preventDefault();
+            saveOrderOptions();
+            return;
+        }
+
+        const confirmBtn = e.target.closest('#confirmSeasonResetBtn');
+        if (confirmBtn) {
+            e.preventDefault();
+            const picked = document.querySelector('input[name="seasonResetType"]:checked');
+            const resetType = picked ? picked.value : 'eligibility';
+            confirmThen({
+                title: 'Reset Season Ordering',
+                text: resetType === 'cancel_and_reset'
+                    ? 'Every coach will be able to order again, and open orders will be marked CANCELLED. Nothing is deleted.'
+                    : 'Every coach will be able to order again. All existing orders are kept unchanged.',
+                confirmText: 'Yes, reset it'
+            }, () => {
+                const original = confirmBtn.innerHTML;
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" role="status"></div>Resetting...';
+                post('/admin-panel/store/orders/reset-season', { reset_type: resetType })
+                    .then((data) => notify('success', 'Season Ordering Reset', data.message)
+                        .then(() => window.location.reload()))
+                    .catch((err) => {
+                        confirmBtn.disabled = false;
+                        confirmBtn.innerHTML = original;
+                        notify('error', 'Could Not Reset', err.message);
+                    });
+            });
+        }
+    });
+
+    // ------------------------------------------------------------------
+    // Selection state + the colour/size editor.
+    // ------------------------------------------------------------------
+    function selectedIds() {
+        // Desktop rows and mobile cards render a checkbox each for the SAME
+        // order, so de-duplicate or a bulk action reports double the count.
+        const seen = new Set();
+        document.querySelectorAll('.order-select:checked').forEach(cb => seen.add(cb.value));
+        return Array.from(seen);
+    }
+
+    function refreshBulkBar() {
+        const bar = document.getElementById('bulkBar');
+        const count = selectedIds().length;
+        const label = document.getElementById('bulkCount');
+        if (label) label.textContent = String(count);
+        if (!bar) return;
+        bar.classList.toggle('hidden', count === 0);
+    }
+
+    document.addEventListener('change', function(e) {
+        if (!e.target) return;
+        if (e.target.id === 'selectAllOrders' || e.target.id === 'selectAllOrdersLegacy') {
+            const on = e.target.checked;
+            document.querySelectorAll('.order-select').forEach(cb => { cb.checked = on; });
+            document.querySelectorAll('#selectAllOrders, #selectAllOrdersLegacy').forEach(cb => { cb.checked = on; });
+            refreshBulkBar();
+            return;
+        }
+        if (e.target.classList && e.target.classList.contains('order-select')) {
+            // Keep the desktop row and its mobile twin in step.
+            document.querySelectorAll('.order-select').forEach(cb => {
+                if (cb.value === e.target.value) cb.checked = e.target.checked;
+            });
+            refreshBulkBar();
+        }
+    });
+
+    let optionsOrderId = null;
+
+    function fillSelect(select, values, current, required) {
+        select.innerHTML = '';
+        if (!required) {
+            const none = document.createElement('option');
+            none.value = ''; none.textContent = '— none —';
+            select.appendChild(none);
+        }
+        values.forEach(v => {
+            const o = document.createElement('option');
+            o.value = v; o.textContent = v;
+            if (v === current) o.selected = true;
+            select.appendChild(o);
+        });
+        if (required && !values.includes(current)) select.selectedIndex = 0;
+    }
+
+    function readJsonAttr(el, name) {
+        try { return JSON.parse(el.getAttribute(name) || '[]'); } catch (err) { return []; }
+    }
+
+    function openOptionsModal(btn) {
+        const modal = document.getElementById('orderOptionsModal');
+        if (!modal) return;
+        optionsOrderId = btn.dataset.orderId;
+
+        const colors = readJsonAttr(btn, 'data-colors');
+        const sizes = readJsonAttr(btn, 'data-sizes');
+
+        document.getElementById('orderOptionsSubject').textContent =
+            'Order #' + optionsOrderId + ' — ' + (btn.dataset.itemName || 'item')
+            + ' for ' + (btn.dataset.customerName || 'this coach');
+
+        const colorWrap = document.getElementById('orderOptionsColorWrap');
+        const sizeWrap = document.getElementById('orderOptionsSizeWrap');
+        colorWrap.classList.toggle('hidden', colors.length === 0);
+        sizeWrap.classList.toggle('hidden', sizes.length === 0);
+        fillSelect(document.getElementById('orderOptionsColor'), colors, btn.dataset.currentColor || '', colors.length > 0);
+        fillSelect(document.getElementById('orderOptionsSize'), sizes, btn.dataset.currentSize || '', sizes.length > 0);
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function saveOrderOptions() {
+        if (!optionsOrderId) return;
+        const btn = document.getElementById('saveOrderOptionsBtn');
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" role="status"></div>Saving...';
+
+        post('/admin-panel/store/orders/' + optionsOrderId + '/options', {
+            color: document.getElementById('orderOptionsColor').value,
+            size: document.getElementById('orderOptionsSize').value
+        })
+        .then((data) => notify('success', 'Saved', data.message).then(() => window.location.reload()))
+        .catch((err) => {
+            btn.disabled = false;
+            btn.innerHTML = original;
+            notify('error', 'Could Not Save', err.message);
+        });
+    }
+
+    refreshBulkBar();
 });
 </script>
 {% endblock %}

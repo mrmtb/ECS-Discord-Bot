@@ -264,6 +264,13 @@ def db(_database, app):
             # order assigned to player_id 1 in one test came back as "this
             # person's order history" in the next one.
             'pub_league_order_claim', 'pub_league_order_line_item', 'pub_league_order',
+            # Gear-store orders + items. Same leak, and it surfaces as a UNIQUE
+            # violation rather than bad data: uq_store_orders_live_per_season is
+            # keyed on (ordered_by, season_id), and both ids restart at 1 for the
+            # next test -- so a leaked order made a BRAND NEW coach look like they
+            # had already ordered this season. store_orders first: it references
+            # store_items, users and season.
+            'store_orders', 'store_items',
             # Wallet passes and their children. Exactly the same leak, and a
             # nasty one: a pass issued to player_id 1 survived into the next
             # test, where a BRAND NEW player reusing id 1 was then found to
