@@ -46,6 +46,7 @@ from utils import (
 )
 
 wc_url: str = BOT_CONFIG["wc_url"]  # e.g. https://site.com/wp-json/wc/v3/orders/
+ELIGIBLE_ORDER_STATUSES = {"processing", "completed"}
 
 # ---------------------------------------------------------------------------
 # Helpers inlined from woocommerce_commands.py (avoid importing the Discord cog)
@@ -177,12 +178,13 @@ async def update_ecs_subgroup(
                 logging.info(
                     f"Updated ecs-subgroup = '{subgroup_value}' for member ID {member_id}."
                 )
+                return True
             else:
                 logging.warning(
                     f"PUT member {member_id} returned HTTP 200 but ecs-subgroup is "
                     f"'{actual}' (expected '{subgroup_value}'). Content-Type header may be missing."
                 )
-            return True
+                return False
         else:
             logging.error(
                 f"Failed to update ecs-subgroup for member ID {member_id}. Response: {response}"
@@ -233,10 +235,17 @@ async def process_order(
 ) -> None:
     order_id = order.get("id", "?")
     customer_id = order.get("customer_id")
+    order_status = normalize_string(order.get("status", ""))
 
     # Step 1 — Does the order contain an ECS Membership?
-    membership_product_name = await find_membership_item_in_order(order)
+    membership_product_name = await find_membership_item_in_order(order, year_filter)
     if not membership_product_name:
+        return
+
+    if order_status not in ELIGIBLE_ORDER_STATUSES:
+        logging.info(
+            f"Order {order_id}: status '{order.get('status', '')}' is not eligible for reconciliation — skipping."
+        )
         return
 
     stats["orders_with_membership"] += 1
@@ -379,7 +388,7 @@ async def process_order(
 
 async def run_reconciliation(
     *,
-    dry_run: bool = False,
+    dry_run: bool = True,
     year: int | None = None,
     after: str | None = None,
     order_id: int | None = None,
@@ -431,7 +440,7 @@ async def run_reconciliation(
     # Paginated mode
     while True:
         orders_url = (
-            f"{wc_url}?search=membership&order=desc&page={page}&per_page={per_page}"
+            f"{wc_url}?order=desc&page={page}&per_page={per_page}"
             f"&status=any&after={after}"
         )
         logging.info(f"Fetching page {page}: {orders_url}")

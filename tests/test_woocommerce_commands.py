@@ -16,7 +16,8 @@ from woocommerce_commands import (
 )
 from unittest.mock import AsyncMock, MagicMock
 from database import insert_order_extract, get_order_extract
-from membership_testing3 import _parse_args, process_order
+from membership_testing3 import _parse_args, process_order, run_reconciliation, update_ecs_subgroup
+from help_commands import CustomHelpCommand
 import discord
 
 @pytest.fixture
@@ -205,6 +206,7 @@ def test_get_customers_by_ids_uses_include_params_and_normalizes_ids(monkeypatch
 def test_membership_reconciliation_defaults_to_dry_run():
     assert _parse_args([]).dry_run is True
     assert _parse_args(["--apply"]).dry_run is False
+    assert run_reconciliation.__kwdefaults__["dry_run"] is True
 
 
 def test_reconciliation_recognizes_membership_plan_name_variant(monkeypatch):
@@ -218,6 +220,7 @@ def test_reconciliation_recognizes_membership_plan_name_variant(monkeypatch):
     stats = {"orders_with_membership": 0}
     order = {
         "id": 1,
+        "status": "processing",
         "customer_id": 7,
         "line_items": [{"name": "ECS Membership 2026"}],
     }
@@ -242,6 +245,17 @@ def test_find_member_id_from_customer_product_returns_matching_membership(monkey
     result = asyncio.run(find_member_id_from_customer_product(42, "ECS Membership"))
 
     assert result == 99
+
+
+def test_update_ecs_subgroup_returns_false_when_verification_mismatches(monkeypatch):
+    async def fake_call_woocommerce_api(url, method=None, data=None):
+        return {"id": 77, "profile_fields": [{"slug": "ecs-subgroup", "value": "Other"}]}
+
+    monkeypatch.setattr("membership_testing3.call_woocommerce_api", fake_call_woocommerce_api)
+
+    result = asyncio.run(update_ecs_subgroup(77, "West Sound"))
+
+    assert result is False
 
 
 def test_update_customer_profile_field_returns_true_when_api_succeeds(monkeypatch):
@@ -319,3 +333,113 @@ def test_generate_csv_from_orders_writes_expected_aliases():
     assert rows[1][0] == "ECS Membership 2024"
     assert rows[1][12] == "ecstix-111@weareecs.com"
     assert rows[1][13] == "ECS Membership 2024 entry for Jane Doe"
+
+
+@pytest.mark.asyncio
+async def test_proliferate_uses_matched_membership_product_name(
+    woocommerce_commands_bot, mock_interaction, mock_call_api, mock_role_check, monkeypatch
+):
+    mock_role_check.return_value = True
+    mock_call_api.side_effect = [[{
+        "id": 123,
+        "customer_id": 77,
+        "line_items": [{
+            "name": "ECS Membership 2026",
+            "meta_data": [{"key": "Subgroup Designation", "value": "West Sound"}],
+        }],
+    }]]
+    lookup = AsyncMock(return_value=99)
+    monkeypatch.setattr("woocommerce_commands.find_member_id_from_customer_product", lookup)
+    monkeypatch.setattr("woocommerce_commands.update_customer_profile_field", AsyncMock(return_value=True))
+
+    await woocommerce_commands_bot.proliferate.callback(
+        woocommerce_commands_bot, mock_interaction, 7
+    )
+
+    lookup.assert_awaited_once_with(77, "ECS Membership 2026")
+
+
+@pytest.mark.asyncio
+async def test_process_order_skips_non_eligible_status(monkeypatch):
+    create_membership = AsyncMock()
+    monkeypatch.setattr("membership_testing3.create_membership_record", create_membership)
+    monkeypatch.setattr("membership_testing3.get_membership_records_for_customer", AsyncMock(return_value=[]))
+
+    stats = {
+        "orders_examined": 0,
+        "orders_with_membership": 0,
+        "memberships_create_attempted": 0,
+        "memberships_create_succeeded": 0,
+        "memberships_create_failed": 0,
+        "memberships_skipped_guest": 0,
+        "subgroup_already_set": 0,
+        "subgroup_updates_attempted": 0,
+        "subgroup_updates_succeeded": 0,
+        "subgroup_updates_failed": 0,
+    }
+    order = {
+        "id": 1,
+        "status": "cancelled",
+        "customer_id": 7,
+        "line_items": [{"name": "ECS Membership 2026"}],
+    }
+
+    await process_order(order, [], year_filter=2026, dry_run=False, stats=stats)
+
+    create_membership.assert_not_called()
+    assert stats["orders_with_membership"] == 0
+
+
+@pytest.mark.asyncio
+async def test_process_order_passes_year_filter_to_membership_lookup(monkeypatch):
+    captured = {}
+
+    async def fake_find_membership_item_in_order(order, membership_year=None):
+        captured["membership_year"] = membership_year
+        return "ECS Membership 2025"
+
+    monkeypatch.setattr("membership_testing3.find_membership_item_in_order", fake_find_membership_item_in_order)
+    monkeypatch.setattr(
+        "membership_testing3.get_membership_records_for_customer",
+        AsyncMock(return_value=[{"id": 99, "plan_name": "ECS Membership 2025", "profile_fields": []}]),
+    )
+
+    stats = {
+        "orders_examined": 0,
+        "orders_with_membership": 0,
+        "memberships_create_attempted": 0,
+        "memberships_create_succeeded": 0,
+        "memberships_create_failed": 0,
+        "memberships_skipped_guest": 0,
+        "subgroup_already_set": 0,
+        "subgroup_updates_attempted": 0,
+        "subgroup_updates_succeeded": 0,
+        "subgroup_updates_failed": 0,
+    }
+    order = {
+        "id": 1,
+        "status": "processing",
+        "customer_id": 7,
+        "line_items": [{"name": "ECS Membership 2025"}],
+    }
+
+    await process_order(order, [], year_filter=2025, dry_run=True, stats=stats)
+
+    assert captured["membership_year"] == 2025
+    assert stats["orders_with_membership"] == 1
+
+
+@pytest.mark.asyncio
+async def test_custom_help_requires_leadership_for_subgrouplist(monkeypatch):
+    help_command = CustomHelpCommand()
+    help_command.context = MagicMock()
+    leadership_check = AsyncMock(return_value=True)
+    monkeypatch.setattr("help_commands.has_required_wg_role", leadership_check)
+
+    command = MagicMock(name="subgrouplist")
+    command.name = "subgrouplist"
+
+    result = await help_command.can_run(command)
+
+    assert result is True
+    leadership_check.assert_awaited_once_with(help_command.context, ["ECS Leadership"])

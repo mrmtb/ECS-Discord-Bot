@@ -8,6 +8,7 @@ import pytz
 import re
 import json
 import logging
+from api_helpers import call_woocommerce_api, wc_url
 
 logger = logging.getLogger(__name__)
 
@@ -196,10 +197,10 @@ async def find_membership_item_in_order(order, membership_year=None):
         None otherwise.
     """
     if membership_year is None:
-        membership_year = datetime.datetime.now().year
-
-    membership_year_str = str(membership_year)
-    pattern = re.compile(rf"ecs member(?:ship)?(?:\s+\w+)*\s+{membership_year_str}\b")
+        pattern = re.compile(r"ecs member(?:ship)?(?:\s+\w+)*\s+\d{4}\b")
+    else:
+        membership_year_str = str(membership_year)
+        pattern = re.compile(rf"ecs member(?:ship)?(?:\s+\w+)*\s+{membership_year_str}\b")
 
     line_items = order.get('line_items', [])
     for item in line_items:
@@ -209,7 +210,10 @@ async def find_membership_item_in_order(order, membership_year=None):
             logger.debug(f"Order ID {order.get('id', 'Unknown')} has ECS Membership: {product_name} at line item ID: {item.get('id', 'Unknown')}")
             return product_name
 
-    logger.debug(f"Order ID {order.get('id', 'Unknown')} does not have ECS Membership for {membership_year}.")
+    if membership_year is None:
+        logger.debug(f"Order ID {order.get('id', 'Unknown')} does not have an ECS Membership item.")
+    else:
+        logger.debug(f"Order ID {order.get('id', 'Unknown')} does not have ECS Membership for {membership_year}.")
     return None
 
 
@@ -275,7 +279,8 @@ async def find_subgroup_in_order(order, subgroups):
         return None
     
     # a disconnected subgoup item found; now look for a membership item in the order to confirm it's a valid subgroup purchase
-    if not await find_membership_item_in_order(order):
+    membership_product_name = await find_membership_item_in_order(order)
+    if not membership_product_name:
         logger.debug(f"Order ID {order.get('id', 'Unknown')} has subgroup designation but no membership item.")
         return None
 
@@ -284,8 +289,41 @@ async def find_subgroup_in_order(order, subgroups):
         item for item in order.get('line_items', [])
         if item.get('id') == subgroup_line_item_id
     )
+    customer_id = order.get('customer_id', 'Unknown')
+    year_match = re.search(r"\d{4}", membership_product_name)
+    if customer_id not in ("", "Unknown", None, 0, "0") and year_match:
+        memberships_url = f"{wc_url.replace('/orders/', '/memberships/members/')}?customer={customer_id}"
+        memberships = await call_woocommerce_api(memberships_url)
+        if memberships:
+            membership_year = year_match.group()
+            plan_names = {
+                normalize_string(f"ECS Member {membership_year}"),
+                normalize_string(f"ECS Membership {membership_year}"),
+            }
+            matching_membership = next(
+                (
+                    membership for membership in memberships
+                    if normalize_string(membership.get("plan_name", "")) in plan_names
+                ),
+                None,
+            )
+            if matching_membership:
+                existing_subgroup = next(
+                    (
+                        extract_designation(field.get("value", ""))
+                        for field in matching_membership.get("profile_fields", [])
+                        if field.get("slug") == "ecs-subgroup"
+                        or normalize_string(field.get("name", "")) == "ecs subgroup"
+                    ),
+                    "",
+                )
+                if normalize_string(existing_subgroup) == normalize_string(subgroup_designation):
+                    logger.debug(
+                        f"Order ID {order.get('id', 'Unknown')} member already has subgroup '{existing_subgroup}'."
+                    )
+                    return None
     return (
-        order.get('customer_id', 'Unknown'),
+        customer_id,
         order.get('id', 'Unknown'),
         subgroup_line_item.get('product_id', 'Unknown'),
         subgroup_line_item_id,

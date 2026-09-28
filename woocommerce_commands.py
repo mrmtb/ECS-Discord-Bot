@@ -2,7 +2,6 @@
 
 import datetime
 from http import server
-from click import option
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -812,7 +811,7 @@ class WooCommerceCommands(commands.Cog):
             while True:
                 orders_url = (
                     f"{wc_url}?order=desc&page={page}&per_page={per_page}"
-                    f"&status=any&after={start_of_time}&search=Membership"
+                    f"&status=any&after={start_of_time}"
                 )
                 logger.info(f"Fetching orders from page {page}.")
                 fetched_orders = await call_woocommerce_api(orders_url)
@@ -912,7 +911,7 @@ class WooCommerceCommands(commands.Cog):
             while True:
                 orders_url = (
                     f"{wc_url}?order=desc&page={page}&per_page={per_page}"
-                    f"&status=any&after={start_of_time}&search=Membership"
+                    f"&status=any&after={start_of_time}"
                 )
                 logger.info(f"Fetching orders from page {page}.")
                 fetched_orders = await call_woocommerce_api(orders_url)
@@ -1023,7 +1022,7 @@ class WooCommerceCommands(commands.Cog):
             processed_any_orders = False
 
             while True:
-                orders_url = f"{base_wc_url}?search=membership&order=desc&page={page}&per_page={per_page}&after={start_of_time}"
+                orders_url = f"{base_wc_url}?order=desc&page={page}&per_page={per_page}&after={start_of_time}"
                 orders = await call_woocommerce_api(orders_url)
 
                 if not orders:
@@ -1056,7 +1055,7 @@ class WooCommerceCommands(commands.Cog):
                             continue
 
                         customer_id = order.get("customer_id", "Unknown")
-                        product_name = f"ECS Member {year}"
+                        product_name = line_item.get("name", "")
                         member_id = await find_member_id_from_customer_product(customer_id, product_name)
                         if not member_id:
                             logger.warning(
@@ -1109,4 +1108,3 @@ class WooCommerceCommands(commands.Cog):
         
 async def setup(bot):
     await bot.add_cog(WooCommerceCommands(bot))
-

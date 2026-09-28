@@ -28,7 +28,7 @@ async def send_async_http_request(
             async with session.request(
                 method, url, headers=headers, auth=auth, data=data, params=params
             ) as response:
-                if response.status == 200:
+                if 200 <= response.status < 300:
                     return await response.json()
                 else:
                     print(f"Request failed with status code: {response.status}")

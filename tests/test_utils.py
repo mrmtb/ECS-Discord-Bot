@@ -93,7 +93,7 @@ def test_find_customer_info_matches_subgroup_metadata_on_order_items():
         "customer_id": "",
     })
 
-def test_find_subgroup_in_order_returns_subgroup_product_and_line_item_ids():
+def test_find_subgroup_in_order_returns_subgroup_product_and_line_item_ids(monkeypatch):
     order = {
         "id": 123,
         "customer_id": 77,
@@ -103,9 +103,48 @@ def test_find_subgroup_in_order_returns_subgroup_product_and_line_item_ids():
         ],
     }
 
+    async def fake_call_woocommerce_api(_url):
+        return [{
+            "id": 99,
+            "plan_name": "ECS Membership 2026",
+            "profile_fields": [],
+        }]
+
+    monkeypatch.setattr("utils.call_woocommerce_api", fake_call_woocommerce_api)
+
     result = asyncio.run(find_subgroup_in_order(order, [{"name": "West Sound"}]))
 
     assert result == (77, 123, 30, 11, "West Sound")
+
+def test_find_membership_item_in_order_matches_any_year_by_default():
+    order = {"line_items": [{"name": "ECS Membership 2025"}]}
+
+    result = asyncio.run(find_membership_item_in_order(order))
+
+    assert result == "ECS Membership 2025"
+
+def test_find_subgroup_in_order_skips_already_reconciled_membership(monkeypatch):
+    order = {
+        "id": 123,
+        "customer_id": 77,
+        "line_items": [
+            {"id": 10, "product_id": 20, "name": "ECS Membership 2026"},
+            {"id": 11, "product_id": 30, "name": "West Sound"},
+        ],
+    }
+
+    async def fake_call_woocommerce_api(_url):
+        return [{
+            "id": 99,
+            "plan_name": "ECS Membership 2026",
+            "profile_fields": [{"slug": "ecs-subgroup", "value": "West Sound"}],
+        }]
+
+    monkeypatch.setattr("utils.call_woocommerce_api", fake_call_woocommerce_api)
+
+    result = asyncio.run(find_subgroup_in_order(order, [{"name": "West Sound"}]))
+
+    assert result is None
 
 @pytest.mark.asyncio
 async def test_find_membership_in_order_awaits_membership_lookup(recwarn):
